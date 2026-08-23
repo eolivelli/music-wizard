@@ -61,26 +61,32 @@ public record ChordTrace(List<Span> spans, List<Root> roots) {
      * @param chord             the symbol the span was named with
      * @param fromRun           the symbol the run's own chroma chose, before
      *                          either per-root count
-     * @param settledBy         which decision last set {@code chord} —
+     * @param settledBy         which of the three last set {@code chord} —
      *                          {@code decoder}, {@code run}, {@code sevenths}
-     *                          or {@code thirds}
+     *                          or {@code thirds}, read off those labels, so no
+     *                          row can name a decision its own columns deny
      * @param decoded           the state the decoder held over most of the span,
-     *                          scored over the span's own beats
-     * @param runnerUp          the best-scoring state it was not, or null where
-     *                          nothing else was scored
-     * @param bassRoot          the root the bass register named over these
-     *                          beats, or null where it named none — a bass that
-     *                          dropped out and a run given no bass register at
-     *                          all argue for no root either way
+     *                          scored over the span's own beats. Where it held
+     *                          more than one quality this is the majority, so a
+     *                          run decision that agreed with it reads as the
+     *                          decoder's
+     * @param runnerUp          the best-scoring state other than that one, or
+     *                          null where nothing else was scored
+     * @param bassRoot          the root the bass register argued for over these
+     *                          beats, or null where it argued for none — which
+     *                          is also what a no-chord span leaves, the
+     *                          no-chord state taking no root prior at all
      * @param bassOnDecoded     what that prior added to {@code decoded}'s score,
-     *                          which is at most zero and is zero where the bass
-     *                          named the decoded root itself
+     *                          which is at most zero
      * @param majorSeventhBeats beats of the span on which the fit's residual let
-     *                          the decoder consider a major seventh on this root
+     *                          the decoder consider a major seventh on this
+     *                          root, or null where the span has no root
      * @param gates             what the residual said about each degree the
      *                          quality decision gates, over the whole run this
-     *                          span belongs to, or empty where no residual was
-     *                          measured
+     *                          span belongs to. Empty where there was nothing to
+     *                          read: no root, no residual, or a root the fit
+     *                          needs nothing on, against which every share is
+     *                          cleared by every value
      */
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record Span(
@@ -95,7 +101,7 @@ public record ChordTrace(List<Span> spans, List<Root> roots) {
             Candidate runnerUp,
             String bassRoot,
             double bassOnDecoded,
-            int majorSeventhBeats,
+            Integer majorSeventhBeats,
             List<Gate> gates) {
 
         public Span {
@@ -161,24 +167,35 @@ public record ChordTrace(List<Span> spans, List<Root> roots) {
     public record Root(String root, Count thirds, Count sevenths) {
 
         public Root {
+            // The page prints all three, so a root missing one is a root this
+            // build cannot draw — refused here so a later build's rename costs
+            // the picture rather than the page.
             Objects.requireNonNull(root, "root");
+            Objects.requireNonNull(thirds, "thirds");
+            Objects.requireNonNull(sevenths, "sevenths");
         }
     }
 
     /**
-     * A count read across a root's runs, and what it decided for all of them.
+     * A count read across a root's runs, and what the rule reading it did.
+     *
+     * <p>{@code read} is the count and not the verdict, because the two come
+     * apart: a rule can reach a verdict over beats no run could carry, and
+     * {@code runsChanged} is then zero. What each rule does with each reading
+     * is the reader's to be told once, not a claim per root.
      *
      * @param stated      beats whose label carried the degree being counted
      * @param beats       beats the count was read against, which each rule
      *                    scopes for itself
-     * @param decided     {@code as read}, {@code withdrawn} or {@code added}
-     * @param runsChanged runs the decision rewrote
+     * @param read        {@code minority}, {@code even}, {@code majority}, or
+     *                    {@code none} where the rule counted no beat at all
+     * @param runsChanged runs the rule rewrote
      */
     @JsonIgnoreProperties(ignoreUnknown = true)
-    public record Count(int stated, int beats, String decided, int runsChanged) {
+    public record Count(int stated, int beats, String read, int runsChanged) {
 
         public Count {
-            Objects.requireNonNull(decided, "decided");
+            Objects.requireNonNull(read, "read");
         }
     }
 }

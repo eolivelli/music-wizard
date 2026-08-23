@@ -21,6 +21,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.model.TempoMap;
 import dev.olivelli.musicwizard.core.workspace.BeatTrace;
+import dev.olivelli.musicwizard.core.workspace.ChordTrace;
 import dev.olivelli.musicwizard.core.workspace.ChromaTrace;
 import dev.olivelli.musicwizard.core.workspace.RunManifest;
 import dev.olivelli.musicwizard.core.workspace.RunTraceJson;
@@ -156,17 +157,51 @@ class AnalysisReportTest {
 
         assertThat(weighed).contains("What the decoder chose between",
                 "Every chord span, and what it beat",
-                // The span the run's own chroma renamed, and the one a count on
-                // its root renamed -- which is the fact the chart cannot show.
-                "the run weighed against its own chroma", "the root's seventh count",
+                // The span the run's own chroma renamed, which is a fact the
+                // chart cannot show.
+                "the run weighed against its own chroma",
                 "How each root's third and seventh were settled",
-                "more than half state it, so the minor triads among them gain one",
                 // The readings a gate compared, and the degree it withheld.
                 "What the residual said about each span's root", "<td>withheld</td>");
         assertThat(weighed).doesNotContain("Which candidate roots lost");
 
         assertThat(blank).contains("Which candidate roots lost", "(#677)");
         assertThat(blank).doesNotContain("What the decoder chose between");
+    }
+
+    @Test
+    @DisplayName("a span named by a count over its root says so, and the count says what it read")
+    void aSpanNamedAcrossItsRootIsDrawn() {
+        // The fact a reader of the chart cannot guess: this span reads as it
+        // does because of the other spans on its root.
+        String page = AnalysisReport.toHtml(ReportFixtures.everything(), RECORDING,
+                ReportFixtures.run(), ReportFixtures.weighed(
+                        ReportFixtures.chordsSettledAcrossTheRoot()));
+
+        assertThat(page).contains("the root's third count",
+                "<td>a minority of this root's beats hold a minor third</td>",
+                "<td>a minority of this root's beats state this seventh</td>",
+                // And what each count actually rewrote, which the reading alone
+                // does not say.
+                "<td>4 of 12 beats</td>");
+    }
+
+    @Test
+    @DisplayName("a count that read no beat is not reported as an even split")
+    void aCountOverNoBeatIsNotAnEvenSplit() {
+        // A rule that excluded every beat on a root -- a sixth is no evidence
+        // about a seventh -- reads zero of zero, and a rule comparing that
+        // against half of zero would announce a tie it never saw.
+        ChordTrace uncounted = new ChordTrace(List.of(),
+                List.of(new ChordTrace.Root("F",
+                        new ChordTrace.Count(1, 1, "majority", 0),
+                        new ChordTrace.Count(0, 0, "none", 0))));
+
+        String page = AnalysisReport.toHtml(ReportFixtures.everything(), RECORDING,
+                ReportFixtures.run(), ReportFixtures.weighed(uncounted));
+
+        assertThat(page).contains("<td>this rule counted no beat on this root</td>");
+        assertThat(page).doesNotContain("exactly half of them state this seventh");
     }
 
     @Test
@@ -179,6 +214,31 @@ class AnalysisReportTest {
         assertThat(page).contains("The decoder recorded no span and no root");
         assertThat(page).doesNotContain("Every chord span, and what it beat",
                 "Which candidate roots lost");
+    }
+
+    @Test
+    @DisplayName("a residual nothing was read from is not drawn as six readings of nothing")
+    void gatesOverAnUnreadResidualAreNotDrawn() {
+        // A run the fit needed nothing on clears every share with every value,
+        // so rows of zero against zero would read as the fit admitting each
+        // degree when it measured none of them.
+        ChordTrace ungated = new ChordTrace(
+                ReportFixtures.chordDecisions().spans().stream()
+                        .map(AnalysisReportTest::withoutGates).toList(),
+                ReportFixtures.chordDecisions().roots());
+
+        String page = AnalysisReport.toHtml(ReportFixtures.everything(), RECORDING,
+                ReportFixtures.run(), ReportFixtures.weighed(ungated));
+
+        assertThat(page).contains("No span carries a gate reading");
+        assertThat(page).doesNotContain("What the residual said about each span's root");
+    }
+
+    private static ChordTrace.Span withoutGates(ChordTrace.Span span) {
+        return new ChordTrace.Span(span.fromSeconds(), span.toSeconds(), span.fromBeat(),
+                span.toBeat(), span.chord(), span.fromRun(), span.settledBy(), span.decoded(),
+                span.runnerUp(), span.bassRoot(), span.bassOnDecoded(),
+                span.majorSeventhBeats(), List.of());
     }
 
     @Test

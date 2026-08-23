@@ -38,8 +38,8 @@ class ChordTraceTest {
                                 new ChordTrace.Gate("minor third", "share of the root",
                                         0.11, 0.01, true)))),
                 List.of(new ChordTrace.Root("F#",
-                        new ChordTrace.Count(6, 8, "as read", 0),
-                        new ChordTrace.Count(1, 8, "withdrawn", 1))));
+                        new ChordTrace.Count(6, 8, "majority", 0),
+                        new ChordTrace.Count(1, 8, "minority", 1))));
     }
 
     @Test
@@ -70,13 +70,30 @@ class ChordTraceTest {
     }
 
     @Test
+    @DisplayName("a root with nothing to draw it by is refused")
+    void aRootNamesBothItsCounts() {
+        // Same rule as a span's: the page prints both counts, so a root missing
+        // one has to read as an absent trace rather than take the page out.
+        ChordTrace.Count count = new ChordTrace.Count(1, 2, "minority", 0);
+        assertThatThrownBy(() -> new ChordTrace.Root("C", null, count))
+                .isInstanceOf(NullPointerException.class);
+        assertThatThrownBy(() -> new ChordTrace.Root("C", count, null))
+                .isInstanceOf(NullPointerException.class);
+
+        RunTraces renamed = RunTraceJson.fromJson("{\"schemaVersion\":1,\"traces\":"
+                + "{\"chords\":{\"roots\":[{\"root\":\"C\",\"minorThirds\":{}}]}}}");
+        assertThat(renamed.trace(ChordTrace.STAGE, ChordTrace.class)).isEmpty();
+    }
+
+    @Test
     @DisplayName("a span the decoder had nothing to compare against keeps its own answer")
     void aSpanWithNoRivalIsKept() {
         ChordTrace.Span alone = new ChordTrace.Span(0, 1, 0, 2, "C", "C", "decoder",
-                new ChordTrace.Candidate("C", -8.0), null, null, 0, 0, null);
+                new ChordTrace.Candidate("C", -8.0), null, null, 0, null, null);
 
         assertThat(alone.runnerUp()).isNull();
         assertThat(alone.gates()).isEmpty();
+        assertThat(alone.majorSeventhBeats()).isNull();
     }
 
     @Test

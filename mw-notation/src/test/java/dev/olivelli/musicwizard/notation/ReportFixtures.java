@@ -169,9 +169,13 @@ final class ReportFixtures {
 
     /**
      * Why each of {@link #chords()}'s spans carries its label: one the run's own
-     * chroma renamed, one a root's seventh count renamed, and one whose runner-up
-     * outscored the state the decoder held — which is the transition prior
-     * keeping a chord, and the one case where the margin is negative.
+     * chroma renamed, one whose runner-up outscored the state the decoder held —
+     * which is the transition prior keeping a chord, and the one case where the
+     * margin is negative.
+     *
+     * <p>No count rewrites anything here, and none could: every root of that
+     * progression carries one run, so a count over it is all of its beats or
+     * none of them. {@link #chordsSettledAcrossTheRoot()} is the recurring root.
      */
     static ChordTrace chordDecisions() {
         return new ChordTrace(
@@ -179,40 +183,79 @@ final class ReportFixtures {
                         new ChordTrace.Span(0, 1, 0, 2, "N.C.", "N.C.", "decoder",
                                 new ChordTrace.Candidate("N.C.", -25.54),
                                 new ChordTrace.Candidate("C", -31.08),
-                                null, 0, 0, List.of()),
+                                null, 0, null, List.of()),
                         new ChordTrace.Span(1, 2, 2, 4, "C", "C", "decoder",
                                 new ChordTrace.Candidate("C", -9.42),
                                 new ChordTrace.Candidate("Am", -11.27),
                                 "C", 0, 0,
-                                gatesOn("0.31 0.02 0.01 0.04 0.02", "0.21 0.01 0.21 0.21 0.52", true)),
+                                gatesOn("0.31 0.02 0.01 0.04 0.02", "0.21 0.01 0.21 0.21 0.52",
+                                        true)),
                         new ChordTrace.Span(2, 4, 4, 8, "Am", "Am", "run",
                                 new ChordTrace.Candidate("A", -8.83),
                                 new ChordTrace.Candidate("C", -9.91),
                                 "A", -1.62, 0,
-                                gatesOn("0.02 0.74 0.01 0.21 0.35", "0.22 0.01 0.22 0.22 0.56", false)),
+                                gatesOn("0.02 0.74 0.01 0.21 0.35", "0.22 0.01 0.22 0.22 0.56",
+                                        false)),
                         new ChordTrace.Span(4, 6, 8, 12, "Fmaj7", "Fmaj7", "decoder",
                                 new ChordTrace.Candidate("Fmaj7", -7.94),
                                 new ChordTrace.Candidate("F", -8.61),
                                 "F", 0, 4,
-                                gatesOn("0.44 0.03 0.00 0.12 1.29", "0.26 0.01 0.26 0.26 0.66", true)),
-                        new ChordTrace.Span(6, 8, 12, 16, "G7", "G", "sevenths",
+                                gatesOn("0.44 0.03 0.00 0.12 1.29", "0.26 0.01 0.26 0.26 0.66",
+                                        true)),
+                        new ChordTrace.Span(6, 8, 12, 16, "G7", "G7", "run",
                                 new ChordTrace.Candidate("G", -10.55),
                                 new ChordTrace.Candidate("G7", -10.21),
                                 "G", 0, 0,
-                                gatesOn("0.71 0.05 0.02 0.03 0.40", "0.24 0.01 0.24 0.24 0.59", true))),
+                                gatesOn("0.71 0.05 0.02 0.03 0.40", "0.24 0.01 0.24 0.24 0.59",
+                                        true))),
                 List.of(
                         new ChordTrace.Root("C",
-                                new ChordTrace.Count(0, 2, "withdrawn", 0),
-                                new ChordTrace.Count(0, 2, "withdrawn", 0)),
+                                new ChordTrace.Count(0, 2, "minority", 0),
+                                new ChordTrace.Count(0, 2, "minority", 0)),
                         new ChordTrace.Root("F",
-                                new ChordTrace.Count(0, 4, "withdrawn", 0),
-                                new ChordTrace.Count(0, 4, "withdrawn", 0)),
+                                new ChordTrace.Count(0, 4, "minority", 0),
+                                new ChordTrace.Count(0, 4, "minority", 0)),
                         new ChordTrace.Root("G",
-                                new ChordTrace.Count(0, 4, "withdrawn", 0),
-                                new ChordTrace.Count(4, 4, "added", 1)),
+                                new ChordTrace.Count(0, 4, "minority", 0),
+                                new ChordTrace.Count(0, 4, "minority", 0)),
                         new ChordTrace.Root("A",
-                                new ChordTrace.Count(4, 4, "as read", 0),
-                                new ChordTrace.Count(0, 4, "withdrawn", 0))));
+                                new ChordTrace.Count(4, 4, "majority", 0),
+                                new ChordTrace.Count(0, 4, "minority", 0))));
+    }
+
+    /**
+     * A root the recording puts three runs on, whose last run both per-root
+     * counts rewrote — the shape {@code ChordEstimationTest.ThirdPerRoot} shows
+     * the estimator producing, and the only one in which a count can act at all.
+     */
+    static ChordTrace chordsSettledAcrossTheRoot() {
+        return new ChordTrace(
+                List.of(
+                        new ChordTrace.Span(0, 4, 0, 8, "A", "A", "decoder",
+                                new ChordTrace.Candidate("A", -7.61),
+                                new ChordTrace.Candidate("F#m", -9.02),
+                                "A", 0, 0,
+                                gatesOn("0.29 0.01 0.00 0.02 0.04", "0.19 0.01 0.19 0.19 0.48",
+                                        true)),
+                        new ChordTrace.Span(4, 6, 8, 12, "D", "D", "decoder",
+                                new ChordTrace.Candidate("D", -8.14),
+                                new ChordTrace.Candidate("A", -9.30),
+                                "D", 0, 0,
+                                gatesOn("0.34 0.02 0.01 0.03 0.05", "0.22 0.01 0.22 0.22 0.55",
+                                        true)),
+                        new ChordTrace.Span(6, 8, 12, 16, "A7", "Am7", "thirds",
+                                new ChordTrace.Candidate("Am", -8.77),
+                                new ChordTrace.Candidate("A", -8.95),
+                                "A", 0, 0,
+                                gatesOn("0.02 0.31 0.01 0.02 0.06", "0.19 0.01 0.19 0.19 0.48",
+                                        false))),
+                List.of(
+                        new ChordTrace.Root("D",
+                                new ChordTrace.Count(0, 4, "minority", 0),
+                                new ChordTrace.Count(0, 4, "minority", 0)),
+                        new ChordTrace.Root("A",
+                                new ChordTrace.Count(4, 12, "minority", 1),
+                                new ChordTrace.Count(4, 12, "minority", 1))));
     }
 
     /** A decoder that named the spans and left no reasoning behind it. */

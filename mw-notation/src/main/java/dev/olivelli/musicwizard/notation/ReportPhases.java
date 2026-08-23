@@ -482,8 +482,8 @@ final class ReportPhases {
                 + " this span was named by other spans on its root, and the table below says"
                 + " what that count read. What the bass names is the root its register argued"
                 + " for over these beats, beside what that argument added to the decoded"
-                + " root, which is nothing where the two agree and negative where they do"
-                + " not.");
+                + " root, which is never positive: the prior ranks roots against each other"
+                + " and never argues that a chord is sounding at all.");
         gateTable(trace.spans());
         rootDecisionTable(trace.roots());
     }
@@ -515,8 +515,9 @@ final class ReportPhases {
                     : HtmlWriter.number(span.decoded().score() - runnerUp.score(), 2));
             out.element("td", span.bassRoot() == null ? "nothing"
                     : span.bassRoot() + "  " + HtmlWriter.number(span.bassOnDecoded(), 2));
-            out.element("td", span.majorSeventhBeats() + " of "
-                    + (span.toBeat() - span.fromBeat()) + " beats");
+            out.element("td", span.majorSeventhBeats() == null ? "no root to admit one on"
+                    : span.majorSeventhBeats() + " of "
+                            + (span.toBeat() - span.fromBeat()) + " beats");
             out.element("td", namedBy(span.settledBy()));
             out.line("</tr>");
         }
@@ -527,8 +528,10 @@ final class ReportPhases {
     /** The residual readings each span's quality decision compared, and against what. */
     private void gateTable(List<ChordTrace.Span> spans) {
         if (spans.stream().allMatch(span -> span.gates().isEmpty())) {
-            note("No residual was measured over these spans, so nothing says which readings"
-                    + " the quality gates compared.");
+            note("No span carries a gate reading. That is what a run given no residual leaves,"
+                    + " and equally what a run whose every span the fit needed nothing on"
+                    + " leaves — including a run that named no chord at all, which has no root"
+                    + " to read a degree against.");
             return;
         }
         out.line("<details class=\"table\">");
@@ -557,7 +560,8 @@ final class ReportPhases {
                 + " has a row for each of its two comparisons and is withheld only where it"
                 + " fails both. A degree the printed chord does not state is here too,"
                 + " because a candidate that was refused is as much of the answer as the one"
-                + " that won.");
+                + " that won. A span missing from this table is one there was nothing to read"
+                + " on: no root, or a root the fit needed nothing on.");
     }
 
     /**
@@ -570,48 +574,44 @@ final class ReportPhases {
         }
         out.line("<details class=\"table\">");
         out.element("summary", "How each root's third and seventh were settled");
-        out.line("<table><thead><tr><th>Root</th><th>Minor thirds</th><th>The count decided</th>"
-                + "<th>Runs changed</th><th>Minor sevenths</th><th>The count decided</th>"
+        out.line("<table><thead><tr><th>Root</th><th>Minor thirds</th><th>The count read</th>"
+                + "<th>Runs changed</th><th>Minor sevenths</th><th>The count read</th>"
                 + "<th>Runs changed</th></tr></thead><tbody>");
         for (ChordTrace.Root root : roots) {
             out.open("tr");
             out.element("td", root.root(), "class", "symbol");
             out.element("td", count(root.thirds()));
-            out.element("td", thirdDecided(root.thirds().decided()));
+            out.element("td", countRead(root.thirds().read(), "hold a minor third"));
             out.element("td", String.valueOf(root.thirds().runsChanged()));
             out.element("td", count(root.sevenths()));
-            out.element("td", seventhDecided(root.sevenths().decided()));
+            out.element("td", countRead(root.sevenths().read(), "state this seventh"));
             out.element("td", String.valueOf(root.sevenths().runsChanged()));
             out.line("</tr>");
         }
         out.line("</tbody></table>");
         out.line("</details>");
-        note("Each of these is one count read over every beat the recording puts on that"
-                + " root, and it settles every run on it at once. The two are counted over"
-                + " different beats: a run stating a sixth is no evidence about a seventh and"
-                + " is left out of that count altogether.");
+        note("Each of these is one count read over every beat the recording puts on that root,"
+                + " and it settles every run on it at once. A minority of minor thirds"
+                + " withdraws the minor third from every run on the root; a minority of"
+                + " sevenths withdraws the seventh and a majority adds one to the minor"
+                + " triads. Where the count found nothing to withdraw, the reading stands and"
+                + " the runs beside it are none. The two are counted over different beats: a"
+                + " run stating a sixth is no evidence about a seventh and is left out of that"
+                + " count altogether.");
     }
 
     private static String count(ChordTrace.Count count) {
         return count.stated() + " of " + count.beats() + " beats";
     }
 
-    private static String thirdDecided(String decided) {
-        return switch (decided) {
-            case "withdrawn" -> "fewer than half of this root's beats hold a minor third,"
-                    + " so it is withdrawn from every run on it";
-            case "as read" -> "at least half of them hold one, so each run keeps its own third";
-            default -> decided;
-        };
-    }
-
-    private static String seventhDecided(String decided) {
-        return switch (decided) {
-            case "withdrawn" -> "fewer than half of this root's beats state this seventh,"
-                    + " so it is withdrawn from every run on it";
-            case "added" -> "more than half state it, so the minor triads among them gain one";
-            case "as read" -> "the beats split evenly, so each run keeps what it read";
-            default -> decided;
+    /** The count as it fell, worded for the degree it was taken on. */
+    private static String countRead(String read, String degree) {
+        return switch (read) {
+            case "minority" -> "a minority of this root's beats " + degree;
+            case "even" -> "exactly half of them " + degree;
+            case "majority" -> "most of them " + degree;
+            case "none" -> "this rule counted no beat on this root";
+            default -> read;
         };
     }
 

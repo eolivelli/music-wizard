@@ -875,9 +875,10 @@ public final class ChordEstimator {
     /**
      * Whether the fit needs a pitch class enough for the rule asking about it:
      * what deleting it from the dictionary costs, against the share of the
-     * root's own cost that rule asks for. Every residual gate below is this one
-     * comparison, and the trace records the two numbers each of them read
-     * (#677).
+     * root's own cost that rule asks for. Every residual gate below reaches for
+     * it, and the trace records the two numbers each of them read (#677) — over
+     * a root the fit needs something on, which is the only case any of them
+     * says anything about ({@link #majorSeventhSounds}).
      */
     private static boolean fitNeeds(double[] significance, int root, int pitchClass,
                                     double share) {
@@ -1417,11 +1418,7 @@ public final class ChordEstimator {
                 dev.olivelli.musicwizard.core.model.Confidence.clamped(mean));
     }
 
-    /**
-     * Readings are rounded before they are written down: the trace is read and
-     * drawn, never recomputed from, and the unrounded figures cost several times
-     * the file for digits nothing distinguishes.
-     */
+    /** Recorded readings are rounded to this before they are written down. */
     private static final double TRACE_PRECISION = 1e4;
 
     /**
@@ -1437,33 +1434,24 @@ public final class ChordEstimator {
                                     double[][] logLikelihood, double[][] prior,
                                     boolean[][] majorSeventhAdmitted) {
         List<ChordTrace.Span> spans = new ArrayList<>(ranges.size());
-        int[] thirdsChanged = new int[12];
-        int[] seventhsChanged = new int[12];
         for (Range range : ranges) {
             Template named = templates.get(qualities.chosen()[range.from()]);
             int held = stateHeldLongest(path, range, templates.size());
             Template decoded = templates.get(held);
-            String settledBy = settledBy(path, qualities, range.from());
-            if (named.quality() != ChordQuality.NONE) {
-                if (settledBy.equals("thirds")) {
-                    thirdsChanged[named.rootPitchClass()]++;
-                } else if (settledBy.equals("sevenths")) {
-                    seventhsChanged[named.rootPitchClass()]++;
-                }
-            }
+            String chord = symbolOf(named);
+            String fromRun = symbolOf(templates.get(qualities.fromRuns()[range.from()]));
             spans.add(new ChordTrace.Span(
                     beatTimes.get(range.from()),
                     beatTimes.get(Math.min(range.to(), beatTimes.size() - 1)),
-                    range.from(), range.to(), symbolOf(named),
-                    symbolOf(templates.get(qualities.fromRuns()[range.from()])), settledBy,
+                    range.from(), range.to(), chord, fromRun,
+                    settledBy(qualities, range.from(), chord, fromRun, symbolOf(decoded)),
                     candidate(templates, logLikelihood, range, held),
                     runnerUp(templates, logLikelihood, range, held),
-                    bassNamed(prior, range), bassOn(prior, range, decoded),
+                    bassNamed(prior, range, decoded), bassOn(prior, range, decoded),
                     majorSeventhBeats(majorSeventhAdmitted, range, decoded),
                     gates(qualities.significance()[range.from()], decoded)));
         }
-        return new ChordTrace(spans,
-                rootSummary(qualities, thirdsChanged, seventhsChanged));
+        return new ChordTrace(spans, rootSummary(path, templates, qualities));
     }
 
     /**
@@ -1488,15 +1476,21 @@ public final class ChordEstimator {
         return held;
     }
 
-    /** Which decision last set the label a span carries. */
-    private static String settledBy(int[] path, Qualities qualities, int beat) {
-        if (qualities.chosen()[beat] != qualities.fromSevenths()[beat]) {
-            return "thirds";
+    /**
+     * Which of the three labels a span carries last set the printed one.
+     *
+     * <p>Read off the labels rather than off the state indices, so a row cannot
+     * name a decision its own columns deny: where two decisions reached the same
+     * symbol the earlier one is credited, because that is what a reader
+     * comparing the columns can see.
+     */
+    private static String settledBy(Qualities qualities, int beat, String chord,
+                                    String fromRun, String decoded) {
+        if (!chord.equals(fromRun)) {
+            return qualities.chosen()[beat] != qualities.fromSevenths()[beat]
+                    ? "thirds" : "sevenths";
         }
-        if (qualities.fromSevenths()[beat] != qualities.fromRuns()[beat]) {
-            return "sevenths";
-        }
-        return qualities.fromRuns()[beat] != path[beat] ? "run" : "decoder";
+        return fromRun.equals(decoded) ? "decoder" : "run";
     }
 
     /** A state and what it scored per beat of the span, in the decoder's units. */
@@ -1550,12 +1544,13 @@ public final class ChordEstimator {
     }
 
     /**
-     * The root the bass register named over the span, or null where it named
-     * none — which is what a run with no bass register and a run whose bass
-     * dropped out both leave, since neither argues for any root over another.
+     * The root the bass register argued for over the span, or null where it
+     * argued for none: no bass register, a bass that dropped out — neither
+     * ranks one root over another — or a no-chord state, which takes no root
+     * prior at all.
      */
-    private static String bassNamed(double[][] prior, Range range) {
-        if (prior == null) {
+    private static String bassNamed(double[][] prior, Range range, Template decoded) {
+        if (prior == null || decoded.quality() == ChordQuality.NONE) {
             return null;
         }
         double[] terms = bassTerms(prior, range);
@@ -1581,9 +1576,11 @@ public final class ChordEstimator {
                 * bassTerms(prior, range)[decoded.rootPitchClass()]);
     }
 
-    private static int majorSeventhBeats(boolean[][] admitted, Range range, Template decoded) {
+    /** Null rather than zero where the span has no root, so an absence is not a count. */
+    private static Integer majorSeventhBeats(boolean[][] admitted, Range range,
+                                             Template decoded) {
         if (decoded.quality() == ChordQuality.NONE) {
-            return 0;
+            return null;
         }
         int beats = 0;
         for (int frame = range.from(); frame < range.to(); frame++) {
@@ -1600,11 +1597,17 @@ public final class ChordEstimator {
      *
      * <p>Every degree, not only the ones the printed chord states: the
      * candidates that were refused are as much of the answer as the one that
-     * won. Empty where the run had no residual to read, which is a different
-     * statement from a reading of nothing.
+     * won.
+     *
+     * <p><b>Empty where there was nothing to read</b>, and a root the fit needs
+     * nothing on is one of those cases: every share of zero is cleared by every
+     * value, so the rows would say the residual admitted each degree when it
+     * measured none of them. It is the same reading {@link #majorSeventhSounds}
+     * closes its own gate on.
      */
     private static List<ChordTrace.Gate> gates(double[] significance, Template decoded) {
-        if (significance == null || decoded.quality() == ChordQuality.NONE) {
+        if (significance == null || decoded.quality() == ChordQuality.NONE
+                || significance[decoded.rootPitchClass()] <= 0) {
             return List.of();
         }
         int root = decoded.rootPitchClass();
@@ -1639,11 +1642,15 @@ public final class ChordEstimator {
     }
 
     /**
-     * What each root's two cross-run counts came to. A root with no beat under
-     * either rule is left out rather than printed as an empty count.
+     * What each root's two cross-run counts came to, and how many runs each rule
+     * rewrote. A root with no beat under either rule is left out rather than
+     * printed as an empty count.
      */
-    private static List<ChordTrace.Root> rootSummary(Qualities qualities, int[] thirdsChanged,
-                                                     int[] seventhsChanged) {
+    private static List<ChordTrace.Root> rootSummary(int[] path, List<Template> templates,
+                                                     Qualities qualities) {
+        int[] thirdsChanged = new int[12];
+        int[] seventhsChanged = new int[12];
+        countRewrites(path, templates, qualities, thirdsChanged, seventhsChanged);
         List<ChordTrace.Root> roots = new ArrayList<>();
         RootCounts thirds = qualities.thirds();
         RootCounts sevenths = qualities.sevenths();
@@ -1651,23 +1658,60 @@ public final class ChordEstimator {
             if (thirds.beats()[root] == 0 && sevenths.beats()[root] == 0) {
                 continue;
             }
-            String third = thirds.stated()[root] < THIRD_MUST_HOLD_FOR * thirds.beats()[root]
-                    ? "withdrawn" : "as read";
-            String seventh;
-            if (sevenths.stated()[root] < SEVENTH_MUST_HOLD_FOR * sevenths.beats()[root]) {
-                seventh = "withdrawn";
-            } else if (sevenths.stated()[root] > SEVENTH_MUST_HOLD_FOR * sevenths.beats()[root]) {
-                seventh = "added";
-            } else {
-                seventh = "as read";
-            }
             roots.add(new ChordTrace.Root(rootName(root),
                     new ChordTrace.Count(thirds.stated()[root], thirds.beats()[root],
-                            third, thirdsChanged[root]),
+                            countRead(thirds.stated()[root], thirds.beats()[root],
+                                    THIRD_MUST_HOLD_FOR), thirdsChanged[root]),
                     new ChordTrace.Count(sevenths.stated()[root], sevenths.beats()[root],
-                            seventh, seventhsChanged[root])));
+                            countRead(sevenths.stated()[root], sevenths.beats()[root],
+                                    SEVENTH_MUST_HOLD_FOR), seventhsChanged[root])));
         }
         return roots;
+    }
+
+    /**
+     * Where the count fell against the share that decides it — the reading, not
+     * the verdict, which each rule draws from it differently.
+     */
+    private static String countRead(int stated, int beats, double mustHoldFor) {
+        if (beats == 0) {
+            return "none";
+        }
+        if (stated < mustHoldFor * beats) {
+            return "minority";
+        }
+        return stated > mustHoldFor * beats ? "majority" : "even";
+    }
+
+    /**
+     * How many runs on each root each per-root rule rewrote, over the runs those
+     * rules act on.
+     *
+     * <p>Read from the snapshots rather than from a span's {@code settledBy}: a
+     * run the seventh count rewrote and the third count rewrote again is one
+     * rewrite each, and a label credits only the decision that set it last.
+     */
+    private static void countRewrites(int[] path, List<Template> templates,
+                                      Qualities qualities, int[] thirdsChanged,
+                                      int[] seventhsChanged) {
+        int i = 0;
+        while (i < path.length) {
+            Template start = templates.get(path[i]);
+            int j = i;
+            while (j < path.length && sameChord(templates.get(path[j]), start)) {
+                j++;
+            }
+            Template named = templates.get(qualities.chosen()[i]);
+            if (named.quality() != ChordQuality.NONE) {
+                if (qualities.fromSevenths()[i] != qualities.fromRuns()[i]) {
+                    seventhsChanged[named.rootPitchClass()]++;
+                }
+                if (qualities.chosen()[i] != qualities.fromSevenths()[i]) {
+                    thirdsChanged[named.rootPitchClass()]++;
+                }
+            }
+            i = j;
+        }
     }
 
     /** A template's chart symbol, spelled as {@link #spell} spells a root. */

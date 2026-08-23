@@ -1360,7 +1360,20 @@ class ChordEstimationTest {
          * them, then four of the run that reads minor. Every span answers with
          * its own residual, keyed by where the span starts.
          */
+        /**
+         * The same minor run with a flat seventh voiced over it, so its own
+         * chroma reads a minor seventh and both per-root rules act on that one
+         * run.
+         */
+        private static final double[] MINOR_SEVENTH_TREBLE = {
+                0.0332, 0.0924, 0.0324, 0.0208, 0.2351, 0.0182,
+                0.0308, 0.1138, 0.0447, 0.2434, 0.0292, 0.1061};
+
         private static ChordEstimator.Decoded decoded(int majorBeats) {
+            return decoded(majorBeats, MINOR_TREBLE);
+        }
+
+        private static ChordEstimator.Decoded decoded(int majorBeats, double[] minorTreble) {
             int total = majorBeats + 8;
             double[][] combined = new double[total][];
             double[][] treble = new double[total][];
@@ -1369,7 +1382,7 @@ class ChordEstimationTest {
                 boolean minor = beat >= majorBeats + 4;
                 boolean onD = !minor && beat >= majorBeats;
                 combined[beat] = onD ? D_COMBINED : minor ? MINOR_COMBINED : A_COMBINED;
-                treble[beat] = onD ? D_TREBLE : minor ? MINOR_TREBLE : A_TREBLE;
+                treble[beat] = onD ? D_TREBLE : minor ? minorTreble : A_TREBLE;
                 bass[beat] = onD ? D_BASS : minor ? MINOR_BASS : A_BASS;
             }
             PitchClassAblation residual = new PitchClassAblation() {
@@ -1435,7 +1448,7 @@ class ChordEstimationTest {
                     .filter(root -> root.root().equals("A")).findFirst().orElseThrow();
             assertThat(a.thirds().stated()).isEqualTo(4);
             assertThat(a.thirds().beats()).isEqualTo(12);
-            assertThat(a.thirds().decided()).isEqualTo("withdrawn");
+            assertThat(a.thirds().read()).isEqualTo("minority");
             assertThat(a.thirds().runsChanged()).isEqualTo(1);
         }
 
@@ -1450,8 +1463,26 @@ class ChordEstimationTest {
             assertThat(trace.spans().get(2).fromRun()).isEqualTo("Am");
             ChordTrace.Root a = trace.roots().stream()
                     .filter(root -> root.root().equals("A")).findFirst().orElseThrow();
-            assertThat(a.thirds().decided()).isEqualTo("as read");
+            assertThat(a.thirds().read()).isEqualTo("majority");
             assertThat(a.thirds().runsChanged()).isZero();
+        }
+
+        @Test
+        @DisplayName("a run both counts rewrote is one rewrite to each of them")
+        void aRunRewrittenTwiceIsCountedByBothRules() {
+            // The label a span carries names only the decision that set it
+            // last, so counting rewrites off it loses the earlier one — and a
+            // root whose seventh count did work would read as having done none.
+            ChordTrace trace = decoded(8, MINOR_SEVENTH_TREBLE).trace();
+
+            assertThat(trace.spans()).extracting(ChordTrace.Span::chord)
+                    .containsExactly("A", "D", "A7");
+            assertThat(trace.spans().get(2).fromRun()).isEqualTo("Am7");
+            assertThat(trace.spans().get(2).settledBy()).isEqualTo("thirds");
+            ChordTrace.Root a = trace.roots().stream()
+                    .filter(root -> root.root().equals("A")).findFirst().orElseThrow();
+            assertThat(a.sevenths().runsChanged()).isEqualTo(1);
+            assertThat(a.thirds().runsChanged()).isEqualTo(1);
         }
 
         @Test
@@ -1819,7 +1850,27 @@ class ChordEstimationTest {
             assertThat(span.gates()).isEmpty();
             assertThat(span.bassRoot()).isNull();
             assertThat(span.bassOnDecoded()).isZero();
-            assertThat(span.majorSeventhBeats()).isZero();
+            assertThat(span.majorSeventhBeats()).isNull();
+        }
+
+        @Test
+        @DisplayName("a residual that needed nothing on the root gates nothing")
+        void aRootTheFitNeedsNothingOnCarriesNoGate() {
+            // The all-zero answer PitchClassAblation gives for a span holding
+            // nothing to fit. Read as a comparison every share is cleared by
+            // every value, so rows would say the fit admitted each degree when
+            // it measured none of them.
+            double[] triad = new double[12];
+            java.util.Arrays.fill(triad, 0.01);
+            triad[0] = 0.35;
+            triad[4] = 0.28;
+            triad[7] = 0.29;
+
+            ChordTrace.Span span = ChordEstimator.explain(four(triad), four(triad), four(triad),
+                    nothing(4), beatTimes(4)).trace().spans().get(0);
+
+            assertThat(span.chord()).isNotEqualTo("N.C.");
+            assertThat(span.gates()).isEmpty();
         }
 
         @Test
