@@ -31,6 +31,7 @@ import dev.olivelli.musicwizard.core.model.NoteTrack;
 import dev.olivelli.musicwizard.core.model.Provenance;
 import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.model.TempoMap;
+import dev.olivelli.musicwizard.core.workspace.RunManifest;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.EnumMap;
@@ -38,6 +39,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 
@@ -53,22 +55,21 @@ import java.util.TreeMap;
 final class ReportPhases {
 
     /** What the workspace can say about a stage. */
-    private enum Status {
+    private record Status(String cssClass, String label) {
+
         /** It ran and its output is on disk. */
-        RECORDED("recorded", "output on disk"),
+        static final Status RECORDED = new Status("recorded", "output on disk");
         /** It left nothing behind, but this page can run it again and show that. */
-        RECOMPUTED("recomputed", "recomputed here"),
+        static final Status RECOMPUTED = new Status("recomputed", "recomputed here");
         /** The workspace does not say whether it ran, or what it decided. */
-        UNTRACED("untraced", "no trace kept"),
+        static final Status UNTRACED = new Status("untraced", "no trace kept");
         /** Its output would be in the score, and is not. */
-        ABSENT("absent", "did not run");
+        static final Status ABSENT = new Status("absent", "did not run");
 
-        private final String cssClass;
-        private final String label;
-
-        Status(String cssClass, String label) {
-            this.cssClass = cssClass;
-            this.label = label;
+        /** What the run itself said about the stage, which outranks the rest. */
+        static Status of(RunManifest.StageRun entry) {
+            return new Status(ReportRun.cssClass(entry.outcome()),
+                    ReportRun.label(entry.outcome()));
         }
     }
 
@@ -82,14 +83,18 @@ final class ReportPhases {
     private final NoteTrack melody;
     private final NoteTrack playable;
     private final QuantizedScore quantized;
+    private final RunManifest manifest;
     private final HtmlWriter out = new HtmlWriter();
     private int number;
+    private String phase;
 
-    ReportPhases(Score score, NoteTrack melody, NoteTrack playable, QuantizedScore quantized) {
+    ReportPhases(Score score, NoteTrack melody, NoteTrack playable, QuantizedScore quantized,
+                 RunManifest manifest) {
         this.score = score;
         this.melody = melody;
         this.playable = playable;
         this.quantized = quantized;
+        this.manifest = manifest;
     }
 
     String render() {
@@ -118,9 +123,9 @@ final class ReportPhases {
                 "one signal, and how long the recording is");
         facts(fact("Length", ReportTimeline.clock(score.durationSeconds())
                 + "  (" + HtmlWriter.number(score.durationSeconds(), 2) + "s)"));
-        gap("Which of the two happened is not written to the workspace, and neither are"
-                + " the sample rate, the channel count and the decoder that read the file"
-                + " (#674).");
+        gapUnlessRecorded("Which of the two happened is not written to the workspace, and"
+                + " neither are the sample rate, the channel count and the decoder that"
+                + " read the file (#674).");
         close();
     }
 
@@ -133,9 +138,10 @@ final class ReportPhases {
         inOut("the decoded mix",
                 "whether a separator could be reached at all",
                 "a vocal stem, held in memory and never written to the workspace");
-        gap("Whether a separator ran, which provider it was, and whether the melody stage"
-                + " read its stem or fell back to the mix are not recorded — so this page"
-                + " cannot tell you which signal the melody below was read from (#674).");
+        gapUnlessRecorded("Whether a separator ran, which provider it was, and whether the"
+                + " melody stage read its stem or fell back to the mix are not recorded —"
+                + " so this page cannot tell you which signal the melody below was read"
+                + " from (#674).");
         close();
     }
 
@@ -343,6 +349,9 @@ final class ReportPhases {
         inOut("a vocal stem, and either supplied words or transcribed ones",
                 "where each syllable is sung, and which syllable the melody moves under",
                 "lines of timed syllables");
+        // Two stages under one phase: where the words came from, and whether
+        // anything measured them.
+        whatRan("lyric-alignment");
         if (!any) {
             note("This score holds no lyrics.");
             close();
@@ -364,9 +373,15 @@ final class ReportPhases {
         confidences(List.of(new Reading("Confidence in the alignment",
                 score.lyrics().confidence())));
         lineTable();
-        gap("Whether the words were supplied or transcribed, and the path the aligner took"
-                + " through them, are not recorded — the workspace holds the result and not"
-                + " its provenance (#674).");
+        if (manifest == null) {
+            gap("Whether the words were supplied or transcribed, and the path the aligner"
+                    + " took through them, are not recorded — the workspace holds the result"
+                    + " and not its provenance (#674).");
+        } else {
+            gap("What the aligner did inside a line — the window it searched, and why a"
+                    + " line kept its parsed times instead of being measured — is not"
+                    + " recorded (#684).");
+        }
         close();
     }
 
@@ -442,15 +457,28 @@ final class ReportPhases {
         return new Fact(name, value);
     }
 
-    private void open(String id, String title, Status status, String what) {
+    /**
+     * Opens a phase under the status the run recorded for it, falling back to
+     * what the score alone can say. The phase's own name is the stage's name in
+     * the manifest, which is what lets a stage that starts recording light up
+     * its phase without this class being taught about it.
+     */
+    private void open(String id, String title, Status fallback, String what) {
+        phase = id;
+        Status status = recorded().map(Status::of).orElse(fallback);
         number++;
-        out.open("article", "class", "phase " + status.cssClass, "id", "phase-" + id);
+        out.open("article", "class", "phase " + status.cssClass(), "id", "phase-" + id);
         out.open("h3");
         out.element("span", String.valueOf(number), "class", "phase-number");
         out.text(title);
-        out.element("span", status.label, "class", "status");
+        out.element("span", status.label(), "class", "status");
         out.line("</h3>");
         out.open("p", "class", "what").text(what).line("</p>");
+    }
+
+    /** What the run recorded about the phase being written, if anything. */
+    private Optional<RunManifest.StageRun> recorded() {
+        return manifest == null ? Optional.empty() : manifest.stage(phase);
     }
 
     private void close() {
@@ -463,6 +491,28 @@ final class ReportPhases {
         out.element("dt", "Decided").open("dd").text(decided).line("</dd>");
         out.element("dt", "Out").open("dd").text(produced).line("</dd>");
         out.line("</dl>");
+        whatRan();
+    }
+
+    /**
+     * What the run wrote down about this phase, above whatever the score says
+     * about it: the reason it gave, and the facts it chose to record.
+     */
+    private void whatRan() {
+        whatRan(phase);
+    }
+
+    /** The same for a stage whose record belongs under a phase of another name. */
+    private void whatRan(String stage) {
+        (manifest == null ? Optional.<RunManifest.StageRun>empty()
+                : manifest.stage(stage)).ifPresent(entry -> {
+            if (entry.reason() != null && !entry.reason().isBlank()) {
+                note(entry.reason());
+            }
+            facts(entry.facts().entrySet().stream()
+                    .map(fact -> fact(fact.getKey(), fact.getValue()))
+                    .toArray(Fact[]::new));
+        });
     }
 
     private void facts(Fact... entries) {
@@ -504,6 +554,23 @@ final class ReportPhases {
         out.open("p", "class", "gap");
         out.element("span", "Not recorded", "class", "gap-label");
         out.text(text).line("</p>");
+    }
+
+    /**
+     * A gap that the run's own record fills where there is one (#674).
+     *
+     * <p>Three states, not two: a workspace analysed before runs were recorded
+     * says so once, at the top of the page; this run naming the stage fills the
+     * gap; and this run recording something and not this stage is a fact about
+     * the run rather than about the workspace.
+     */
+    private void gapUnlessRecorded(String text) {
+        if (manifest == null) {
+            gap(text);
+        } else if (recorded().isEmpty()) {
+            note("The run this workspace holds a record of did not reach this stage,"
+                    + " so it says nothing about it.");
+        }
     }
 
     // -------------------------------------------------------------- charts

@@ -23,6 +23,7 @@ import dev.olivelli.musicwizard.core.model.Key;
 import dev.olivelli.musicwizard.core.model.NoteTrack;
 import dev.olivelli.musicwizard.core.model.PartRole;
 import dev.olivelli.musicwizard.core.model.Score;
+import dev.olivelli.musicwizard.core.workspace.RunManifest;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
@@ -64,12 +65,24 @@ public final class AnalysisReport {
     }
 
     /**
+     * The report for a score whose workspace records nothing about the run that
+     * produced it, which is every workspace analysed before it did (#674).
+     */
+    public static String toHtml(Score score, Recording recording) {
+        return toHtml(score, recording, null);
+    }
+
+    /**
      * The report for a score, as a whole HTML document.
      *
      * <p>A caller that hands in a score it has moved gets a page saying MW read
      * the moved chords, with the analysed confidences beside them.
+     *
+     * @param manifest what the last analysis recorded about itself, or null
+     *                 where the workspace holds no record. The page states the
+     *                 absence rather than describing a run it cannot see.
      */
-    public static String toHtml(Score score, Recording recording) {
+    public static String toHtml(Score score, Recording recording, RunManifest manifest) {
         Objects.requireNonNull(score, "score");
         Objects.requireNonNull(recording, "recording");
 
@@ -92,6 +105,7 @@ public final class AnalysisReport {
         header(out, score, recording);
         overview(out, timeline);
         strip(out, timeline);
+        out.raw(new ReportRun(manifest).render());
         out.line("<section id=\"phases\">");
         out.element("h2", "Phase by phase").line("");
         out.open("p", "class", "lede")
@@ -103,14 +117,17 @@ public final class AnalysisReport {
         out.open("p", "class", "lede")
                 .text("These are the stages of the audio pipeline, in the order it runs them."
                         + " A score can also be read symbolically from a MIDI file, where some"
-                        + " of them have nothing to do and the rest work by other means — and"
-                        + " the workspace does not record which path produced this one, so"
-                        + " each stage describes what it does rather than asserting that it"
-                        + " ran.")
+                        + " of them have nothing to do and the rest work by other means."
+                        + (manifest == null
+                                ? " This workspace does not record which path produced it, so"
+                                        + " each stage describes what it does rather than"
+                                        + " asserting that it ran."
+                                : " What each stage did in the last analysis is above and"
+                                        + " repeated under the stage it belongs to."))
                 .line("</p>");
-        out.raw(new ReportPhases(score, melody, playable, quantized).render());
+        out.raw(new ReportPhases(score, melody, playable, quantized, manifest).render());
         out.line("</section>");
-        footer(out);
+        footer(out, manifest);
         out.open("script").raw(resource("report.js")).line("</script>");
         out.line("</body>");
         out.line("</html>");
@@ -220,16 +237,19 @@ public final class AnalysisReport {
         out.line("</section>");
     }
 
-    private static void footer(HtmlWriter out) {
+    private static void footer(HtmlWriter out, RunManifest manifest) {
         out.line("<footer>");
         out.open("p")
-                .text("This page is a reading of one workspace: its saved score, plus the"
-                        + " grid and the reduction that the engraver recomputes from it. It"
-                        + " is not a log of the run — a stage that decided something the"
-                        + " workspace does not keep is marked as such above rather than"
-                        + " reconstructed. A transposition asked for on the command line"
-                        + " moves the engraved parts and not this page, which is about the"
-                        + " recording rather than about what is being played from.")
+                .text("This page is a reading of one workspace: its saved score, the grid"
+                        + " and the reduction that the engraver recomputes from it, and"
+                        + (manifest == null
+                                ? " nothing about the run that produced them."
+                                : " what the last analysis recorded about its own run.")
+                        + " A stage that decided something the workspace does not keep is"
+                        + " marked as such above rather than reconstructed. A transposition"
+                        + " asked for on the command line moves the engraved parts and not"
+                        + " this page, which is about the recording rather than about what"
+                        + " is being played from.")
                 .line("</p>");
         out.open("p")
                 .text("Generated by Music Wizard. Everything it needs is in this file.")

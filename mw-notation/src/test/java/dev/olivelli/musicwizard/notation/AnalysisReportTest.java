@@ -20,9 +20,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.model.TempoMap;
+import dev.olivelli.musicwizard.core.workspace.RunManifest;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.junit.jupiter.api.DisplayName;
@@ -63,6 +66,74 @@ class AnalysisReportTest {
     void bare() {
         Goldens.assertGolden("report-bare", ".html",
                 AnalysisReport.toHtml(ReportFixtures.bare(), AnalysisReport.Recording.unknown()));
+    }
+
+    @Test
+    @DisplayName("a workspace whose run recorded itself")
+    void withARunManifest() {
+        Goldens.assertGolden("report-with-manifest", ".html", AnalysisReport.toHtml(
+                ReportFixtures.everything(), RECORDING, ReportFixtures.run()));
+    }
+
+    @Test
+    @DisplayName("a workspace with no record of its run says so rather than inventing one")
+    void withoutARunManifest() {
+        String page = AnalysisReport.toHtml(ReportFixtures.everything(), RECORDING);
+
+        assertThat(page).contains("recorded nothing about its own run");
+        // The three the record would answer keep saying they are unanswered.
+        assertThat(page).contains("neither are the sample rate, the channel count",
+                "Whether a separator ran, which provider it was",
+                "the workspace holds the result and not its provenance");
+        assertThat(statusOf(page, "decode")).isEqualTo("no trace kept");
+    }
+
+    @Test
+    @DisplayName("the run's own outcomes outrank what the score alone can say")
+    void theRunsOutcomesAreWhatThePageShows() {
+        String page = AnalysisReport.toHtml(
+                ReportFixtures.everything(), RECORDING, ReportFixtures.run());
+
+        assertThat(statusOf(page, "decode")).isEqualTo("ran");
+        assertThat(statusOf(page, "separation")).isEqualTo("failed");
+        assertThat(statusOf(page, "beats"))
+                .as("a stage served from the cache did not run in this run")
+                .isEqualTo("from the cache");
+        assertThat(statusOf(page, "melody")).isEqualTo("did not run");
+        assertThat(page).doesNotContain("the workspace holds the result and not its"
+                + " provenance");
+        // Every gap the record does not fill is still stated.
+        assertThat(page).contains("(#675)", "(#676)", "(#677)", "(#678)", "(#679)",
+                "(#680)", "(#684)");
+    }
+
+    @Test
+    @DisplayName("a stage the run did not reach is a fact about the run, not about MW")
+    void aStageTheRunNeverReachedIsWordedAsThat() {
+        // A MIDI workspace decodes nothing, so its record names no decode. The
+        // page may not answer that with the sentence it uses for a workspace
+        // that records nothing at all, which would now be false.
+        RunManifest readSymbolically = new RunManifest(
+                RunManifest.CURRENT_SCHEMA_VERSION, "1.2.3-test",
+                "2026-01-01T00:00:00Z", "2026-01-01T00:00:01Z", Map.of(),
+                List.of(new RunManifest.StageRun(
+                        "read-midi", RunManifest.Outcome.COMPUTED, null, Map.of())));
+
+        String page = AnalysisReport.toHtml(
+                ReportFixtures.chordsOnly(), RECORDING, readSymbolically);
+
+        assertThat(page).contains("did not reach this stage");
+        assertThat(page).doesNotContain("neither are the sample rate, the channel count");
+    }
+
+    @Test
+    @DisplayName("a stage this build has no phase for is still reported")
+    void anUnknownStageIsNotDropped() {
+        // What a workspace analysed by a newer build looks like. The page has
+        // no phase to put it under and must not swallow it.
+        assertThat(AnalysisReport.toHtml(
+                ReportFixtures.everything(), RECORDING, ReportFixtures.run()))
+                .contains("hummed bass");
     }
 
     @Test

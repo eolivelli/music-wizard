@@ -22,7 +22,9 @@ import dev.olivelli.musicwizard.core.config.MusicWizardConfig;
 import dev.olivelli.musicwizard.core.ml.MlProviders;
 import dev.olivelli.musicwizard.core.ml.ModelUnavailableException;
 import dev.olivelli.musicwizard.core.ml.SeparationProvider;
+import dev.olivelli.musicwizard.core.workspace.RunLog;
 import java.nio.file.Path;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Consumer;
 
@@ -42,22 +44,28 @@ final class VocalStem {
 
     private final Path source;
     private final SeparationProvider provider;
+    private final RunLog runLog;
     private AudioBuffer voice;
     private RuntimeException failure;
 
-    private VocalStem(Path source, SeparationProvider provider) {
+    private VocalStem(Path source, SeparationProvider provider, RunLog runLog) {
         this.source = source;
         this.provider = provider;
+        this.runLog = Objects.requireNonNull(runLog, "runLog");
     }
 
     /**
      * The stem of this recording, or empty when nothing on this classpath can
      * separate it. Callers that skip separation must not ask.
+     *
+     * <p>The run log is written to at the moment the separation is attempted,
+     * which is the only place that knows whether one happened at all: whether
+     * this is ever asked for depends on which later stages the run reaches.
      */
-    static Optional<VocalStem> forRun(Path source, MusicWizardConfig config) {
+    static Optional<VocalStem> forRun(Path source, MusicWizardConfig config, RunLog runLog) {
         MusicWizardConfig.MlConfig ml = config.ml();
         return MlProviders.separation(ml == null ? null : ml.separationProvider())
-                .map(provider -> new VocalStem(source, provider));
+                .map(provider -> new VocalStem(source, provider, runLog));
     }
 
     /** The id to name in a report, and in the transcription cache key. */
@@ -96,8 +104,11 @@ final class VocalStem {
                         provider.separate(new float[][] {mix.samples()}, mix.sampleRate())
                                 .vocals()[0],
                         mix.sampleRate());
+                runLog.stage("separation").fact("provider", provider.id()).computed();
             } catch (RuntimeException e) {
                 failure = e;
+                runLog.stage("separation").fact("provider", provider.id())
+                        .failed(e.getMessage());
                 throw e;
             } catch (LinkageError e) {
                 // A provider whose class resolves and whose native does not is
@@ -108,6 +119,8 @@ final class VocalStem {
                 // what it is to every caller of this: the model cannot be had.
                 failure = new ModelUnavailableException(
                         "the separation provider could not be loaded: " + e, e);
+                runLog.stage("separation").fact("provider", provider.id())
+                        .failed(failure.getMessage());
                 throw failure;
             }
         }

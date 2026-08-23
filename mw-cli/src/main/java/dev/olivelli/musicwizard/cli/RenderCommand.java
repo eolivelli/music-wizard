@@ -29,6 +29,7 @@ import dev.olivelli.musicwizard.core.model.Key;
 import dev.olivelli.musicwizard.core.model.NoteTrack;
 import dev.olivelli.musicwizard.core.model.PartRole;
 import dev.olivelli.musicwizard.core.model.Score;
+import dev.olivelli.musicwizard.core.workspace.RunManifest;
 import dev.olivelli.musicwizard.core.workspace.Workspace;
 import dev.olivelli.musicwizard.notation.AnalysisReport;
 import dev.olivelli.musicwizard.notation.ChartOptions;
@@ -631,10 +632,29 @@ final class RenderCommand implements Callable<Integer> {
             Path html = out.resolve("report.html");
             Files.writeString(html, AnalysisReport.toHtml(asAnalysed,
                     new AnalysisReport.Recording(descriptor.sourceFileName(),
-                            descriptor.sourceSha256(), descriptor.createdAt())));
+                            descriptor.sourceSha256(), descriptor.createdAt()),
+                    runManifest(workspace)));
             return new Emitted(List.of(html), List.of());
         } catch (IOException e) {
             throw new UncheckedIOException("could not write output", e);
+        }
+    }
+
+    /**
+     * What the last analysis recorded about itself, or nothing.
+     *
+     * <p>A record that cannot be read is a page without the section, not a
+     * render that fails: the deliverable is the engraved music, and a workspace
+     * from a build that writes a manifest this one cannot parse must still
+     * render (#674).
+     */
+    private static RunManifest runManifest(Workspace workspace) {
+        try {
+            return workspace.readRunManifest().orElse(null);
+        } catch (RuntimeException e) {
+            System.err.println("warning: this workspace's record of its last analysis could"
+                    + " not be read, so the report cannot say what ran: " + e.getMessage());
+            return null;
         }
     }
 

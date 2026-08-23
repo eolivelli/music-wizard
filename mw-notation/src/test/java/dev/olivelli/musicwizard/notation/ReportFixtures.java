@@ -35,8 +35,11 @@ import dev.olivelli.musicwizard.core.model.PitchSpelling;
 import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.model.TempoMap;
 import dev.olivelli.musicwizard.core.model.TimeSignature;
+import dev.olivelli.musicwizard.core.workspace.RunManifest;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * The scores the analysis report's golden files are written from.
@@ -69,6 +72,46 @@ final class ReportFixtures {
     /** What a workspace analysed without {@code --melody} and without lyrics holds. */
     static Score chordsOnly() {
         return withHarmony();
+    }
+
+    /**
+     * What one run recorded about itself: every outcome the page draws
+     * differently, and a stage the page has no phase for.
+     *
+     * <p>The clock and the build are constants for the same reason every figure
+     * above is: a golden file compares the whole page, and a run's own
+     * timestamps would rewrite it every time.
+     */
+    static RunManifest run() {
+        return new RunManifest(RunManifest.CURRENT_SCHEMA_VERSION, "1.2.3-test",
+                "2026-01-01T00:00:00Z", "2026-01-01T00:02:03Z",
+                new LinkedHashMap<>(Map.of("source", "audio")),
+                List.of(
+                        stage("decode", RunManifest.Outcome.COMPUTED, null,
+                                "format", "MP3, MPEG-1, Layer 3",
+                                "sample rate as stored", "44100 Hz",
+                                "read as", "mono at 22050 Hz"),
+                        stage("separation", RunManifest.Outcome.FAILED,
+                                "the model could not be reached", "provider", "spleeter-2stems"),
+                        stage("beats", RunManifest.Outcome.CACHED, null),
+                        stage("melody", RunManifest.Outcome.SKIPPED,
+                                "not asked for; analyze --melody reads one"),
+                        stage("lyrics", RunManifest.Outcome.COMPUTED, null,
+                                "words from", "the file song.lrc", "language", "en"),
+                        stage("lyric-alignment", RunManifest.Outcome.SKIPPED,
+                                "no alignment provider is configured (ml.alignmentProvider)"),
+                        // A stage this build's page has no phase for, which is
+                        // what a manifest written by a newer build looks like.
+                        stage("hummed-bass", RunManifest.Outcome.COMPUTED, null)));
+    }
+
+    private static RunManifest.StageRun stage(
+            String name, RunManifest.Outcome outcome, String reason, String... facts) {
+        Map<String, String> table = new LinkedHashMap<>();
+        for (int i = 0; i + 1 < facts.length; i += 2) {
+            table.put(facts[i], facts[i + 1]);
+        }
+        return new RunManifest.StageRun(name, outcome, reason, table);
     }
 
     /**

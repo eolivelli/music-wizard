@@ -326,13 +326,44 @@ footer { margin-top: 3rem; padding-top: 1.25rem; border-top: 1px solid var(--rul
 </section>
 <section id="run">
 <h2>What ran</h2>
-<p class="lede">This workspace was analysed by a build that recorded nothing about its own run, so this page cannot say which stages ran, what the recording decoded to, or which options steered it. Analysing it again writes that record (#674).</p>
+<p class="lede">The last analysis of this workspace, as it recorded itself: what each stage did, and the settings it was given. A stage that did not run says so, and one served from the cache says that instead of claiming to have run.</p>
+<dl class="facts">
+<dt>Music Wizard</dt><dd>1.2.3-test</dd>
+<dt>Analysed</dt><dd>2026-01-01T00:00:00Z</dd>
+<dt>Finished</dt><dd>2026-01-01T00:02:03Z</dd>
+</dl>
+<h3>What it was told to do</h3>
+<dl class="facts">
+<dt>source</dt><dd>audio</dd>
+</dl>
+<h3>Stage by stage</h3>
+<div class="run-stages">
+<div class="run-stage recorded"><span class="run-stage-name">decode</span><span class="status">ran</span><dl class="facts">
+<dt>format</dt><dd>MP3, MPEG-1, Layer 3</dd>
+<dt>sample rate as stored</dt><dd>44100 Hz</dd>
+<dt>read as</dt><dd>mono at 22050 Hz</dd>
+</dl>
+</div>
+<div class="run-stage failed"><span class="run-stage-name">separation</span><span class="status">failed</span><p class="run-stage-reason">the model could not be reached</p><dl class="facts">
+<dt>provider</dt><dd>spleeter-2stems</dd>
+</dl>
+</div>
+<div class="run-stage recorded"><span class="run-stage-name">beats</span><span class="status">from the cache</span></div>
+<div class="run-stage absent"><span class="run-stage-name">melody</span><span class="status">did not run</span><p class="run-stage-reason">not asked for; analyze --melody reads one</p></div>
+<div class="run-stage recorded"><span class="run-stage-name">lyrics</span><span class="status">ran</span><dl class="facts">
+<dt>words from</dt><dd>the file song.lrc</dd>
+<dt>language</dt><dd>en</dd>
+</dl>
+</div>
+<div class="run-stage absent"><span class="run-stage-name">lyric alignment</span><span class="status">did not run</span><p class="run-stage-reason">no alignment provider is configured (ml.alignmentProvider)</p></div>
+<div class="run-stage recorded"><span class="run-stage-name">hummed bass</span><span class="status">ran</span></div>
+</div>
 </section>
 <section id="phases">
 <h2>Phase by phase</h2>
 <p class="lede">Each stage below answers the same three questions from the workspace and from nothing else: what reached it, what it decided, and what it left behind. Where it decided something the workspace does not keep, it says so.</p>
-<p class="lede">These are the stages of the audio pipeline, in the order it runs them. A score can also be read symbolically from a MIDI file, where some of them have nothing to do and the rest work by other means. This workspace does not record which path produced it, so each stage describes what it does rather than asserting that it ran.</p>
-<article class="phase untraced" id="phase-decode"><h3><span class="phase-number">1</span>Decode<span class="status">no trace kept</span></h3>
+<p class="lede">These are the stages of the audio pipeline, in the order it runs them. A score can also be read symbolically from a MIDI file, where some of them have nothing to do and the rest work by other means. What each stage did in the last analysis is above and repeated under the stage it belongs to.</p>
+<article class="phase recorded" id="phase-decode"><h3><span class="phase-number">1</span>Decode<span class="status">ran</span></h3>
 <p class="what">A recording is read to mono samples at the analysis rate, and everything after this point works from those samples. A score read from a MIDI file is read symbolically instead and decodes nothing.</p>
 <dl class="io">
 <dt>In</dt><dd>the source file in the workspace</dd>
@@ -340,20 +371,27 @@ footer { margin-top: 3rem; padding-top: 1.25rem; border-top: 1px solid var(--rul
 <dt>Out</dt><dd>one signal, and how long the recording is</dd>
 </dl>
 <dl class="facts">
+<dt>format</dt><dd>MP3, MPEG-1, Layer 3</dd>
+<dt>sample rate as stored</dt><dd>44100 Hz</dd>
+<dt>read as</dt><dd>mono at 22050 Hz</dd>
+</dl>
+<dl class="facts">
 <dt>Length</dt><dd>0:08  (8s)</dd>
 </dl>
-<p class="gap"><span class="gap-label">Not recorded</span>Which of the two happened is not written to the workspace, and neither are the sample rate, the channel count and the decoder that read the file (#674).</p>
 </article>
-<article class="phase untraced" id="phase-separation"><h3><span class="phase-number">2</span>Separation<span class="status">no trace kept</span></h3>
+<article class="phase failed" id="phase-separation"><h3><span class="phase-number">2</span>Separation<span class="status">failed</span></h3>
 <p class="what">A separator splits the mix into a vocal and an accompaniment. Only the melody stage reads it. Chords are always estimated from the full mix, because separation artifacts destroy the partial structure chroma estimation depends on.</p>
 <dl class="io">
 <dt>In</dt><dd>the decoded mix</dd>
 <dt>Decided</dt><dd>whether a separator could be reached at all</dd>
 <dt>Out</dt><dd>a vocal stem, held in memory and never written to the workspace</dd>
 </dl>
-<p class="gap"><span class="gap-label">Not recorded</span>Whether a separator ran, which provider it was, and whether the melody stage read its stem or fell back to the mix are not recorded — so this page cannot tell you which signal the melody below was read from (#674).</p>
+<p class="note">the model could not be reached</p>
+<dl class="facts">
+<dt>provider</dt><dd>spleeter-2stems</dd>
+</dl>
 </article>
-<article class="phase recorded" id="phase-beats"><h3><span class="phase-number">3</span>Beat tracking, tempo and the bar axis<span class="status">output on disk</span></h3>
+<article class="phase recorded" id="phase-beats"><h3><span class="phase-number">3</span>Beat tracking, tempo and the bar axis<span class="status">from the cache</span></h3>
 <p class="what">Onsets are detected, a pulse is tracked through them, and the phase of the bar is chosen from where the harmony changes. The tempo map built on that grid is the only sanctioned conversion between seconds and beats; every stage below reads it rather than a rate of its own.</p>
 <dl class="io">
 <dt>In</dt><dd>the decoded mix, and frame-level chroma for the harmonic rhythm</dd>
@@ -466,13 +504,14 @@ footer { margin-top: 3rem; padding-top: 1.25rem; border-top: 1px solid var(--rul
 </div>
 <p class="gap"><span class="gap-label">Not recorded</span>The chord evidence each of the two decisions weighed is not recorded, so the page can show that they disagree but not why (#678).</p>
 </article>
-<article class="phase recorded" id="phase-melody"><h3><span class="phase-number">7</span>Melody notes<span class="status">output on disk</span></h3>
+<article class="phase absent" id="phase-melody"><h3><span class="phase-number">7</span>Melody notes<span class="status">did not run</span></h3>
 <p class="what">A monophonic pitch tracker follows the loudest periodic line in whatever signal it is handed, and the result is segmented into notes. On a full mix that line is usually not the singer, which is why the stage is off unless it is asked for.</p>
 <dl class="io">
 <dt>In</dt><dd>the vocal stem where a separator could be had, and the mix otherwise</dd>
 <dt>Decided</dt><dd>where one note ends and the next begins</dd>
 <dt>Out</dt><dd>a note track, in seconds</dd>
 </dl>
+<p class="note">not asked for; analyze --melody reads one</p>
 <dl class="facts">
 <dt>Notes</dt><dd>8</dd>
 <dt>Range</dt><dd>B4..F5</dd>
@@ -490,13 +529,18 @@ footer { margin-top: 3rem; padding-top: 1.25rem; border-top: 1px solid var(--rul
 <figcaption>How long the notes are, in seconds</figcaption></figure>
 <p class="gap"><span class="gap-label">Not recorded</span>The pitch track and the voicedness the segmentation read are not recorded, so the page shows the notes and not the decision that cut them (#679).</p>
 </article>
-<article class="phase recorded" id="phase-lyrics"><h3><span class="phase-number">8</span>Lyric alignment<span class="status">output on disk</span></h3>
+<article class="phase recorded" id="phase-lyrics"><h3><span class="phase-number">8</span>Lyric alignment<span class="status">ran</span></h3>
 <p class="what">Words come either from an LRC file the user supplied or from the transcriber, are split into syllables by the hyphenation patterns for their language, and are placed against the vocal stem.</p>
 <dl class="io">
 <dt>In</dt><dd>a vocal stem, and either supplied words or transcribed ones</dd>
 <dt>Decided</dt><dd>where each syllable is sung, and which syllable the melody moves under</dd>
 <dt>Out</dt><dd>lines of timed syllables</dd>
 </dl>
+<dl class="facts">
+<dt>words from</dt><dd>the file song.lrc</dd>
+<dt>language</dt><dd>en</dd>
+</dl>
+<p class="note">no alignment provider is configured (ml.alignmentProvider)</p>
 <dl class="facts">
 <dt>Language</dt><dd>en</dd>
 <dt>Lines</dt><dd>2</dd>
@@ -516,7 +560,7 @@ footer { margin-top: 3rem; padding-top: 1.25rem; border-top: 1px solid var(--rul
 <tr><td>2</td><td>0:04</td><td class="words">it did</td><td>2</td></tr>
 </tbody></table>
 </details>
-<p class="gap"><span class="gap-label">Not recorded</span>Whether the words were supplied or transcribed, and the path the aligner took through them, are not recorded — the workspace holds the result and not its provenance (#674).</p>
+<p class="gap"><span class="gap-label">Not recorded</span>What the aligner did inside a line — the window it searched, and why a line kept its parsed times instead of being measured — is not recorded (#684).</p>
 </article>
 <article class="phase recomputed" id="phase-quantization"><h3><span class="phase-number">9</span>Quantization<span class="status">recomputed here</span></h3>
 <p class="what">Every sounding thing is put on a grid of beat subdivisions, chosen per bar, because a page has to name a duration. Three onsets a third of a beat apart and three a half beat apart are both legal on the underlying grid, so the subdivision is a decision and not a rounding.</p>
@@ -554,7 +598,7 @@ footer { margin-top: 3rem; padding-top: 1.25rem; border-top: 1px solid var(--rul
 </article>
 </section>
 <footer>
-<p>This page is a reading of one workspace: its saved score, the grid and the reduction that the engraver recomputes from it, and nothing about the run that produced them. A stage that decided something the workspace does not keep is marked as such above rather than reconstructed. A transposition asked for on the command line moves the engraved parts and not this page, which is about the recording rather than about what is being played from.</p>
+<p>This page is a reading of one workspace: its saved score, the grid and the reduction that the engraver recomputes from it, and what the last analysis recorded about its own run. A stage that decided something the workspace does not keep is marked as such above rather than reconstructed. A transposition asked for on the command line moves the engraved parts and not this page, which is about the recording rather than about what is being played from.</p>
 <p>Generated by Music Wizard. Everything it needs is in this file.</p>
 </footer>
 <script>/*

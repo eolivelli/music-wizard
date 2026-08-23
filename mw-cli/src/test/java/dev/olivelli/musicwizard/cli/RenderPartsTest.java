@@ -31,6 +31,7 @@ import dev.olivelli.musicwizard.core.model.PartRole;
 import dev.olivelli.musicwizard.core.model.PitchSpelling;
 import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.model.TempoMap;
+import dev.olivelli.musicwizard.core.workspace.RunManifest;
 import dev.olivelli.musicwizard.core.workspace.Workspace;
 import dev.olivelli.musicwizard.testkit.MidiFixtures;
 import dev.olivelli.musicwizard.testkit.SignalFactory;
@@ -509,6 +510,58 @@ class RenderPartsTest {
             assertThat(render.exitCode()).as(render.all()).isZero();
             assertThat(render.err())
                     .doesNotContain("nothing that was written moves with a transposition");
+        }
+
+        @Test
+        @DisplayName("says a workspace holds no record of its run rather than failing")
+        void statesTheAbsenceOfARunRecord() throws java.io.IOException {
+            // Every workspace analysed before there was a record, and this
+            // suite's own planted ones.
+            Path workspace = audioWorkspace("unrecorded", fourChords());
+
+            CliRunner.Result render = CliRunner.run("render", workspace.toString(),
+                    "--parts", "report", "--no-pdf");
+
+            assertThat(render.exitCode()).as(render.all()).isZero();
+            assertThat(java.nio.file.Files.readString(workspace.resolve("out/report.html")))
+                    .contains("recorded nothing about its own run");
+        }
+
+        @Test
+        @DisplayName("shows what the run recorded, where the workspace holds a record")
+        void showsWhatTheRunRecorded() throws java.io.IOException {
+            Path workspace = audioWorkspace("recorded", fourChords());
+            Workspace.open(workspace).writeRunManifest(new RunManifest(
+                    RunManifest.CURRENT_SCHEMA_VERSION, "1.2.3",
+                    "2026-01-01T00:00:00Z", "2026-01-01T00:00:09Z",
+                    java.util.Map.of("source", "audio"),
+                    List.of(new RunManifest.StageRun("decode",
+                            RunManifest.Outcome.COMPUTED, null,
+                            java.util.Map.of("read as", "mono at 22050 Hz")))));
+
+            CliRunner.Result render = CliRunner.run("render", workspace.toString(),
+                    "--parts", "report", "--no-pdf");
+
+            assertThat(render.exitCode()).as(render.all()).isZero();
+            assertThat(java.nio.file.Files.readString(workspace.resolve("out/report.html")))
+                    .contains("What ran", "mono at 22050 Hz")
+                    .doesNotContain("recorded nothing about its own run");
+        }
+
+        @Test
+        @DisplayName("a record it cannot read costs the section, not the render")
+        void anUnreadableRecordStillRenders() throws java.io.IOException {
+            Path workspace = audioWorkspace("unreadable-record", fourChords());
+            java.nio.file.Files.createDirectories(workspace.resolve("run"));
+            java.nio.file.Files.writeString(
+                    workspace.resolve("run/manifest.json"), "{ not json at all");
+
+            CliRunner.Result render = CliRunner.run("render", workspace.toString(),
+                    "--parts", "report", "--no-pdf");
+
+            assertThat(render.exitCode()).as(render.all()).isZero();
+            assertThat(render.err()).contains("could not be read");
+            assertThat(workspace.resolve("out/report.html")).exists();
         }
 
         @Test

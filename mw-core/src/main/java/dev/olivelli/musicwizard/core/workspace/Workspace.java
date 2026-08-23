@@ -49,6 +49,7 @@ import java.util.Optional;
  *     source/            the untouched input recording
  *     cache/             per-stage intermediate results, including LLM responses
  *     score/score.json   the composed transcription
+ *     run/manifest.json  what the last analysis actually ran
  *     out/               generated .ly, .musicxml, .midi and .pdf files
  *     logs/
  * </pre>
@@ -62,9 +63,11 @@ public final class Workspace {
     private static final String SOURCE_DIRECTORY = "source";
     private static final String CACHE_DIRECTORY = "cache";
     private static final String SCORE_DIRECTORY = "score";
+    private static final String RUN_DIRECTORY = "run";
     private static final String OUTPUT_DIRECTORY = "out";
     private static final String LOG_DIRECTORY = "logs";
     private static final String SCORE_FILE = "score.json";
+    private static final String RUN_MANIFEST_FILE = "manifest.json";
 
     /**
      * What {@code workspace.yaml} holds.
@@ -132,8 +135,8 @@ public final class Workspace {
         try {
             for (Path directory : new Path[] {
                     workspace.sourceDirectory(), workspace.cacheDirectory(),
-                    workspace.scoreDirectory(), workspace.outputDirectory(),
-                    workspace.logDirectory()}) {
+                    workspace.scoreDirectory(), workspace.runDirectory(),
+                    workspace.outputDirectory(), workspace.logDirectory()}) {
                 Files.createDirectories(directory);
             }
 
@@ -270,6 +273,15 @@ public final class Workspace {
 
     public Path scoreFile() {
         return scoreDirectory().resolve(SCORE_FILE);
+    }
+
+    /** Where a run writes what it did, as opposed to what it decided. */
+    public Path runDirectory() {
+        return root.resolve(RUN_DIRECTORY);
+    }
+
+    public Path runManifestFile() {
+        return runDirectory().resolve(RUN_MANIFEST_FILE);
     }
 
     public Path outputDirectory() {
@@ -422,6 +434,38 @@ public final class Workspace {
     public void writeScore(dev.olivelli.musicwizard.core.model.Score score) {
         Objects.requireNonNull(score, "score");
         dev.olivelli.musicwizard.core.model.ScoreJson.write(scoreFile(), score);
+    }
+
+    /**
+     * What the last analysis of this workspace recorded about itself.
+     *
+     * <p>Absent for every workspace analysed before there was a manifest, and
+     * for one whose analysis has not run. A reader states the absence: nothing
+     * downstream may require the record to exist, since re-analysing is the
+     * only thing that creates one.
+     */
+    public Optional<RunManifest> readRunManifest() {
+        Path file = runManifestFile();
+        if (!Files.isRegularFile(file)) {
+            return Optional.empty();
+        }
+        try {
+            return Optional.of(RunManifestJson.fromJson(Files.readString(file)));
+        } catch (IOException e) {
+            throw new UncheckedIOException("could not read " + file, e);
+        }
+    }
+
+    /** Records what a run did, replacing the previous run's record. */
+    public void writeRunManifest(RunManifest manifest) {
+        Objects.requireNonNull(manifest, "manifest");
+        Path file = runManifestFile();
+        try {
+            Files.createDirectories(file.getParent());
+            Files.writeString(file, RunManifestJson.toJson(manifest));
+        } catch (IOException e) {
+            throw new UncheckedIOException("could not write " + file, e);
+        }
     }
 
     /** The stage cache for this workspace. */

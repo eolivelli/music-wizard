@@ -28,6 +28,7 @@ import dev.olivelli.musicwizard.core.model.Provenance;
 import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.model.TempoMap;
 import dev.olivelli.musicwizard.core.model.TimeSignature;
+import dev.olivelli.musicwizard.core.workspace.RunLog;
 import dev.olivelli.musicwizard.dsp.BeatTracker;
 import dev.olivelli.musicwizard.dsp.Chroma;
 import dev.olivelli.musicwizard.dsp.ChordEstimator;
@@ -165,13 +166,26 @@ public final class AudioTranscriber {
     }
 
     private final Consumer<String> progress;
+    private final RunLog runLog;
+
+    /**
+     * @param progress where the running commentary goes, or null for nowhere
+     * @param runLog   where each stage records what it did, or null for
+     *                 nowhere. A per-run sink like the commentary, and for the
+     *                 same reason: what a stage did is not part of what it
+     *                 computed.
+     */
+    public AudioTranscriber(Consumer<String> progress, RunLog runLog) {
+        this.progress = progress != null ? progress : message -> { };
+        this.runLog = runLog != null ? runLog : new RunLog();
+    }
 
     public AudioTranscriber(Consumer<String> progress) {
-        this.progress = progress != null ? progress : message -> { };
+        this(progress, null);
     }
 
     public AudioTranscriber() {
-        this(null);
+        this(null, null);
     }
 
     /** Decodes and analyses a recording, reading the melody from the mix. */
@@ -209,6 +223,7 @@ public final class AudioTranscriber {
         }
         progress.accept(String.format(Locale.ROOT, "decoded %.1fs at %d Hz",
                 audio.durationSeconds(), audio.sampleRate()));
+        recordDecode(file, audio);
 
         return transcribe(audio, settings, vocalStem);
     }
@@ -246,11 +261,16 @@ public final class AudioTranscriber {
         NnlsChroma registers = NnlsChroma.extract(transform, tuning);
         Chroma combinedFrames = registers.combined();
         HarmonicRhythm harmonicRhythm = HarmonicRhythm.of(combinedFrames);
+        runLog.stage("chroma").computed();
 
         progress.accept("tracking beats");
         BeatTracker.Result beats = BeatTracker.track(envelope, harmonicRhythm, onsets.pulseRegister());
         if (beats.isEmpty()) {
             progress.accept("no beats found; returning an empty score");
+            runLog.stage("beats").computed("no pulse was found");
+            for (String unreached : List.of("chords", "key", "melody")) {
+                runLog.stage(unreached).skipped("no beats were tracked, so the run stopped here");
+            }
             if (settings.firstDownbeatSeconds() != null) {
                 // Said rather than passed over. There is genuinely no pulse to
                 // mark as a downbeat, but an override that vanishes without
@@ -376,10 +396,13 @@ public final class AudioTranscriber {
                     downbeat.phase(), pulsesPerBar);
         }
 
+        runLog.stage("beats").computed();
+
         progress.accept("estimating chords");
         ChordProgression chords =
                 ChordEstimator.estimate(chroma, treble, bass, ablation, beatTimes);
         progress.accept(String.format(Locale.ROOT, "found %d chord spans", chords.size()));
+        runLog.stage("chords").computed();
 
         // Over the whole recording rather than over the chords' own extent: a key
         // is what the listener hears the piece as being in, and it does not stop
@@ -390,9 +413,14 @@ public final class AudioTranscriber {
         key.ifPresentOrElse(
                 // Worded by the key itself, so this line, the summary and the
                 // chart cannot describe one key three ways.
-                estimate -> progress.accept(
-                        "key " + estimate.key().displayNameWithConfidence()),
-                () -> progress.accept("no chord sounds, so no key was estimated"));
+                estimate -> {
+                    progress.accept("key " + estimate.key().displayNameWithConfidence());
+                    runLog.stage("key").computed();
+                },
+                () -> {
+                    progress.accept("no chord sounds, so no key was estimated");
+                    runLog.stage("key").computed("no chord sounds, so no key was estimated");
+                });
 
         Score score = Score.empty(tempoMap, audio.durationSeconds())
                 .withBeatGrid(grid)
@@ -402,12 +430,16 @@ public final class AudioTranscriber {
         // Last, and from whatever the caller says the melody is in: there is no
         // separation in this module, so the signal is chosen by handing it in.
         // The stage is off unless asked for -- see Options.trackMelody.
-        if (settings.trackMelody()) {
+        if (!settings.trackMelody()) {
+            runLog.stage("melody").skipped("not asked for; analyze --melody reads one");
+        } else {
             AudioBuffer melodyAudio = melodySignal(audio, vocalStem);
             boolean separated = melodyAudio != audio;
             progress.accept(separated
                     ? "tracking the melody in the vocal stem"
                     : "tracking the melody in the full mix");
+            RunLog.Stage stage = runLog.stage("melody")
+                    .fact("read from", separated ? "the separated vocal" : "the full mix");
             // The envelope of the signal being tracked, not of the mix. It
             // decides where a note is struck again at the same pitch, and
             // MelodyEstimator measures a peak in standard deviations of the
@@ -426,14 +458,35 @@ public final class AudioTranscriber {
                     PitchTracker.track(melodyAudio), melodyEnvelope, tuning);
             if (melody.isEmpty()) {
                 progress.accept("no melody was found");
+                stage.computed("no melody was found in that signal");
             } else {
                 progress.accept(String.format(Locale.ROOT, "found %d melody notes over %s",
                         melody.size(),
                         melody.pitchRange().map(Object::toString).orElse("no range")));
                 score = score.withTrack(melody);
+                stage.computed();
             }
         }
         return score;
+    }
+
+    /** What the file was and what it became, for the run's record. */
+    private void recordDecode(Path file, AudioBuffer audio) {
+        RunLog.Stage stage = runLog.stage("decode");
+        AudioDecoder.describe(file).ifPresent(format -> {
+            stage.fact("format", format.type().equals(format.encoding())
+                    ? format.type() : format.type() + ", " + format.encoding());
+            if (format.sampleRate() > 0) {
+                stage.fact("sample rate as stored", format.sampleRate() + " Hz");
+            }
+            if (format.channels() > 0) {
+                stage.fact("channels as stored", format.channels());
+            }
+        });
+        stage.fact("read as", "mono at " + audio.sampleRate() + " Hz")
+                .fact("duration as decoded",
+                        String.format(Locale.ROOT, "%.2f s", audio.durationSeconds()))
+                .computed();
     }
 
     /**

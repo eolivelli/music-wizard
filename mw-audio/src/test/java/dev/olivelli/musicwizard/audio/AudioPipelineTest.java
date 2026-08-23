@@ -129,6 +129,35 @@ class AudioPipelineTest {
             assertThatThrownBy(() -> AudioDecoder.decode(tempDirectory.resolve("absent.wav")))
                     .isInstanceOf(IllegalArgumentException.class);
         }
+
+        @Test
+        @DisplayName("describes what the file says it is, without decoding it")
+        void describesTheSourceFormat() {
+            Path file = writeWav(SignalFactory.sine(440, 0.25, 44_100), 44_100);
+
+            AudioDecoder.SourceFormat format = AudioDecoder.describe(file).orElseThrow();
+
+            // Not the type: which provider answers for a WAV decides whether
+            // that reads as the container or as the encoding, and both are
+            // true of the same file.
+            assertThat(format.type()).isNotBlank();
+            assertThat(format.encoding()).isEqualTo("PCM_SIGNED");
+            assertThat(format.sampleRate())
+                    .as("the rate the file is stored at, not the analysis rate")
+                    .isEqualTo(44_100);
+            assertThat(format.channels()).isEqualTo(1);
+        }
+
+        @Test
+        @DisplayName("describes nothing rather than failing, for a file it cannot read")
+        void describesNothingForAnUnreadableFile() throws Exception {
+            Path bogus = tempDirectory.resolve("not-audio.mp3");
+            Files.writeString(bogus, "this is not audio at all");
+
+            assertThat(AudioDecoder.describe(bogus)).isEmpty();
+            assertThat(AudioDecoder.describe(tempDirectory.resolve("absent.wav"))).isEmpty();
+            assertThat(AudioDecoder.describe(null)).isEmpty();
+        }
     }
 
     @Nested

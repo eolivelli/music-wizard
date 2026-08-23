@@ -39,6 +39,9 @@ import dev.olivelli.musicwizard.core.model.ScoreJson;
 import dev.olivelli.musicwizard.core.text.Hyphenator;
 import dev.olivelli.musicwizard.core.model.TempoMap;
 import dev.olivelli.musicwizard.core.model.TimeSignature;
+import dev.olivelli.musicwizard.core.workspace.RunLog;
+import dev.olivelli.musicwizard.core.workspace.RunManifest;
+import dev.olivelli.musicwizard.core.workspace.RunManifestJson;
 import dev.olivelli.musicwizard.core.workspace.StageCache;
 import dev.olivelli.musicwizard.core.workspace.Workspace;
 import dev.olivelli.musicwizard.transcribe.AudioTranscriber;
@@ -46,9 +49,12 @@ import dev.olivelli.musicwizard.transcribe.MidiTranscriber;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.Callable;
 import java.util.function.Supplier;
@@ -72,6 +78,9 @@ final class AnalyzeCommand implements Callable<Integer> {
 
     /** The stage whose output the transcription cache holds, per input kind. */
     private static final String STAGE_PREFIX = "transcribe-";
+
+    /** Where the cache keeps what the stages under a key recorded (#674). */
+    private static final String STAGES_EXTENSION = ".stages.json";
 
     /**
      * What the MIDI path's figures are, exactly. The heading names both
@@ -159,8 +168,16 @@ final class AnalyzeCommand implements Callable<Integer> {
      */
     private boolean melodyFellBackToTheMix;
 
+    /**
+     * What this run records about itself (#674). Written to the workspace at
+     * the end and read by nothing that analyses: a record of the run, never an
+     * input to one, so it cannot change what the run computes.
+     */
+    private final RunLog runLog = new RunLog();
+
     @Override
     public Integer call() {
+        Instant startedAt = Instant.now();
         Workspace workspace = Workspace.open(workspaceDirectory);
         MusicWizardConfig config = workspace.effectiveConfig(overrides());
         Path source = workspace.sourceFile();
@@ -169,7 +186,13 @@ final class AnalyzeCommand implements Callable<Integer> {
         // neither separation happens unless its stage is reached.
         Optional<VocalStem> stem = skipSeparationRequested(config)
                 ? Optional.empty()
-                : VocalStem.forRun(source, config);
+                : VocalStem.forRun(source, config, runLog);
+        if (skipSeparationRequested(config)) {
+            runLog.stage("separation").skipped("--skip-separation");
+        } else if (stem.isEmpty()) {
+            runLog.stage("separation")
+                    .skipped("no separation provider is configured or on this classpath");
+        }
 
         if (!workspace.sourceMatchesDigest()) {
             // The cache is keyed on the file's digest, so a changed source
@@ -211,11 +234,13 @@ final class AnalyzeCommand implements Callable<Integer> {
         if (!result.fromCache() && !melodyFellBackToTheMix) {
             // The transcription, not the titled score — the key says nothing
             // about metadata, and titled() runs on the way out of the cache.
-            storeQuietly(workspace.cache(), result.key(), result.score());
+            storeQuietly(workspace.cache(), result.key(), result.score(), result.stages());
         } else if (melodyFellBackToTheMix) {
             System.err.println("warning: this analysis is not cached, so the next run"
                     + " reads the melody from the stem if the separator works then.");
         }
+        recordUnreachedStages();
+        writeManifestQuietly(workspace, startedAt, kind, config);
 
         System.out.println();
         for (String line : summary(kind, score)) {
@@ -342,7 +367,15 @@ final class AnalyzeCommand implements Callable<Integer> {
      */
     private Score withSuppliedLyrics(Workspace workspace, Score score) {
         if (lyricsFile == null) {
-            return carriedForward(workspace, score);
+            Score carried = carriedForward(workspace, score);
+            if (!carried.lyrics().isEmpty()) {
+                runLog.stage("lyrics")
+                        .fact("words from", "the previous analysis of this workspace")
+                        .fact("language", carried.lyrics().language())
+                        .fact("lines", carried.lyrics().lines().size())
+                        .computed();
+            }
+            return carried;
         }
         String text;
         try {
@@ -350,6 +383,8 @@ final class AnalyzeCommand implements Callable<Integer> {
         } catch (IOException | RuntimeException e) {
             System.err.println("warning: the lyrics file could not be read, so this"
                     + " analysis has no lyrics: " + e.getMessage());
+            runLog.stage("lyrics").failed("the lyrics file could not be read: "
+                    + e.getMessage());
             return score;
         }
         Lyrics lyrics = LrcLyrics.parse(text, score.durationSeconds(), languageTag());
@@ -359,10 +394,18 @@ final class AnalyzeCommand implements Callable<Integer> {
                             + " so this analysis has no lyrics."
                     : "warning: the lyrics file carries no [mm:ss.xx] timestamps, so it"
                             + " cannot be placed; expected an LRC file.");
+            runLog.stage("lyrics").failed(LrcLyrics.looksLikeLrc(text)
+                    ? "the lyrics file has timestamps but no words under them"
+                    : "the lyrics file carries no [mm:ss.xx] timestamps");
             return score;
         }
         System.out.println("  read " + counted(lyrics.lines().size(), "lyric line")
                 + " from " + lyricsFile.getFileName());
+        runLog.stage("lyrics")
+                .fact("words from", "the file " + lyricsFile.getFileName())
+                .fact("language", lyrics.language())
+                .fact("lines", lyrics.lines().size())
+                .computed();
         return score.withLyrics(lyrics);
     }
 
@@ -390,6 +433,11 @@ final class AnalyzeCommand implements Callable<Integer> {
         String wanted = ml == null ? null : ml.alignmentProvider();
         var provider = MlProviders.alignment(wanted);
         if (provider.isEmpty()) {
+            runLog.stage("lyric-alignment").skipped("no alignment provider"
+                    + (wanted == null || wanted.isBlank()
+                            ? " is configured (ml.alignmentProvider)"
+                            : " named '" + wanted + "' is on this classpath")
+                    + "; the words keep the times they were parsed at");
             return score;
         }
         // Providers read the global layer only (#383); a workspace-set model
@@ -408,6 +456,9 @@ final class AnalyzeCommand implements Callable<Integer> {
             System.out.println("  lyrics not aligned: " + provider.get().id()
                     + " speaks " + provider.get().languages() + ", the lyrics are '"
                     + lyrics.language() + "'");
+            runLog.stage("lyric-alignment").fact("provider", provider.get().id())
+                    .skipped(provider.get().id() + " speaks " + provider.get().languages()
+                            + ", the lyrics are '" + lyrics.language() + "'");
             return score;
         }
         try {
@@ -477,18 +528,28 @@ final class AnalyzeCommand implements Callable<Integer> {
                                     weakest.value())
                             : "")
                     + (kept > 0 ? "; " + kept + " kept their parsed times" : ""));
+            runLog.stage("lyric-alignment")
+                    .fact("provider", provider.get().id())
+                    .fact("lines measured", aligned.size() - kept)
+                    .fact("lines left at their parsed times", kept)
+                    .computed();
             Score placed = score.withLyrics(
                     new Lyrics(aligned, lyrics.language(), lyrics.confidence()));
             return placed.withLyrics(withMelismas(placed, measuredLines));
         } catch (ModelUnavailableException e) {
             System.err.println("warning: lyrics stay at their parsed times: "
                     + e.getMessage());
+            runLog.stage("lyric-alignment").fact("provider", provider.get().id())
+                    .failed("the words keep their parsed times: " + e.getMessage());
             return score;
         } catch (RuntimeException e) {
             // An aligner defect must not take down an analysis that already
             // succeeded; the parsed times are what we had before it existed.
             System.err.println("warning: lyric alignment failed, keeping parsed"
                     + " times: " + e.getMessage());
+            runLog.stage("lyric-alignment").fact("provider", provider.get().id())
+                    .failed("alignment failed and the words keep their parsed times: "
+                            + e.getMessage());
             return score;
         }
     }
@@ -558,6 +619,10 @@ final class AnalyzeCommand implements Callable<Integer> {
         String wanted = ml == null ? null : ml.asrProvider();
         var provider = MlProviders.asr(wanted);
         if (provider.isEmpty()) {
+            runLog.stage("lyrics").skipped("no ASR provider"
+                    + (wanted == null || wanted.isBlank()
+                            ? " is configured (ml.asrProvider)"
+                            : " named '" + wanted + "' is on this classpath"));
             System.out.println("  lyrics not transcribed: no ASR provider"
                     + (wanted == null || wanted.isBlank()
                             ? " is configured (ml.asrProvider)."
@@ -572,6 +637,9 @@ final class AnalyzeCommand implements Callable<Integer> {
             System.out.println("  lyrics not transcribed: " + provider.get().id()
                     + " speaks " + provider.get().languages()
                     + ", asked for '" + lyricsLanguage + "'");
+            runLog.stage("lyrics").fact("provider", provider.get().id())
+                    .skipped(provider.get().id() + " speaks " + provider.get().languages()
+                            + ", asked for '" + lyricsLanguage + "'");
             return score;
         }
         try {
@@ -579,6 +647,8 @@ final class AnalyzeCommand implements Callable<Integer> {
             var segments = VocalSegments.split(voice.samples(), voice.sampleRate());
             if (segments.isEmpty()) {
                 System.out.println("  lyrics not transcribed: no sung stretches found");
+                runLog.stage("lyrics").fact("provider", provider.get().id())
+                        .skipped("no sung stretches were found to transcribe");
                 return score;
             }
             List<List<LyricWord>> stretches = new ArrayList<>();
@@ -605,6 +675,9 @@ final class AnalyzeCommand implements Callable<Integer> {
                 System.out.println("  lyrics not transcribed: " + provider.get().id()
                         + " heard no words in " + counted(segments.size(),
                                 "sung stretch", "sung stretches"));
+                runLog.stage("lyrics").fact("provider", provider.get().id())
+                        .computed(provider.get().id() + " heard no words in "
+                                + counted(segments.size(), "sung stretch", "sung stretches"));
                 return score;
             }
             System.out.println("  transcribed " + counted(lyrics.lines().size(),
@@ -612,16 +685,28 @@ final class AnalyzeCommand implements Callable<Integer> {
                     "sung stretch", "sung stretches") + " with " + provider.get().id()
                     + (failed > 0 ? "; " + counted(failed, "stretch", "stretches")
                             + " failed" : ""));
+            runLog.stage("lyrics")
+                    .fact("words from", "the recording, transcribed with "
+                            + provider.get().id())
+                    .fact("language", lyrics.language())
+                    .fact("lines", lyrics.lines().size())
+                    .fact("sung stretches", segments.size())
+                    .computed(failed > 0
+                            ? counted(failed, "stretch", "stretches") + " failed" : null);
             // The recognizer knows the words but not their times; the aligner
             // measures onsets, and only for lyrics transcribed in this run.
             return withAlignedLyrics(workspace, score.withLyrics(lyrics));
         } catch (ModelUnavailableException e) {
             System.err.println("warning: lyrics not transcribed: " + e.getMessage());
+            runLog.stage("lyrics").fact("provider", provider.get().id())
+                    .failed("lyrics not transcribed: " + e.getMessage());
             return score;
         } catch (RuntimeException e) {
             // A transcriber defect must not take down an analysis that already
             // succeeded; without it the score is simply what it always was.
             System.err.println("warning: lyric transcription failed: " + e.getMessage());
+            runLog.stage("lyrics").fact("provider", provider.get().id())
+                    .failed("lyric transcription failed: " + e.getMessage());
             return score;
         }
     }
@@ -869,8 +954,13 @@ final class AnalyzeCommand implements Callable<Integer> {
 
     // ------------------------------------------------------------------- cache
 
-    /** A score, where it came from, and the key it belongs under. */
-    private record Transcription(Score score, StageCache.Key key, boolean fromCache) {
+    /**
+     * A score, where it came from, the key it belongs under, and what the
+     * stages under that key recorded — empty when the score came from the
+     * cache, since those entries came with it.
+     */
+    private record Transcription(Score score, StageCache.Key key, boolean fromCache,
+                                 List<RunManifest.StageRun> stages) {
     }
 
     /**
@@ -909,16 +999,48 @@ final class AnalyzeCommand implements Callable<Integer> {
                 // that the pipeline did not run.
                 System.out.println("  reusing the cached analysis of this file;"
                         + " --force recomputes it");
-                return new Transcription(cached, key, true);
+                recordCachedStages(cache, key);
+                return new Transcription(cached, key, true, List.of());
             }
         }
 
+        // A log of its own for the stages under the cache key, because they
+        // are stored with the score and replayed for the run that is served
+        // it; the rest of this run's stages are not a function of the key.
+        RunLog keyed = new RunLog();
         Score score = switch (kind) {
-            case AUDIO -> new AudioTranscriber(AnalyzeCommand::report)
+            case AUDIO -> new AudioTranscriber(AnalyzeCommand::report, keyed)
                     .transcribe(source, options, melodySupplier(stem));
-            case MIDI -> new MidiTranscriber(AnalyzeCommand::report).transcribe(source);
+            case MIDI -> new MidiTranscriber(AnalyzeCommand::report, keyed).transcribe(source);
         };
-        return new Transcription(score, key, false);
+        runLog.recordAll(keyed.stages());
+        return new Transcription(score, key, false, keyed.stages());
+    }
+
+    /**
+     * Replays what the stages recorded when this cached answer was computed,
+     * as this run reporting that it was served them.
+     *
+     * <p>They are facts about the input and the options, which is exactly what
+     * the key is made of, so a run served the answer is served the record with
+     * it. An entry written before there was one leaves the single line that
+     * says so, rather than leaving the page to imply that no stage ran.
+     */
+    private void recordCachedStages(StageCache cache, StageCache.Key key) {
+        List<RunManifest.StageRun> stages;
+        try {
+            stages = cache.readText(key, STAGES_EXTENSION)
+                    .map(RunManifestJson::stagesFromJson)
+                    .orElse(List.of());
+        } catch (RuntimeException e) {
+            stages = List.of();
+        }
+        if (stages.isEmpty()) {
+            runLog.stage("analysis").cached("this file's cached analysis was computed"
+                    + " before runs were recorded, so what its stages did is not known");
+            return;
+        }
+        runLog.recordAll(stages.stream().map(RunManifest.StageRun::asCached).toList());
     }
 
     /**
@@ -987,12 +1109,24 @@ final class AnalyzeCommand implements Callable<Integer> {
      * read-only {@code cache/} must not cost an analysis that has already
      * succeeded.
      */
-    private static void storeQuietly(StageCache cache, StageCache.Key key, Score score) {
+    private static void storeQuietly(StageCache cache, StageCache.Key key, Score score,
+                                     List<RunManifest.StageRun> stages) {
         try {
             cache.writeText(key, ".json", ScoreJson.toJson(score));
         } catch (RuntimeException e) {
             System.err.println("warning: this analysis could not be cached, so the next run"
                     + " will recompute it: " + e.getMessage());
+            return;
+        }
+        try {
+            // Separately, and after: what the stages did is worth having and
+            // worth nothing on its own, so it must neither be the reason a
+            // computed analysis goes uncached nor go missing in silence.
+            cache.writeText(key, STAGES_EXTENSION, RunManifestJson.stagesToJson(stages));
+        } catch (RuntimeException e) {
+            System.err.println("warning: what these stages did was not cached with the"
+                    + " analysis, so a run served it will not be able to say: "
+                    + e.getMessage());
         }
     }
 
@@ -1042,6 +1176,90 @@ final class AnalyzeCommand implements Callable<Integer> {
                     .with("skipSeparation", skipSeparation);
         }
         return key;
+    }
+
+    // ---------------------------------------------------------------- manifest
+
+    /**
+     * Says so for the stages nothing reached, rather than leaving them out.
+     *
+     * <p>A stage missing from the record and a stage that did not run read the
+     * same on a page, and only one of them is a statement about this run. Each
+     * of these is a stage that runs on a condition none of its own code sees.
+     */
+    private void recordUnreachedStages() {
+        if (!recorded("separation")) {
+            runLog.stage("separation").skipped("nothing in this run needed a separated vocal");
+        }
+        if (!recorded("lyrics")) {
+            runLog.stage("lyrics")
+                    .skipped("no words were supplied to this run and none were transcribed");
+        }
+        if (!recorded("lyric-alignment")) {
+            runLog.stage("lyric-alignment").skipped("this run placed no new words to align");
+        }
+    }
+
+    private boolean recorded(String stage) {
+        return runLog.stages().stream().anyMatch(entry -> entry.stage().equals(stage));
+    }
+
+    /**
+     * Writes what this run did, or says why it could not.
+     *
+     * <p>Guarded like the cache write, and for the same reason: a record of an
+     * analysis must not be able to cost the analysis.
+     */
+    private void writeManifestQuietly(Workspace workspace, Instant startedAt,
+                                      SourceKind kind, MusicWizardConfig config) {
+        try {
+            workspace.writeRunManifest(new RunManifest(
+                    RunManifest.CURRENT_SCHEMA_VERSION,
+                    buildVersion(),
+                    startedAt.toString(),
+                    Instant.now().toString(),
+                    settingsThatSteeredTheRun(kind, config),
+                    runLog.stages()));
+        } catch (RuntimeException e) {
+            System.err.println("warning: this run could not be recorded, so the analysis"
+                    + " report will not be able to say what it did: " + e.getMessage());
+        }
+    }
+
+    /**
+     * The settings this run acted on, and only those: a correction that the
+     * path taken never reads is not something that steered anything.
+     */
+    private Map<String, String> settingsThatSteeredTheRun(
+            SourceKind kind, MusicWizardConfig config) {
+        Map<String, String> settings = new LinkedHashMap<>();
+        settings.put("source", kind.description());
+        var analysis = config.analysis();
+        if (kind == SourceKind.AUDIO) {
+            if (analysis != null && analysis.tempoOverride() != null) {
+                settings.put("tempo forced to", String.format(Locale.ROOT,
+                        "%.1f counted beats a minute", analysis.tempoOverride()));
+            }
+            if (analysis != null && analysis.timeSignatureOverride() != null) {
+                settings.put("meter forced to", analysis.timeSignatureOverride());
+            }
+            if (analysis != null && analysis.firstDownbeatSecondsOverride() != null) {
+                settings.put("first downbeat forced to", String.format(Locale.ROOT,
+                        "%.3f s", analysis.firstDownbeatSecondsOverride()));
+            }
+            settings.put("melody", melody ? "read from the recording" : "not read");
+        }
+        settings.put("advisor", config.isLlmEnabled() ? "enabled" : "disabled");
+        if (force) {
+            settings.put("cached results", "ignored (--force)");
+        }
+        if (lyricsFile != null) {
+            settings.put("lyrics file", lyricsFile.getFileName().toString());
+        }
+        if (lyricsLanguage != null && !lyricsLanguage.isBlank()) {
+            settings.put("lyrics language", lyricsLanguage);
+        }
+        return settings;
     }
 
     /** The build's own version, or a placeholder when it is not running from a jar. */
