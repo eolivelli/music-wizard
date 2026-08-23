@@ -279,7 +279,9 @@ final class ReportPhases {
                 "a key signature, and a tonic within it",
                 "one key span, with a confidence for each decision");
         if (!any) {
-            note("No key was estimated, which is what happens when no chord sounds.");
+            note("This score carries no key. On a recording that is what happens when no"
+                    + " chord sounds; a MIDI file that declares no key signature leaves"
+                    + " none either, however much of it sounds.");
             close();
             return;
         }

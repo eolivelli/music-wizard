@@ -91,11 +91,19 @@ class AnalysisReportTest {
             assertThat(statusOf(page, phase)).isEqualTo("no trace kept");
         }
         assertThat(page).contains("These are the stages of the audio pipeline");
-        // The two stages that run on both paths by different means say so,
-        // rather than naming the audio route's inputs as the only ones.
         assertThat(page).contains(
                 "A score read from a MIDI file has its chords named from the notes",
                 "A score read from a MIDI file takes the key its own meta event declares");
+    }
+
+    @Test
+    @DisplayName("an absent key names both ways of not having one")
+    void theKeysAbsenceIsWordedForBothPaths() {
+        // A MIDI file that declares no key signature carries none however much
+        // of it sounds, so "no chord sounds" is not the only way to get here.
+        assertThat(AnalysisReport.toHtml(ReportFixtures.bare(), RECORDING))
+                .contains("a MIDI file that declares no key signature leaves none either")
+                .doesNotContain("which is what happens when no chord sounds.");
     }
 
     @Test

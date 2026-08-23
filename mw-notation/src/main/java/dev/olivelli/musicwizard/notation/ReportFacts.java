@@ -116,8 +116,7 @@ final class ReportFacts {
         // Compared against a tolerance rather than against zero. The end is a
         // beat converted from seconds that were converted from beats, and at
         // any tempo whose beat is not an exact binary fraction of a second the
-        // round trip lands a few ulps past the bar line -- which read as a bar
-        // of its own, beside the quantizer's correct count on the same page.
+        // round trip lands a few ulps past the bar line, which read as a bar.
         return end.beatInBar() > ON_THE_LINE * Math.max(1, lastBeat)
                 ? end.bar() + 1 : end.bar();
     }

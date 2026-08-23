@@ -256,10 +256,8 @@ final class RenderCommand implements Callable<Integer> {
         /**
          * Whether {@code --transpose} reaches this part.
          *
-         * <p>False for the analysis report alone, which is about the recording
-         * rather than about what is being played from. Recorded here so that a
-         * run whose shift reaches nothing can say so, under the rule {@link
-         * #warnAboutOptionsThatDoNothing} states.
+         * <p>Recorded so that a run whose shift reaches nothing written can say
+         * so, under the rule {@link #warnAboutOptionsThatDoNothing} states.
          */
         boolean movesWithTheKey() {
             return movesWithTheKey;
@@ -427,7 +425,7 @@ final class RenderCommand implements Callable<Integer> {
                 && producible.stream().noneMatch(Part::movesWithTheKey)) {
             warnings.add("nothing that was written moves with a transposition: the analysis"
                     + " report shows the recording as MW read it, so the " + semitones
-                    + "-semitone shift applies to none of the files below");
+                    + "-semitone shift applies to none of them");
         }
 
         if (!written.isEmpty()) {
