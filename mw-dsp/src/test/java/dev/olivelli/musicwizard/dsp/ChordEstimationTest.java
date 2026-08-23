@@ -25,6 +25,7 @@ import dev.olivelli.musicwizard.audio.AudioBuffer;
 import dev.olivelli.musicwizard.audio.Spectrogram;
 import dev.olivelli.musicwizard.core.model.Chord;
 import dev.olivelli.musicwizard.core.model.ChordProgression;
+import dev.olivelli.musicwizard.core.workspace.ChordTrace;
 import dev.olivelli.musicwizard.testkit.SignalFactory;
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;
@@ -845,6 +846,39 @@ class ChordEstimationTest {
         }
 
         @Test
+        @DisplayName("the two readings the veto compared are written down (#677)")
+        void theVetoWritesDownWhatItCompared() {
+            ChordTrace.Span span = ChordEstimator.explain(four(COMBINED), four(TREBLE),
+                    four(BASS), ablation(0.072, 0.045, 0.819), beatTimes(4))
+                    .trace().spans().get(0);
+
+            assertThat(span.chord()).isEqualTo("Am");
+            // The bass names the root the decoder took, so it argued for
+            // nothing against it.
+            assertThat(span.bassRoot()).isEqualTo("A");
+            assertThat(span.bassOnDecoded()).isZero();
+            // The major third is quieter in the fit than the minor third and
+            // below the share the root's own partial accounts for, so it fails
+            // both of its comparisons and is withheld.
+            assertThat(span.gates()).filteredOn(gate -> gate.degree().equals("major third"))
+                    .hasSize(2)
+                    .allSatisfy(gate -> {
+                        assertThat(gate.counted()).isFalse();
+                        assertThat(gate.reading()).isEqualTo(0.045);
+                    })
+                    .extracting(ChordTrace.Gate::required)
+                    .containsExactly(0.1638, 0.072);
+            // And the minor third clears its own floor, which is the reading
+            // that made this chord minor.
+            assertThat(span.gates()).filteredOn(gate -> gate.degree().equals("minor third"))
+                    .singleElement()
+                    .satisfies(gate -> {
+                        assertThat(gate.counted()).isTrue();
+                        assertThat(gate.reading()).isEqualTo(0.072);
+                    });
+        }
+
+        @Test
         @DisplayName("a major third the fit needs is left alone")
         void aPlayedMajorThirdStillDecidesTheQuality() {
             // The same chroma, and an A7 span of samples/blues-a-90bpm.mp3's
@@ -1326,7 +1360,7 @@ class ChordEstimationTest {
          * them, then four of the run that reads minor. Every span answers with
          * its own residual, keyed by where the span starts.
          */
-        private static List<Chord> chords(int majorBeats) {
+        private static ChordEstimator.Decoded decoded(int majorBeats) {
             int total = majorBeats + 8;
             double[][] combined = new double[total][];
             double[][] treble = new double[total][];
@@ -1350,8 +1384,12 @@ class ChordEstimationTest {
                             : fromSpan >= majorBeats ? D_RESIDUAL : A_RESIDUAL;
                 }
             };
-            return ChordEstimator.estimate(beats(combined), beats(treble), beats(bass),
-                    residual, beatTimes(total)).chords();
+            return ChordEstimator.explain(beats(combined), beats(treble), beats(bass),
+                    residual, beatTimes(total));
+        }
+
+        private static List<Chord> chords(int majorBeats) {
+            return decoded(majorBeats).chords().chords();
         }
 
         @Test
@@ -1372,6 +1410,72 @@ class ChordEstimationTest {
             // chord is wrong -- only that this recording does not state one.
             assertThat(chords(3)).extracting(Chord::symbol)
                     .containsExactly("A", "D", "Am");
+        }
+
+        @Test
+        @DisplayName("the span the count renamed says so, and the count says what it read")
+        void theCountThatRenamedTheRunIsWrittenDown() {
+            // The fact a reader of the chart cannot guess: the last run read
+            // minor on its own evidence and carries a major label because of
+            // the other spans on its root (#677).
+            ChordTrace trace = decoded(8).trace();
+
+            List<ChordTrace.Span> spans = trace.spans();
+            assertThat(spans).extracting(ChordTrace.Span::chord)
+                    .containsExactly("A", "D", "A");
+            assertThat(spans).extracting(ChordTrace.Span::settledBy)
+                    .containsExactly("decoder", "decoder", "thirds");
+            // The decoder never had this run minor: the run's own chroma made
+            // it minor and the count took it back, and only the three labels
+            // together say that.
+            assertThat(spans.get(2).decoded().chord()).isEqualTo("A");
+            assertThat(spans.get(2).fromRun()).isEqualTo("Am");
+
+            ChordTrace.Root a = trace.roots().stream()
+                    .filter(root -> root.root().equals("A")).findFirst().orElseThrow();
+            assertThat(a.thirds().stated()).isEqualTo(4);
+            assertThat(a.thirds().beats()).isEqualTo(12);
+            assertThat(a.thirds().decided()).isEqualTo("withdrawn");
+            assertThat(a.thirds().runsChanged()).isEqualTo(1);
+        }
+
+        @Test
+        @DisplayName("the count that left the runs alone is written down as that")
+        void aCountThatChangedNothingIsWrittenDown() {
+            ChordTrace trace = decoded(3).trace();
+
+            // The same run, named by its own chroma this time and by no count.
+            assertThat(trace.spans()).extracting(ChordTrace.Span::settledBy)
+                    .containsExactly("decoder", "decoder", "run");
+            assertThat(trace.spans().get(2).fromRun()).isEqualTo("Am");
+            ChordTrace.Root a = trace.roots().stream()
+                    .filter(root -> root.root().equals("A")).findFirst().orElseThrow();
+            assertThat(a.thirds().decided()).isEqualTo("as read");
+            assertThat(a.thirds().runsChanged()).isZero();
+        }
+
+        @Test
+        @DisplayName("one span per chord, over the same beats and the same seconds")
+        void theTraceKeysToTheProgression() {
+            // Span i of the trace has to be span i of the progression and of
+            // the chroma trace beside it: the index is the only thing tying a
+            // recorded reading to the decision made on it.
+            ChordEstimator.Decoded decoded = decoded(8);
+
+            List<Chord> chords = decoded.chords().chords();
+            List<ChordTrace.Span> spans = decoded.trace().spans();
+            assertThat(spans).hasSameSizeAs(chords);
+            assertThat(spans.get(0).fromBeat()).isZero();
+            assertThat(spans.get(spans.size() - 1).toBeat()).isEqualTo(16);
+            for (int i = 0; i < spans.size(); i++) {
+                assertThat(spans.get(i).chord()).isEqualTo(chords.get(i).symbol());
+                assertThat(spans.get(i).fromSeconds()).isEqualTo(chords.get(i).startSeconds());
+                assertThat(spans.get(i).toSeconds()).isEqualTo(chords.get(i).endSeconds());
+                assertThat(spans.get(i).toBeat()).isGreaterThan(spans.get(i).fromBeat());
+                if (i > 0) {
+                    assertThat(spans.get(i).fromBeat()).isEqualTo(spans.get(i - 1).toBeat());
+                }
+            }
         }
     }
 
@@ -1551,6 +1655,12 @@ class ChordEstimationTest {
                     .chords().get(0).symbol();
         }
 
+        private static ChordTrace.Span span(double[] combined, double[] treble, double[] bass,
+                                            double[] residual) {
+            return ChordEstimator.explain(four(combined), four(treble), four(bass),
+                    ablation(residual), beatTimes(4)).trace().spans().get(0);
+        }
+
         /** {@code residual} with the major seventh above C cut to a tenth of the root's. */
         private static double[] withoutTheSeventh(double[] residual) {
             double[] out = residual.clone();
@@ -1581,6 +1691,28 @@ class ChordEstimationTest {
         void aSeventhTheFitDoesNotNeedIsNotReported() {
             assertThat(label(POP_COMBINED, POP_TREBLE, POP_BASS, POP_RESIDUAL))
                     .isEqualTo("C");
+        }
+
+        @Test
+        @DisplayName("both halves of the seventh's gate are written down (#677)")
+        void bothHalvesOfTheGateAreWrittenDown() {
+            // The decoder's half is asked per beat and the quality decision's
+            // once per run, so the trace carries one as a count of beats and
+            // the other as the reading it compared.
+            ChordTrace.Span found = span(JAZZ_COMBINED, JAZZ_TREBLE, JAZZ_BASS, JAZZ_RESIDUAL);
+            ChordTrace.Span plain = span(POP_COMBINED, POP_TREBLE, POP_BASS, POP_RESIDUAL);
+
+            assertThat(found.chord()).isEqualTo("Cmaj7");
+            assertThat(found.majorSeventhBeats()).isEqualTo(4);
+            assertThat(plain.chord()).isEqualTo("C");
+            assertThat(plain.majorSeventhBeats()).isZero();
+            assertThat(plain.gates()).filteredOn(gate -> gate.degree().equals("major seventh"))
+                    .singleElement()
+                    .satisfies(gate -> {
+                        assertThat(gate.counted()).isFalse();
+                        assertThat(gate.reading()).isEqualTo(0.0943);
+                        assertThat(gate.required()).isEqualTo(0.5119);
+                    });
         }
 
         @Test
@@ -1645,6 +1777,85 @@ class ChordEstimationTest {
             double[] loud = POP_RESIDUAL.clone();
             loud[11] = 2 * POP_RESIDUAL[0];
             assertThat(label(POP_COMBINED, POP_TREBLE, POP_BASS, loud)).isEqualTo("C");
+        }
+    }
+
+    /** What the trace says where there was nothing to decide (#677). */
+    @Nested
+    @DisplayName("the decoder's record of a span it had no evidence for")
+    class DecoderTraceWithoutEvidence {
+
+        private static PitchClassAblation nothing(int spans) {
+            return new PitchClassAblation() {
+                @Override
+                public int spanCount() {
+                    return spans;
+                }
+
+                @Override
+                public double[] significanceOver(int fromSpan, int toSpan) {
+                    return new double[12];
+                }
+            };
+        }
+
+        private static Chroma four(double[] vector) {
+            return beats(vector, vector, vector, vector);
+        }
+
+        @Test
+        @DisplayName("silence names no chord, gates nothing and hears no root in the bass")
+        void aSilentSpanIsRecordedAsHavingDecidedNothing() {
+            // A blind record would print what a decided one prints, so each of
+            // these absences has to read as an absence rather than as a
+            // reading: no gate ran, and a bass that dropped out names no root.
+            ChordTrace.Span span = ChordEstimator.explain(four(new double[12]),
+                    four(new double[12]), four(new double[12]), nothing(4), beatTimes(4))
+                    .trace().spans().get(0);
+
+            assertThat(span.chord()).isEqualTo("N.C.");
+            assertThat(span.decoded().chord()).isEqualTo("N.C.");
+            assertThat(span.settledBy()).isEqualTo("decoder");
+            assertThat(span.gates()).isEmpty();
+            assertThat(span.bassRoot()).isNull();
+            assertThat(span.bassOnDecoded()).isZero();
+            assertThat(span.majorSeventhBeats()).isZero();
+        }
+
+        @Test
+        @DisplayName("a decode with no beat to decode over records no span and no root")
+        void anEmptyDecodeRecordsNothing() {
+            ChordEstimator.Decoded decoded = ChordEstimator.explain(beats(), beats(), beats(),
+                    nothing(0), List.of(0.0, 0.5));
+
+            assertThat(decoded.chords().chords()).isEmpty();
+            assertThat(decoded.trace().spans()).isEmpty();
+            assertThat(decoded.trace().roots()).isEmpty();
+        }
+
+        @Test
+        @DisplayName("the runner-up is a state the decoder could have taken instead")
+        void theRunnerUpIsScoredOverTheSameBeats() {
+            // A plain C triad under a bass on C. What the runner-up is depends
+            // on the vocabulary and is not the point; that it is a rival the
+            // path could have taken, scored over the same beats and beaten, is.
+            double[] triad = new double[12];
+            java.util.Arrays.fill(triad, 0.01);
+            triad[0] = 0.35;
+            triad[4] = 0.28;
+            triad[7] = 0.29;
+            double[] bass = new double[12];
+            java.util.Arrays.fill(bass, 0.01);
+            bass[0] = 0.6;
+
+            ChordTrace.Span span = ChordEstimator.explain(four(triad), four(triad), four(bass),
+                    nothing(4), beatTimes(4)).trace().spans().get(0);
+
+            assertThat(span.decoded().chord()).isEqualTo("C");
+            assertThat(span.runnerUp()).isNotNull();
+            assertThat(span.runnerUp().chord()).isNotEqualTo(span.decoded().chord());
+            assertThat(span.decoded().score()).isGreaterThan(span.runnerUp().score());
+            assertThat(span.bassRoot()).isEqualTo("C");
         }
     }
 }

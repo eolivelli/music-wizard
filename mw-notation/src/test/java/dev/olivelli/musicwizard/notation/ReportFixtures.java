@@ -36,6 +36,7 @@ import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.model.TempoMap;
 import dev.olivelli.musicwizard.core.model.TimeSignature;
 import dev.olivelli.musicwizard.core.workspace.BeatTrace;
+import dev.olivelli.musicwizard.core.workspace.ChordTrace;
 import dev.olivelli.musicwizard.core.workspace.ChromaTrace;
 import dev.olivelli.musicwizard.core.workspace.RunManifest;
 import dev.olivelli.musicwizard.core.workspace.RunTraceJson;
@@ -121,23 +122,34 @@ final class ReportFixtures {
      * What that run's stages weighed: a tracker whose two windows disagreed
      * about the octave, with the bass register halving the pulse they settled
      * on, a chroma front end that read a tuning and summarised the same spans
-     * the chords name, and one stage this build's page has no phase for.
+     * the chords name, a decoder that wrote down why each of them carries its
+     * label, and one stage this build's page has no phase for.
      */
     static RunTraces weighed() {
-        return weighed(new BeatTrace.Octave(true, 6.5, 0.04, 0.82, 2, 1, true), chroma());
+        return weighed(defaultOctave(), chroma(), chordDecisions());
     }
 
     /** The same, with a register reading of the caller's choosing. */
     static RunTraces weighed(BeatTrace.Octave octave) {
-        return weighed(octave, chroma());
+        return weighed(octave, chroma(), chordDecisions());
     }
 
     /** The same, with a chroma trace of the caller's choosing. */
     static RunTraces weighed(ChromaTrace chroma) {
-        return weighed(new BeatTrace.Octave(true, 6.5, 0.04, 0.82, 2, 1, true), chroma);
+        return weighed(defaultOctave(), chroma, chordDecisions());
     }
 
-    private static RunTraces weighed(BeatTrace.Octave octave, ChromaTrace chroma) {
+    /** The same, with a decoder trace of the caller's choosing. */
+    static RunTraces weighed(ChordTrace chords) {
+        return weighed(defaultOctave(), chroma(), chords);
+    }
+
+    private static BeatTrace.Octave defaultOctave() {
+        return new BeatTrace.Octave(true, 6.5, 0.04, 0.82, 2, 1, true);
+    }
+
+    private static RunTraces weighed(BeatTrace.Octave octave, ChromaTrace chroma,
+                                     ChordTrace chords) {
         BeatTrace beats = new BeatTrace(240.5, 120.25, octave,
                 List.of(
                         new BeatTrace.Window(0, 25, true, 240.5, 0.61, 0.88, 120.25,
@@ -150,8 +162,89 @@ final class ReportFixtures {
         Map<String, Object> collected = new LinkedHashMap<>();
         collected.put(BeatTrace.STAGE, beats);
         collected.put(ChromaTrace.STAGE, chroma);
+        collected.put(ChordTrace.STAGE, chords);
         collected.put("hummed-bass", Map.of("hummed", true));
         return RunTraceJson.of(collected);
+    }
+
+    /**
+     * Why each of {@link #chords()}'s spans carries its label: one the run's own
+     * chroma renamed, one a root's seventh count renamed, and one whose runner-up
+     * outscored the state the decoder held — which is the transition prior
+     * keeping a chord, and the one case where the margin is negative.
+     */
+    static ChordTrace chordDecisions() {
+        return new ChordTrace(
+                List.of(
+                        new ChordTrace.Span(0, 1, 0, 2, "N.C.", "N.C.", "decoder",
+                                new ChordTrace.Candidate("N.C.", -25.54),
+                                new ChordTrace.Candidate("C", -31.08),
+                                null, 0, 0, List.of()),
+                        new ChordTrace.Span(1, 2, 2, 4, "C", "C", "decoder",
+                                new ChordTrace.Candidate("C", -9.42),
+                                new ChordTrace.Candidate("Am", -11.27),
+                                "C", 0, 0,
+                                gatesOn("0.31 0.02 0.01 0.04 0.02", "0.21 0.01 0.21 0.21 0.52", true)),
+                        new ChordTrace.Span(2, 4, 4, 8, "Am", "Am", "run",
+                                new ChordTrace.Candidate("A", -8.83),
+                                new ChordTrace.Candidate("C", -9.91),
+                                "A", -1.62, 0,
+                                gatesOn("0.02 0.74 0.01 0.21 0.35", "0.22 0.01 0.22 0.22 0.56", false)),
+                        new ChordTrace.Span(4, 6, 8, 12, "Fmaj7", "Fmaj7", "decoder",
+                                new ChordTrace.Candidate("Fmaj7", -7.94),
+                                new ChordTrace.Candidate("F", -8.61),
+                                "F", 0, 4,
+                                gatesOn("0.44 0.03 0.00 0.12 1.29", "0.26 0.01 0.26 0.26 0.66", true)),
+                        new ChordTrace.Span(6, 8, 12, 16, "G7", "G", "sevenths",
+                                new ChordTrace.Candidate("G", -10.55),
+                                new ChordTrace.Candidate("G7", -10.21),
+                                "G", 0, 0,
+                                gatesOn("0.71 0.05 0.02 0.03 0.40", "0.24 0.01 0.24 0.24 0.59", true))),
+                List.of(
+                        new ChordTrace.Root("C",
+                                new ChordTrace.Count(0, 2, "withdrawn", 0),
+                                new ChordTrace.Count(0, 2, "withdrawn", 0)),
+                        new ChordTrace.Root("F",
+                                new ChordTrace.Count(0, 4, "withdrawn", 0),
+                                new ChordTrace.Count(0, 4, "withdrawn", 0)),
+                        new ChordTrace.Root("G",
+                                new ChordTrace.Count(0, 4, "withdrawn", 0),
+                                new ChordTrace.Count(4, 4, "added", 1)),
+                        new ChordTrace.Root("A",
+                                new ChordTrace.Count(4, 4, "as read", 0),
+                                new ChordTrace.Count(0, 4, "withdrawn", 0))));
+    }
+
+    /** A decoder that named the spans and left no reasoning behind it. */
+    static ChordTrace chordsWithoutDecisions() {
+        return new ChordTrace(List.of(), List.of());
+    }
+
+    /**
+     * The six comparisons the quality gates make on one root: the reading each
+     * gated degree left in the fit, and the bar it was held to. In both rows,
+     * the major third, the minor third, the diminished fifth, the sixth and the
+     * major seventh, in that order.
+     *
+     * <p>The major third has a row for each of its two comparisons and one
+     * outcome between them, which is the shape the estimator records.
+     */
+    private static List<ChordTrace.Gate> gatesOn(String read, String needed,
+                                                 boolean majorThirdCounted) {
+        List<Double> reading = reading(read);
+        List<Double> bar = reading(needed);
+        List<ChordTrace.Gate> gates = new ArrayList<>();
+        gates.add(new ChordTrace.Gate("major third", "share of the root",
+                reading.get(0), bar.get(0), majorThirdCounted));
+        gates.add(new ChordTrace.Gate("major third", "the minor third",
+                reading.get(0), reading.get(1), majorThirdCounted));
+        String[] degrees = {"minor third", "diminished fifth", "sixth", "major seventh"};
+        for (int i = 0; i < degrees.length; i++) {
+            gates.add(new ChordTrace.Gate(degrees[i], "share of the root",
+                    reading.get(i + 1), bar.get(i + 1),
+                    reading.get(i + 1) >= bar.get(i + 1)));
+        }
+        return gates;
     }
 
     /** What the front end read, over the same spans {@link #chords()} names. */

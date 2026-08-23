@@ -33,6 +33,7 @@ import dev.olivelli.musicwizard.core.model.Provenance;
 import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.model.TempoMap;
 import dev.olivelli.musicwizard.core.workspace.BeatTrace;
+import dev.olivelli.musicwizard.core.workspace.ChordTrace;
 import dev.olivelli.musicwizard.core.workspace.ChromaTrace;
 import dev.olivelli.musicwizard.core.workspace.RunManifest;
 import dev.olivelli.musicwizard.core.workspace.RunTraces;
@@ -386,8 +387,7 @@ final class ReportPhases {
         spanTable(trace.spans());
         note("Summarised over the chord spans and not the beats inside them, so a chord whose"
                 + " own beats disagree reads here as their average. Which of these readings"
-                + " each gate compared, and against what, is the decoder's and is not"
-                + " recorded (#677).");
+                + " each gate compared, and against what, is under the chord phase below.");
     }
 
     private static double seconds(int samples, int sampleRate) {
@@ -447,11 +447,186 @@ final class ReportPhases {
         qualityChart();
         rootLegend(spans);
         chordTable(spans);
-        gap("Which candidate roots lost, what the residual gate admitted or refused, how"
-                + " the third was settled across the run, and what the bass prior"
-                + " contributed are all decided inside the estimator and none of it is"
-                + " recorded. Only the answer reaches the workspace (#677).");
+        Optional<ChordTrace> trace = traces == null
+                ? Optional.empty() : traces.trace(ChordTrace.STAGE, ChordTrace.class);
+        trace.ifPresentOrElse(this::howEachLabelWasChosen,
+                () -> gap("Which candidate roots lost, what the residual gate admitted or"
+                        + " refused, how the third was settled across the root, and what the"
+                        + " bass prior contributed are not in this workspace. A recording"
+                        + " analysed again records them; a score read from a MIDI file has"
+                        + " none of them to record (#677)."));
         close();
+    }
+
+    /**
+     * What the decoder chose between, and the two decisions taken over a root
+     * rather than a span, from the trace the run left (#677).
+     */
+    private void howEachLabelWasChosen(ChordTrace trace) {
+        if (trace.spans().isEmpty() && trace.roots().isEmpty()) {
+            note("The decoder recorded no span and no root, which is what an estimate over"
+                    + " a recording with no beat to decode over looks like.");
+            return;
+        }
+        out.element("h4", "What the decoder chose between").line("");
+        note("Each state is scored over the span's own beats in the decoder's own units, the"
+                + " emission and the bass prior together. It is not a posterior and it does"
+                + " not compare between spans. The decoder picks a path rather than a state"
+                + " per beat, so the state it held can score below one it passed over — that"
+                + " is the transition prior keeping the chord, and it is why a margin here"
+                + " can be negative.");
+        spanDecisionTable(trace.spans());
+        note("Three labels in the order the span passed through them: what the decoder held,"
+                + " what the run's own chroma made of it, and what the chart prints. The last"
+                + " column names the decision that set the printed one — where it is a count,"
+                + " this span was named by other spans on its root, and the table below says"
+                + " what that count read. What the bass names is the root its register argued"
+                + " for over these beats, beside what that argument added to the decoded"
+                + " root, which is nothing where the two agree and negative where they do"
+                + " not.");
+        gateTable(trace.spans());
+        rootDecisionTable(trace.roots());
+    }
+
+    /** What each span was decoded as, what it nearly was, and what the bass said. */
+    private void spanDecisionTable(List<ChordTrace.Span> spans) {
+        if (spans.isEmpty()) {
+            note("No span was decoded.");
+            return;
+        }
+        out.line("<details class=\"table\">");
+        out.element("summary", "Every chord span, and what it beat");
+        out.line("<table><thead><tr><th>#</th><th>From</th><th>Chord</th>"
+                + "<th>The decoder held</th><th>The run read</th><th>Runner-up</th>"
+                + "<th>Margin</th><th>The bass names</th>"
+                + "<th>Major seventh in reach</th><th>Named by</th>"
+                + "</tr></thead><tbody>");
+        for (int i = 0; i < spans.size(); i++) {
+            ChordTrace.Span span = spans.get(i);
+            ChordTrace.Candidate runnerUp = span.runnerUp();
+            out.open("tr");
+            out.element("td", String.valueOf(i + 1));
+            out.element("td", ReportTimeline.clock(span.fromSeconds()));
+            out.element("td", span.chord(), "class", "symbol");
+            out.element("td", candidate(span.decoded()));
+            out.element("td", span.fromRun(), "class", "symbol");
+            out.element("td", runnerUp == null ? "nothing else was scored" : candidate(runnerUp));
+            out.element("td", runnerUp == null ? "—"
+                    : HtmlWriter.number(span.decoded().score() - runnerUp.score(), 2));
+            out.element("td", span.bassRoot() == null ? "nothing"
+                    : span.bassRoot() + "  " + HtmlWriter.number(span.bassOnDecoded(), 2));
+            out.element("td", span.majorSeventhBeats() + " of "
+                    + (span.toBeat() - span.fromBeat()) + " beats");
+            out.element("td", namedBy(span.settledBy()));
+            out.line("</tr>");
+        }
+        out.line("</tbody></table>");
+        out.line("</details>");
+    }
+
+    /** The residual readings each span's quality decision compared, and against what. */
+    private void gateTable(List<ChordTrace.Span> spans) {
+        if (spans.stream().allMatch(span -> span.gates().isEmpty())) {
+            note("No residual was measured over these spans, so nothing says which readings"
+                    + " the quality gates compared.");
+            return;
+        }
+        out.line("<details class=\"table\">");
+        out.element("summary", "What the residual said about each span's root");
+        out.line("<table><thead><tr><th>#</th><th>Chord</th><th>Degree</th>"
+                + "<th>Compared against</th><th>Read</th><th>Needed</th><th>Outcome</th>"
+                + "</tr></thead><tbody>");
+        for (int i = 0; i < spans.size(); i++) {
+            ChordTrace.Span span = spans.get(i);
+            for (ChordTrace.Gate gate : span.gates()) {
+                out.open("tr");
+                out.element("td", String.valueOf(i + 1));
+                out.element("td", span.chord(), "class", "symbol");
+                out.element("td", gate.degree());
+                out.element("td", gate.rule());
+                out.element("td", HtmlWriter.number(gate.reading(), 3));
+                out.element("td", HtmlWriter.number(gate.required(), 3));
+                out.element("td", gate.counted() ? "counted" : "withheld");
+                out.line("</tr>");
+            }
+        }
+        out.line("</tbody></table>");
+        out.line("</details>");
+        note("How much of the run's spectrum only that degree explains, against what the rule"
+                + " asks of it. The outcome is the degree's, not the row's: the major third"
+                + " has a row for each of its two comparisons and is withheld only where it"
+                + " fails both. A degree the printed chord does not state is here too,"
+                + " because a candidate that was refused is as much of the answer as the one"
+                + " that won.");
+    }
+
+    /**
+     * The third and the seventh as they were settled over every run on a root,
+     * which is why a span's quality is often decided by other spans.
+     */
+    private void rootDecisionTable(List<ChordTrace.Root> roots) {
+        if (roots.isEmpty()) {
+            return;
+        }
+        out.line("<details class=\"table\">");
+        out.element("summary", "How each root's third and seventh were settled");
+        out.line("<table><thead><tr><th>Root</th><th>Minor thirds</th><th>The count decided</th>"
+                + "<th>Runs changed</th><th>Minor sevenths</th><th>The count decided</th>"
+                + "<th>Runs changed</th></tr></thead><tbody>");
+        for (ChordTrace.Root root : roots) {
+            out.open("tr");
+            out.element("td", root.root(), "class", "symbol");
+            out.element("td", count(root.thirds()));
+            out.element("td", thirdDecided(root.thirds().decided()));
+            out.element("td", String.valueOf(root.thirds().runsChanged()));
+            out.element("td", count(root.sevenths()));
+            out.element("td", seventhDecided(root.sevenths().decided()));
+            out.element("td", String.valueOf(root.sevenths().runsChanged()));
+            out.line("</tr>");
+        }
+        out.line("</tbody></table>");
+        out.line("</details>");
+        note("Each of these is one count read over every beat the recording puts on that"
+                + " root, and it settles every run on it at once. The two are counted over"
+                + " different beats: a run stating a sixth is no evidence about a seventh and"
+                + " is left out of that count altogether.");
+    }
+
+    private static String count(ChordTrace.Count count) {
+        return count.stated() + " of " + count.beats() + " beats";
+    }
+
+    private static String thirdDecided(String decided) {
+        return switch (decided) {
+            case "withdrawn" -> "fewer than half of this root's beats hold a minor third,"
+                    + " so it is withdrawn from every run on it";
+            case "as read" -> "at least half of them hold one, so each run keeps its own third";
+            default -> decided;
+        };
+    }
+
+    private static String seventhDecided(String decided) {
+        return switch (decided) {
+            case "withdrawn" -> "fewer than half of this root's beats state this seventh,"
+                    + " so it is withdrawn from every run on it";
+            case "added" -> "more than half state it, so the minor triads among them gain one";
+            case "as read" -> "the beats split evenly, so each run keeps what it read";
+            default -> decided;
+        };
+    }
+
+    private static String namedBy(String settledBy) {
+        return switch (settledBy) {
+            case "decoder" -> "the decoder";
+            case "run" -> "the run weighed against its own chroma";
+            case "sevenths" -> "the root's seventh count";
+            case "thirds" -> "the root's third count";
+            default -> settledBy;
+        };
+    }
+
+    private static String candidate(ChordTrace.Candidate candidate) {
+        return candidate.chord() + "  " + HtmlWriter.number(candidate.score(), 2);
     }
 
     private void key() {

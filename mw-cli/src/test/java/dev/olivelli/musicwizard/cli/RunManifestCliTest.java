@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.workspace.BeatTrace;
+import dev.olivelli.musicwizard.core.workspace.ChordTrace;
 import dev.olivelli.musicwizard.core.workspace.ChromaTrace;
 import dev.olivelli.musicwizard.core.workspace.RunManifest;
 import dev.olivelli.musicwizard.core.workspace.RunManifest.Outcome;
@@ -98,6 +99,12 @@ class RunManifestCliTest {
         return Workspace.open(workspaceDirectory).readRunTraces().orElseThrow()
                 .trace(ChromaTrace.STAGE, ChromaTrace.class)
                 .orElseThrow(() -> new AssertionError("this run recorded no chroma trace"));
+    }
+
+    private ChordTrace chordTrace() {
+        return Workspace.open(workspaceDirectory).readRunTraces().orElseThrow()
+                .trace(ChordTrace.STAGE, ChordTrace.class)
+                .orElseThrow(() -> new AssertionError("this run recorded no chord trace"));
     }
 
     private BeatTrace beatTrace() {
@@ -256,11 +263,30 @@ class RunManifestCliTest {
     }
 
     @Test
+    @DisplayName("the decoder writes down why each span carries its label")
+    void theChordTraceIsWritten() {
+        analyze();
+
+        ChordTrace trace = chordTrace();
+        assertThat(trace.spans()).hasSize(score().chords().size());
+        assertThat(trace.spans()).allSatisfy(span -> {
+            assertThat(span.toBeat()).isGreaterThan(span.fromBeat());
+            assertThat(span.decoded()).isNotNull();
+            assertThat(span.settledBy()).isNotBlank();
+            // The residual is measured on this path, so a span on a root with
+            // no gate reading would mean the ablation never reached the record.
+            assertThat(span.gates()).hasSize(span.chord().equals("N.C.") ? 0 : 6);
+        });
+        assertThat(trace.roots()).isNotEmpty();
+    }
+
+    @Test
     @DisplayName("what the stages weighed travels with the cached answer")
     void theTraceIsServedWithTheCachedAnalysis() {
         analyze();
         BeatTrace computed = beatTrace();
         ChromaTrace weighed = chromaTrace();
+        ChordTrace decided = chordTrace();
 
         // A trace is a function of the cache key exactly as the score is, so a
         // run served the score has to be served the trace: without that, the
@@ -270,6 +296,7 @@ class RunManifestCliTest {
         assertThat(stage("beats").outcome()).isEqualTo(Outcome.CACHED);
         assertThat(beatTrace()).isEqualTo(computed);
         assertThat(chromaTrace()).isEqualTo(weighed);
+        assertThat(chordTrace()).isEqualTo(decided);
     }
 
     @Test

@@ -147,6 +147,41 @@ class AnalysisReportTest {
     }
 
     @Test
+    @DisplayName("why each chord carries its label is drawn, or its absence stated")
+    void theDecoderTraceIsDrawnOrItsAbsenceStated() {
+        String weighed = AnalysisReport.toHtml(ReportFixtures.everything(), RECORDING,
+                ReportFixtures.run(), ReportFixtures.weighed());
+        String blank = AnalysisReport.toHtml(
+                ReportFixtures.everything(), RECORDING, ReportFixtures.run());
+
+        assertThat(weighed).contains("What the decoder chose between",
+                "Every chord span, and what it beat",
+                // The span the run's own chroma renamed, and the one a count on
+                // its root renamed -- which is the fact the chart cannot show.
+                "the run weighed against its own chroma", "the root's seventh count",
+                "How each root's third and seventh were settled",
+                "more than half state it, so the minor triads among them gain one",
+                // The readings a gate compared, and the degree it withheld.
+                "What the residual said about each span's root", "<td>withheld</td>");
+        assertThat(weighed).doesNotContain("Which candidate roots lost");
+
+        assertThat(blank).contains("Which candidate roots lost", "(#677)");
+        assertThat(blank).doesNotContain("What the decoder chose between");
+    }
+
+    @Test
+    @DisplayName("a decoder that recorded no decision says so and draws nothing")
+    void aDecoderTraceWithNoSpansIsStated() {
+        String page = AnalysisReport.toHtml(ReportFixtures.everything(), RECORDING,
+                ReportFixtures.run(), ReportFixtures.weighed(
+                        ReportFixtures.chordsWithoutDecisions()));
+
+        assertThat(page).contains("The decoder recorded no span and no root");
+        assertThat(page).doesNotContain("Every chord span, and what it beat",
+                "Which candidate roots lost");
+    }
+
+    @Test
     @DisplayName("a residual that was never measured is not drawn as a blank one")
     void anUnmeasuredResidualIsNotDrawn() {
         // A reading of no width is what a run with no ablation records, and an
