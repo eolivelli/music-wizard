@@ -78,9 +78,8 @@ final class ReportFixtures {
      * What one run recorded about itself: every outcome the page draws
      * differently, and a stage the page has no phase for.
      *
-     * <p>Not one run the CLI could produce — it is one of each, against a score
-     * that holds everything, so that a golden covers every pairing of what the
-     * score says with what the run says, including the pairings that disagree.
+     * <p>Not one run the CLI could produce: it is one of each outcome, so that
+     * a golden covers every shape the page draws for a stage.
      *
      * <p>The clock and the build are constants for the same reason every figure
      * above is: a golden file compares the whole page, and a run's own
@@ -92,7 +91,7 @@ final class ReportFixtures {
                 new LinkedHashMap<>(Map.of("source", "audio")),
                 List.of(
                         stage("decode", RunManifest.Outcome.COMPUTED, null,
-                                "format", "MP3, MPEG-1, Layer 3",
+                                "format", "MPEG-1, Layer 3",
                                 "sample rate as stored", "44100 Hz",
                                 "read as", "mono at 22050 Hz"),
                         stage("separation", RunManifest.Outcome.FAILED,

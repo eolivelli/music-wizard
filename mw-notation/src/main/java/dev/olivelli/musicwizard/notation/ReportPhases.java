@@ -118,19 +118,22 @@ final class ReportPhases {
         // what happens instead of decoding, so either answers the phase.
         Optional<RunManifest.StageRun> read =
                 recorded("decode").or(() -> recorded("read-midi"));
+        boolean symbolic = read.map(entry -> entry.stage().equals("read-midi")).orElse(false);
         open("decode", "Decode", read.map(Status::of).orElse(Status.UNTRACED),
                 "A recording is read to mono samples at the analysis rate, and everything"
                         + " after this point works from those samples. A score read from a"
                         + " MIDI file is read symbolically instead and decodes nothing.");
         inOut("the source file in the workspace",
-                "nothing — a decode has no choices to make",
-                "one signal, and how long the recording is");
+                "nothing — neither arm has a choice to make",
+                symbolic
+                        ? "the events the file declares, and how long it plays"
+                        : "one signal, and how long the recording is");
         whatRan("read-midi");
         facts(fact("Length", ReportTimeline.clock(score.durationSeconds())
                 + "  (" + HtmlWriter.number(score.durationSeconds(), 2) + "s)"));
         if (read.isEmpty()) {
-            gap("This workspace's record of its run does not say which of the two happened,"
-                    + " nor what the file was, nor what it was read as (#674).");
+            gap("Nothing in this workspace says which of the two happened, nor what the"
+                    + " file was, nor what it was read as (#674).");
         }
         close();
     }
@@ -144,8 +147,8 @@ final class ReportPhases {
         inOut("the decoded mix",
                 "whether a separator could be reached at all",
                 "a vocal stem, held in memory and never written to the workspace");
-        gapUnlessRecorded("This workspace's record of its run does not say whether a"
-                + " separator ran, or which provider it was (#674).");
+        gapUnlessRecorded("Nothing in this workspace says whether a separator ran, or"
+                + " which provider it was (#674).");
         close();
     }
 
@@ -340,8 +343,8 @@ final class ReportPhases {
                         HtmlWriter.number(sorted[sorted.length - 1], 3) + "s"));
         confidences(List.of(new Reading("Confidence in the track", melody.confidence())));
         histogram("How long the notes are, in seconds", durations);
-        gapUnlessRecorded("This workspace's record of its run does not say which signal"
-                + " these notes were read from (#674).");
+        gapUnlessRecorded("Nothing in this workspace says which signal these notes were"
+                + " read from (#674).");
         gap("The pitch track and the voicedness the segmentation read are not recorded, so"
                 + " the page shows the notes and not the decision that cut them (#679).");
         close();
@@ -381,8 +384,8 @@ final class ReportPhases {
         confidences(List.of(new Reading("Confidence in the alignment",
                 score.lyrics().confidence())));
         lineTable();
-        gapUnlessRecorded("This workspace's record of its run does not say whether the"
-                + " words were supplied or transcribed (#674).");
+        gapUnlessRecorded("Nothing in this workspace says whether the words were supplied"
+                + " or transcribed (#674).");
         gap("What the aligner did inside a line — the window it searched, and why a line"
                 + " kept its parsed times instead of being measured — is not recorded"
                 + " (#684).");
@@ -468,11 +471,10 @@ final class ReportPhases {
      *
      * <p>The two answer different questions and can disagree without either
      * being wrong — a run served a cached score ran no stage, and the score
-     * still holds every stage's output — so the badge is worded about what
-     * the phase goes on to draw, and {@link #whatRan} states what the run did
-     * separately and in its own words. The phase's own name is
-     * the stage's name in the manifest, which is what lets a stage that starts
-     * recording light up its phase without this class being taught about it.
+     * still holds every stage's output — so each label is worded on its own
+     * axis. The phase's own name is the stage's name in the manifest, which is
+     * what lets a stage that starts recording light up its phase without this
+     * class being taught about it.
      */
     private void open(String id, String title, Status fallback, String what) {
         phase = id;
@@ -581,7 +583,7 @@ final class ReportPhases {
      * A gap the workspace's record of its run fills where it names the stage
      * (#674).
      *
-     * <p>Worded about the record rather than about the tool, because a
+     * <p>Worded about the workspace rather than about the tool, because a
      * workspace that records nothing and a record that does not reach this
      * stage leave the reader in the same place; which of the two it is, the
      * page says once, above.

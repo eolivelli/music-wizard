@@ -83,10 +83,10 @@ class AnalysisReportTest {
         assertThat(page).contains("recorded nothing about its own run");
         // The four the record would answer keep saying they are unanswered.
         assertThat(page).contains(
-                "does not say which of the two happened",
-                "does not say whether a separator ran",
-                "does not say which signal these notes were read from",
-                "does not say whether the words were supplied or transcribed");
+                "Nothing in this workspace says which of the two happened",
+                "Nothing in this workspace says whether a separator ran",
+                "Nothing in this workspace says which signal these notes were read from",
+                "Nothing in this workspace says whether the words were supplied");
         assertThat(statusOf(page, "decode")).isEqualTo("no trace kept");
         assertThat(page).doesNotContain("Last run");
     }
@@ -109,6 +109,9 @@ class AnalysisReportTest {
         assertThat(statusOf(page, "melody")).isEqualTo("output on disk");
         assertThat(page).contains("Last run</span>beats: from the cache");
         assertThat(page).contains("Last run</span>melody: did not run — not asked for");
+        // A question the record answers is not also asked.
+        assertThat(page).doesNotContain(
+                "Nothing in this workspace says whether the words were supplied");
         // Every gap the record does not fill is still stated.
         assertThat(page).contains("(#675)", "(#676)", "(#677)", "(#678)", "(#679)",
                 "(#680)", "(#684)");
@@ -131,7 +134,7 @@ class AnalysisReportTest {
 
         assertThat(statusOf(page, "decode")).isEqualTo("ran");
         assertThat(page).contains("Last run</span>read midi: ran");
-        assertThat(page).doesNotContain("does not say which of the two happened");
+        assertThat(page).doesNotContain("Nothing in this workspace says which of the two");
         assertThat(page).doesNotContain("recorded nothing about its own run");
     }
 
