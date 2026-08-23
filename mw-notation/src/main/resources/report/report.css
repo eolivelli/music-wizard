@@ -64,7 +64,8 @@ dl.summary dd { margin: 0; font-variant-numeric: tabular-nums; overflow-wrap: an
                   overflow: hidden; background: var(--page); }
 .lane-labels { flex: 0 0 9.5rem; border-right: 1px solid var(--rule); background: var(--panel); }
 .lane-label { display: flex; flex-direction: column; justify-content: center;
-              padding: 0 .6rem; border-bottom: 1px solid var(--rule); overflow: hidden; }
+              padding: 0 .6rem; border-bottom: 1px solid var(--rule); overflow: hidden;
+              line-height: 1.2; }
 .lane-label:last-child { border-bottom: 0; }
 .lane-name { font-size: .78rem; font-weight: 600; }
 .lane-note { font-size: .68rem; color: var(--faint); }

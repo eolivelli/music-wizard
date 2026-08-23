@@ -58,9 +58,9 @@ final class ReportPhases {
         RECORDED("recorded", "output on disk"),
         /** It left nothing behind, but this page can run it again and show that. */
         RECOMPUTED("recomputed", "recomputed here"),
-        /** It ran or may have run, and left nothing behind to show. */
+        /** The workspace does not say whether it ran, or what it decided. */
         UNTRACED("untraced", "no trace kept"),
-        /** It did not run on this workspace. */
+        /** Its output would be in the score, and is not. */
         ABSENT("absent", "did not run");
 
         private final String cssClass;
@@ -109,16 +109,18 @@ final class ReportPhases {
     // ---------------------------------------------------------------- phases
 
     private void decode() {
-        open("decode", "Decode", Status.RECORDED,
-                "The recording is read to mono samples at the analysis rate. Everything"
-                        + " after this point works from those samples.");
+        open("decode", "Decode", Status.UNTRACED,
+                "A recording is read to mono samples at the analysis rate, and everything"
+                        + " after this point works from those samples. A score read from a"
+                        + " MIDI file is read symbolically instead and decodes nothing.");
         inOut("the source file in the workspace",
                 "nothing — a decode has no choices to make",
                 "one signal, and how long the recording is");
         facts(fact("Length", ReportTimeline.clock(score.durationSeconds())
                 + "  (" + HtmlWriter.number(score.durationSeconds(), 2) + "s)"));
-        gap("The sample rate, the channel count and the decoder that read the file are"
-                + " not written to the workspace, so this page cannot show them (#674).");
+        gap("Which of the two happened is not written to the workspace, and neither are"
+                + " the sample rate, the channel count and the decoder that read the file"
+                + " (#674).");
         close();
     }
 
@@ -307,7 +309,7 @@ final class ReportPhases {
                 "where one note ends and the next begins",
                 "a note track, in seconds");
         if (!any) {
-            note("This score holds no melody. Analysing with --melody is what writes one.");
+            note("This score holds no melody part; see --melody on analyze.");
             close();
             return;
         }
@@ -351,8 +353,10 @@ final class ReportPhases {
                 fact("Syllables hyphenated to the next", String.valueOf(hyphenated)),
                 fact("Syllables marked as a melisma", String.valueOf(melismas)),
                 fact("First sung at", ReportTimeline.clock(words.get(0).startSeconds())),
-                fact("Last sung at",
-                        ReportTimeline.clock(words.get(words.size() - 1).endSeconds())));
+                // The latest end rather than the last word's, because sung spans
+                // overlap and allWords() is ordered by where a syllable starts.
+                fact("Last sung at", ReportTimeline.clock(words.stream()
+                        .mapToDouble(LyricWord::endSeconds).max().orElse(0))));
         confidences(List.of(new Reading("Confidence in the alignment",
                 score.lyrics().confidence())));
         lineTable();
@@ -377,7 +381,7 @@ final class ReportPhases {
                 + " positions, and the chosen subdivision cannot be read back off them.");
         List<Fact> table = new ArrayList<>();
         table.add(fact("Bars on the tempo map's axis", String.valueOf(
-                ReportFacts.barLines(score.tempoMap(), score.durationSeconds()).lines().size())));
+                ReportFacts.barCount(score.tempoMap(), score.durationSeconds()))));
         table.add(fact("Bars with a chosen subdivision",
                 String.valueOf(quantized.grids().size())));
         table.add(fact("Swing", quantized.swing().displayName()));

@@ -467,6 +467,24 @@ class RenderPartsTest {
         }
 
         @Test
+        @DisplayName("shows what MW read, not what --transpose moved the chart to")
+        void ignoresTheTransposition() throws java.io.IOException {
+            Path workspace = audioWorkspace("shifted", fourChords());
+
+            CliRunner.Result render = CliRunner.run("render", workspace.toString(),
+                    "--parts", "chords,report", "--transpose", "3", "--no-pdf");
+
+            assertThat(render.exitCode()).as(render.all()).isZero();
+            // The chart moves; the page about the recording does not, and says so.
+            assertThat(java.nio.file.Files.readString(workspace.resolve("out/chords.txt")))
+                    .contains("Eb").doesNotContain("| C ");
+            assertThat(java.nio.file.Files.readString(workspace.resolve("out/report.html")))
+                    .contains("<td class=\"symbol\">C</td>")
+                    .doesNotContain("<td class=\"symbol\">Eb</td>")
+                    .contains("moves the engraved parts and not this page");
+        }
+
+        @Test
         @DisplayName("names the recording the workspace was made from")
         void carriesTheWorkspaceIdentity() throws java.io.IOException {
             Path workspace = audioWorkspace("named", fourChords());

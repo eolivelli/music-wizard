@@ -90,6 +90,24 @@ final class ReportFacts {
         return new Bars(List.copyOf(lines), lastBar + 1 > MAX_BAR_LINES);
     }
 
+    /**
+     * How many bars the recording spans, counting a part-filled last one.
+     *
+     * <p>One fewer than {@link #barLines} returns for a recording that ends
+     * exactly on a bar line, which is the ordinary case for anything looped or
+     * MIDI-derived: the closing line begins no bar. Read from the map rather
+     * than from that list, so the cap the list draws under cannot be reported
+     * as a count.
+     */
+    static int barCount(TempoMap tempoMap, double durationSeconds) {
+        double lastBeat = tempoMap.secondsToBeats(durationSeconds);
+        if (!(lastBeat > 0)) {
+            return 0;
+        }
+        MusicalTime end = tempoMap.toMusicalTime(lastBeat);
+        return end.beatInBar() > 0 ? end.bar() + 1 : end.bar();
+    }
+
     /** How many spans each quality was named on, in the vocabulary's own order. */
     static Map<ChordQuality, Integer> chordQualities(ChordProgression chords) {
         Map<ChordQuality, Integer> counts = new EnumMap<>(ChordQuality.class);

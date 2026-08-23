@@ -2,10 +2,10 @@
  * Copyright 2026 Music Wizard contributors
  * Licensed under the Apache License, Version 2.0.
  *
- * The whole script of the analysis report. It only adds two things a phone
- * cannot get otherwise -- the overview as a way to move the strip, and a tap
- * as a substitute for a hover -- so a browser that runs none of it still gets
- * the complete page.
+ * The whole script of the analysis report. It adds what a phone cannot get
+ * otherwise -- the overview as a way to move the strip, and a tap as a
+ * substitute for a hover -- so a browser that runs none of it still gets the
+ * complete page.
  */
 
 (function () {

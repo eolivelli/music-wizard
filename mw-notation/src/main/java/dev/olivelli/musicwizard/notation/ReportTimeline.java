@@ -70,6 +70,9 @@ final class ReportTimeline {
      */
     private static final double MIN_GRID_SPACING = 7;
 
+    /** How much of the ruler's foot the clock readings have to themselves. */
+    private static final int CLOCK_BAND = 11;
+
     private static final int RULER_HEIGHT = 34;
     private static final int TEMPO_HEIGHT = 46;
     private static final int CHORD_HEIGHT = 34;
@@ -166,7 +169,7 @@ final class ReportTimeline {
     }
 
     /**
-     * The same music at a scale that fits the page, with no text on it.
+     * The same music at a scale that fits the page.
      *
      * <p>Never wider than the strip, so a clip short enough to fit on a page at
      * the strip's own scale gets two drawings of one thing rather than an
@@ -218,7 +221,9 @@ final class ReportTimeline {
         }
         out.line("");
         lane("ruler").ifPresent(ruler -> {
-            double base = ruler.top() + ruler.height();
+            // The ticks stop above the clock readings rather than at the foot of
+            // the lane, which is where the readings are drawn.
+            double base = ruler.top() + ruler.height() - CLOCK_BAND;
             score.beatGrid().ifPresent(grid -> beatTicks(out, grid, base, pxPerSecond));
             timeTicks(out, ruler, pxPerSecond);
             if (labelled) {
@@ -238,7 +243,7 @@ final class ReportTimeline {
                 continue;
             }
             previous = x;
-            double top = beat.downbeat() ? base - 16 : base - 8;
+            double top = beat.downbeat() ? base - 13 : base - 7;
             out.empty("line", "class", beat.downbeat() ? "beat downbeat" : "beat",
                     "x1", HtmlWriter.number(x, 2), "y1", HtmlWriter.number(top, 1),
                     "x2", HtmlWriter.number(x, 2), "y2", HtmlWriter.number(base, 1));

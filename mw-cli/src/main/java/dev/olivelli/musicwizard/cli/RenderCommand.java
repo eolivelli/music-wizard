@@ -588,17 +588,26 @@ final class RenderCommand implements Callable<Integer> {
      * <p>Named no reason by {@link Part#unavailableReason}, and that is the
      * point of it: a workspace where only some stages ran gets a page saying so
      * for each, which is exactly the workspace whose owner wants to know why.
+     *
+     * <p>The one emitter that ignores the score it is handed and reads the
+     * workspace's own. This page is about what MW read, and the score above has
+     * been moved by {@code --transpose} — so a chart in E flat would come with a
+     * page saying MW heard E flat, under the analysed confidences. It is spelled
+     * here rather than shared with the other parts for the same reason: the
+     * spelling follows the key, and this page is in a different one.
      */
     private static Emitted writeReport(
-            Workspace workspace, Score score, Optional<Path> lilypond, ChartOptions options) {
+            Workspace workspace, Score unused, Optional<Path> lilypond, ChartOptions options) {
         Path out = workspace.outputDirectory();
         try {
             Files.createDirectories(out);
+            Score asAnalysed = ChordSpeller.respell(workspace.readScore().orElseThrow(
+                    () -> new IllegalStateException("the transcription vanished mid-render")));
             Workspace.Descriptor descriptor = workspace.readDescriptor();
             Path html = out.resolve("report.html");
-            Files.writeString(html, AnalysisReport.toHtml(score, new AnalysisReport.Recording(
-                    descriptor.sourceFileName(), descriptor.sourceSha256(),
-                    descriptor.createdAt())));
+            Files.writeString(html, AnalysisReport.toHtml(asAnalysed,
+                    new AnalysisReport.Recording(descriptor.sourceFileName(),
+                            descriptor.sourceSha256(), descriptor.createdAt())));
             return new Emitted(List.of(html), List.of());
         } catch (IOException e) {
             throw new UncheckedIOException("could not write output", e);

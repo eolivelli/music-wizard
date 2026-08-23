@@ -19,6 +19,11 @@ package dev.olivelli.musicwizard.notation;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
 
+import dev.olivelli.musicwizard.arrange.BarGrid;
+import dev.olivelli.musicwizard.arrange.GridResolution;
+import dev.olivelli.musicwizard.arrange.QuantizedScore;
+import dev.olivelli.musicwizard.arrange.Quantizer;
+import dev.olivelli.musicwizard.arrange.SwingFeel;
 import dev.olivelli.musicwizard.core.model.ChordQuality;
 import dev.olivelli.musicwizard.core.model.Confidence;
 import dev.olivelli.musicwizard.core.model.Note;
@@ -142,14 +147,54 @@ class ReportFactsTest {
     }
 
     @Test
-    @DisplayName("only bars the quantizer chose a subdivision for are tallied")
+    @DisplayName("each bar is tallied under its own subdivision, coarsest first")
     void gridsAreTalliedPerBar() {
-        Score score = ReportFixtures.everything();
-        var counts = ReportFacts.gridResolutions(
-                dev.olivelli.musicwizard.arrange.Quantizer.quantize(score));
-        assertThat(counts.values().stream().mapToInt(Integer::intValue).sum())
-                .isEqualTo(dev.olivelli.musicwizard.arrange.Quantizer.quantize(score)
-                        .grids().size());
+        // Built by hand rather than quantized, so this measures the tally and
+        // not the quantizer's calibration.
+        var quantized = new QuantizedScore(ReportFixtures.chordsOnly(), List.of(
+                bar(0, GridResolution.HALF_BEAT), bar(1, GridResolution.THIRD_BEAT),
+                bar(2, GridResolution.HALF_BEAT), bar(3, GridResolution.EIGHTH_BEAT)),
+                SwingFeel.STRAIGHT);
+        assertThat(ReportFacts.gridResolutions(quantized)).containsExactly(
+                java.util.Map.entry(GridResolution.HALF_BEAT, 2),
+                java.util.Map.entry(GridResolution.THIRD_BEAT, 1),
+                java.util.Map.entry(GridResolution.EIGHTH_BEAT, 1));
+    }
+
+    @Test
+    @DisplayName("a score the quantizer chose no subdivision for tallies nothing")
+    void noGridsTallyNothing() {
+        assertThat(ReportFacts.gridResolutions(
+                Quantizer.quantize(ReportFixtures.chordsOnly()))).isEmpty();
+    }
+
+    @Test
+    @DisplayName("a recording ending on a bar line is not credited with the bar it begins")
+    void barsAreCountedRatherThanBarLines() {
+        TempoMap map = TempoMap.constant(120, TimeSignature.FOUR_FOUR);
+        // Two seconds to a bar: an exact end, a part-filled last bar, one bar,
+        // and a longer exact end. The bar lines drawn are one more each time
+        // the last of them begins no bar.
+        assertThat(ReportFacts.barCount(map, 8.0)).isEqualTo(4);
+        assertThat(ReportFacts.barCount(map, 7.5)).isEqualTo(4);
+        assertThat(ReportFacts.barCount(map, 2.0)).isEqualTo(1);
+        assertThat(ReportFacts.barCount(map, 10.0)).isEqualTo(5);
+        assertThat(ReportFacts.barLines(map, 8.0).lines()).hasSize(5);
+    }
+
+    @Test
+    @DisplayName("the bar count is the tempo map's, never the number of lines drawn")
+    void theBarCountIgnoresTheDrawingCap() {
+        // Far more bars than the axis draws: the count must not report the cap.
+        TempoMap map = TempoMap.constant(24_000, TimeSignature.FOUR_FOUR);
+        assertThat(ReportFacts.barLines(map, 3600).lines())
+                .hasSize(ReportFacts.MAX_BAR_LINES);
+        assertThat(ReportFacts.barCount(map, 3600))
+                .isGreaterThan(ReportFacts.MAX_BAR_LINES);
+    }
+
+    private static BarGrid bar(int index, GridResolution resolution) {
+        return new BarGrid(index, index * 4.0, resolution, TimeSignature.FOUR_FOUR);
     }
 
     @Test

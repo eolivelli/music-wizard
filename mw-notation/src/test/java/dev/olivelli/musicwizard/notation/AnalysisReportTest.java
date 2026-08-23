@@ -80,6 +80,39 @@ class AnalysisReportTest {
     }
 
     @Test
+    @DisplayName("no stage is asserted to have run")
+    void noStageIsClaimedToHaveRun() {
+        // A score read from a MIDI file decodes no samples, separates nothing
+        // and fits no chroma, and the workspace does not record which path
+        // produced it -- so the page may describe those stages and may not
+        // claim them. Their status label is the one that says so.
+        String page = AnalysisReport.toHtml(ReportFixtures.everything(), RECORDING);
+        for (String phase : new String[] {"decode", "separation", "chroma"}) {
+            assertThat(statusOf(page, phase)).isEqualTo("no trace kept");
+        }
+        assertThat(page).contains("These are the stages of the audio pipeline");
+    }
+
+    @Test
+    @DisplayName("the melody's absence is worded as the renderer words it (#500)")
+    void theMelodyAdviceIsNotRestated() {
+        // "--melody is what writes one" is advice this page cannot keep either:
+        // on a MIDI workspace the flag does nothing and no melody role is ever
+        // assigned.
+        assertThat(AnalysisReport.toHtml(ReportFixtures.chordsOnly(), RECORDING))
+                .contains("This score holds no melody part; see --melody on analyze.")
+                .doesNotContain("is what writes one");
+    }
+
+    @Test
+    @DisplayName("the last syllable to finish is the one reported, not the last to start")
+    void theLastSyllableIsTheLatestEnd() {
+        // Sung spans overlap, and the words are ordered by where they start.
+        assertThat(AnalysisReport.toHtml(ReportFixtures.overlappingSyllables(), RECORDING))
+                .contains("<dt>Last sung at</dt><dd>0:07</dd>");
+    }
+
+    @Test
     @DisplayName("nothing on the page reaches the network")
     void thePageIsSelfContained() {
         for (Score score : new Score[] {ReportFixtures.everything(),
@@ -143,6 +176,15 @@ class AnalysisReportTest {
         assertThat(views.group(1)).isEqualTo("mw-strip");
         assertThat(views.group(3)).as("the two views stack the same lanes").isEqualTo(height);
         return new double[] {overview, Double.parseDouble(views.group(2))};
+    }
+
+    /** The status label a phase carries, read out of its heading. */
+    private static String statusOf(String page, String phase) {
+        Matcher heading = Pattern.compile("id=\"phase-" + phase
+                + "\">\\s*<h3>.*?<span class=\"status\">([^<]*)</span>", Pattern.DOTALL)
+                .matcher(page);
+        assertThat(heading.find()).as("the %s phase is on the page", phase).isTrue();
+        return heading.group(1);
     }
 
     private static int count(String text, String needle) {

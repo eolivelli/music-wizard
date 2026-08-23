@@ -47,7 +47,7 @@ import java.util.List;
  */
 final class ReportFixtures {
 
-    /** Four bars at this tempo, which makes every beat land on a round number. */
+    /** Fast enough that every beat lands on a round number of seconds. */
     private static final double BEATS_PER_MINUTE = 120;
 
     private static final double SECONDS_PER_BEAT = 60 / BEATS_PER_MINUTE;
@@ -128,6 +128,19 @@ final class ReportFixtures {
                     Confidence.of(0.6 + 0.03 * i)));
         }
         return new NoteTrack(PartRole.LEAD_VOCAL, "Voice", notes, Confidence.of(0.66));
+    }
+
+    /**
+     * The same score, with a syllable that starts after another and finishes
+     * before it -- which is what recognition spans on sung speech do.
+     */
+    static Score overlappingSyllables() {
+        return withHarmony().withLyrics(new Lyrics(List.of(new LyricLine(List.of(
+                LyricWord.ofSeconds("held", 4 * SECONDS_PER_BEAT, 15 * SECONDS_PER_BEAT,
+                        Confidence.of(0.9)),
+                LyricWord.ofSeconds("brief", 5 * SECONDS_PER_BEAT, 6 * SECONDS_PER_BEAT,
+                        Confidence.of(0.9))), Confidence.of(0.9))),
+                "en", Confidence.of(0.85)));
     }
 
     private static Lyrics lyrics() {

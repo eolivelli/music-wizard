@@ -48,12 +48,7 @@ final class Goldens {
         assertGolden(name, ".ly", actual);
     }
 
-    /**
-     * The same for a golden that is not LilyPond -- the analysis report's HTML,
-     * so far. The extension is a parameter rather than a second copy of this
-     * method, because the update mode below is the part that is easy to get
-     * subtly wrong.
-     */
+    /** The same for a golden that is not LilyPond. */
     static void assertGolden(String name, String extension, String actual) {
         if (Boolean.getBoolean(UPDATE_PROPERTY)) {
             Path target = directory()

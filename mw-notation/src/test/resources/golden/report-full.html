@@ -70,7 +70,8 @@ dl.summary dd { margin: 0; font-variant-numeric: tabular-nums; overflow-wrap: an
                   overflow: hidden; background: var(--page); }
 .lane-labels { flex: 0 0 9.5rem; border-right: 1px solid var(--rule); background: var(--panel); }
 .lane-label { display: flex; flex-direction: column; justify-content: center;
-              padding: 0 .6rem; border-bottom: 1px solid var(--rule); overflow: hidden; }
+              padding: 0 .6rem; border-bottom: 1px solid var(--rule); overflow: hidden;
+              line-height: 1.2; }
 .lane-label:last-child { border-bottom: 0; }
 .lane-name { font-size: .78rem; font-weight: 600; }
 .lane-note { font-size: .68rem; color: var(--faint); }
@@ -210,7 +211,7 @@ footer { margin-top: 3rem; padding-top: 1.25rem; border-top: 1px solid var(--rul
 <div class="overview-frame"><svg class="mw-overview" viewBox="0 0 720 384" width="720" height="384" xmlns="http://www.w3.org/2000/svg" role="img">
 <g class="grid">
 <line class="bar-line" x1="0" y1="0" x2="0" y2="384"></line><line class="bar-line" x1="180" y1="0" x2="180" y2="384"></line><line class="bar-line" x1="360" y1="0" x2="360" y2="384"></line><line class="bar-line" x1="540" y1="0" x2="540" y2="384"></line><line class="bar-line" x1="720" y1="0" x2="720" y2="384"></line>
-<line class="beat downbeat" x1="0" y1="18" x2="0" y2="34"></line><line class="beat" x1="45" y1="26" x2="45" y2="34"></line><line class="beat" x1="90" y1="26" x2="90" y2="34"></line><line class="beat" x1="136.8" y1="26" x2="136.8" y2="34"></line><line class="beat downbeat" x1="180" y1="18" x2="180" y2="34"></line><line class="beat" x1="225" y1="26" x2="225" y2="34"></line><line class="beat" x1="270" y1="26" x2="270" y2="34"></line><line class="beat" x1="316.8" y1="26" x2="316.8" y2="34"></line><line class="beat downbeat" x1="360" y1="18" x2="360" y2="34"></line><line class="beat" x1="405" y1="26" x2="405" y2="34"></line><line class="beat" x1="450" y1="26" x2="450" y2="34"></line><line class="beat" x1="496.8" y1="26" x2="496.8" y2="34"></line><line class="beat downbeat" x1="540" y1="18" x2="540" y2="34"></line><line class="beat" x1="585" y1="26" x2="585" y2="34"></line><line class="beat" x1="630" y1="26" x2="630" y2="34"></line><line class="beat" x1="676.8" y1="26" x2="676.8" y2="34"></line>
+<line class="beat downbeat" x1="0" y1="10" x2="0" y2="23"></line><line class="beat" x1="45" y1="16" x2="45" y2="23"></line><line class="beat" x1="90" y1="16" x2="90" y2="23"></line><line class="beat" x1="136.8" y1="16" x2="136.8" y2="23"></line><line class="beat downbeat" x1="180" y1="10" x2="180" y2="23"></line><line class="beat" x1="225" y1="16" x2="225" y2="23"></line><line class="beat" x1="270" y1="16" x2="270" y2="23"></line><line class="beat" x1="316.8" y1="16" x2="316.8" y2="23"></line><line class="beat downbeat" x1="360" y1="10" x2="360" y2="23"></line><line class="beat" x1="405" y1="16" x2="405" y2="23"></line><line class="beat" x1="450" y1="16" x2="450" y2="23"></line><line class="beat" x1="496.8" y1="16" x2="496.8" y2="23"></line><line class="beat downbeat" x1="540" y1="10" x2="540" y2="23"></line><line class="beat" x1="585" y1="16" x2="585" y2="23"></line><line class="beat" x1="630" y1="16" x2="630" y2="23"></line><line class="beat" x1="676.8" y1="16" x2="676.8" y2="23"></line>
 <text class="time-tick" x="3" y="32">0:00</text><text class="time-tick" x="183" y="32">0:02</text><text class="time-tick" x="363" y="32">0:04</text><text class="time-tick" x="543" y="32">0:06</text><text class="time-tick" x="723" y="32">0:08</text>
 </g>
 <g class="lane tempo"><path class="tempo-line" d="M0 72L720 72"></path></g>
@@ -266,7 +267,7 @@ footer { margin-top: 3rem; padding-top: 1.25rem; border-top: 1px solid var(--rul
 <svg class="mw-strip" viewBox="0 0 720 384" width="720" height="384" xmlns="http://www.w3.org/2000/svg" role="img">
 <g class="grid">
 <line class="bar-line" x1="0" y1="0" x2="0" y2="384"></line><line class="bar-line" x1="180" y1="0" x2="180" y2="384"></line><line class="bar-line" x1="360" y1="0" x2="360" y2="384"></line><line class="bar-line" x1="540" y1="0" x2="540" y2="384"></line><line class="bar-line" x1="720" y1="0" x2="720" y2="384"></line>
-<line class="beat downbeat" x1="0" y1="18" x2="0" y2="34"></line><line class="beat" x1="45" y1="26" x2="45" y2="34"></line><line class="beat" x1="90" y1="26" x2="90" y2="34"></line><line class="beat" x1="136.8" y1="26" x2="136.8" y2="34"></line><line class="beat downbeat" x1="180" y1="18" x2="180" y2="34"></line><line class="beat" x1="225" y1="26" x2="225" y2="34"></line><line class="beat" x1="270" y1="26" x2="270" y2="34"></line><line class="beat" x1="316.8" y1="26" x2="316.8" y2="34"></line><line class="beat downbeat" x1="360" y1="18" x2="360" y2="34"></line><line class="beat" x1="405" y1="26" x2="405" y2="34"></line><line class="beat" x1="450" y1="26" x2="450" y2="34"></line><line class="beat" x1="496.8" y1="26" x2="496.8" y2="34"></line><line class="beat downbeat" x1="540" y1="18" x2="540" y2="34"></line><line class="beat" x1="585" y1="26" x2="585" y2="34"></line><line class="beat" x1="630" y1="26" x2="630" y2="34"></line><line class="beat" x1="676.8" y1="26" x2="676.8" y2="34"></line>
+<line class="beat downbeat" x1="0" y1="10" x2="0" y2="23"></line><line class="beat" x1="45" y1="16" x2="45" y2="23"></line><line class="beat" x1="90" y1="16" x2="90" y2="23"></line><line class="beat" x1="136.8" y1="16" x2="136.8" y2="23"></line><line class="beat downbeat" x1="180" y1="10" x2="180" y2="23"></line><line class="beat" x1="225" y1="16" x2="225" y2="23"></line><line class="beat" x1="270" y1="16" x2="270" y2="23"></line><line class="beat" x1="316.8" y1="16" x2="316.8" y2="23"></line><line class="beat downbeat" x1="360" y1="10" x2="360" y2="23"></line><line class="beat" x1="405" y1="16" x2="405" y2="23"></line><line class="beat" x1="450" y1="16" x2="450" y2="23"></line><line class="beat" x1="496.8" y1="16" x2="496.8" y2="23"></line><line class="beat downbeat" x1="540" y1="10" x2="540" y2="23"></line><line class="beat" x1="585" y1="16" x2="585" y2="23"></line><line class="beat" x1="630" y1="16" x2="630" y2="23"></line><line class="beat" x1="676.8" y1="16" x2="676.8" y2="23"></line>
 <text class="time-tick" x="3" y="32">0:00</text><text class="time-tick" x="183" y="32">0:02</text><text class="time-tick" x="363" y="32">0:04</text><text class="time-tick" x="543" y="32">0:06</text><text class="time-tick" x="723" y="32">0:08</text>
 <text class="bar-number" x="3" y="11">1</text><text class="bar-number" x="183" y="11">2</text><text class="bar-number" x="363" y="11">3</text><text class="bar-number" x="543" y="11">4</text><text class="bar-number" x="723" y="11">5</text>
 </g>
@@ -311,8 +312,9 @@ footer { margin-top: 3rem; padding-top: 1.25rem; border-top: 1px solid var(--rul
 <section id="phases">
 <h2>Phase by phase</h2>
 <p class="lede">Each stage below answers the same three questions from the workspace and from nothing else: what reached it, what it decided, and what it left behind. Where it decided something the workspace does not keep, it says so.</p>
-<article class="phase recorded" id="phase-decode"><h3><span class="phase-number">1</span>Decode<span class="status">output on disk</span></h3>
-<p class="what">The recording is read to mono samples at the analysis rate. Everything after this point works from those samples.</p>
+<p class="lede">These are the stages of the audio pipeline, in the order it runs them. A score can also be read symbolically from a MIDI file, where the first of them have nothing to do — and the workspace does not record which path produced this one, so each stage describes what it does rather than asserting that it ran.</p>
+<article class="phase untraced" id="phase-decode"><h3><span class="phase-number">1</span>Decode<span class="status">no trace kept</span></h3>
+<p class="what">A recording is read to mono samples at the analysis rate, and everything after this point works from those samples. A score read from a MIDI file is read symbolically instead and decodes nothing.</p>
 <dl class="io">
 <dt>In</dt><dd>the source file in the workspace</dd>
 <dt>Decided</dt><dd>nothing — a decode has no choices to make</dd>
@@ -321,7 +323,7 @@ footer { margin-top: 3rem; padding-top: 1.25rem; border-top: 1px solid var(--rul
 <dl class="facts">
 <dt>Length</dt><dd>0:08  (8s)</dd>
 </dl>
-<p class="gap"><span class="gap-label">Not recorded</span>The sample rate, the channel count and the decoder that read the file are not written to the workspace, so this page cannot show them (#674).</p>
+<p class="gap"><span class="gap-label">Not recorded</span>Which of the two happened is not written to the workspace, and neither are the sample rate, the channel count and the decoder that read the file (#674).</p>
 </article>
 <article class="phase untraced" id="phase-separation"><h3><span class="phase-number">2</span>Separation<span class="status">no trace kept</span></h3>
 <p class="what">A separator splits the mix into a vocal and an accompaniment. Only the melody stage reads it. Chords are always estimated from the full mix, because separation artifacts destroy the partial structure chroma estimation depends on.</p>
@@ -507,7 +509,7 @@ footer { margin-top: 3rem; padding-top: 1.25rem; border-top: 1px solid var(--rul
 </dl>
 <p class="note">The grid below was recomputed for this page exactly as the engraver recomputes it. It is not persisted: the workspace keeps the snapped positions, and the chosen subdivision cannot be read back off them.</p>
 <dl class="facts">
-<dt>Bars on the tempo map's axis</dt><dd>5</dd>
+<dt>Bars on the tempo map's axis</dt><dd>4</dd>
 <dt>Bars with a chosen subdivision</dt><dd>2</dd>
 <dt>Swing</dt><dd>straight</dd>
 <dt>Chords placed on the beat axis</dt><dd>5</dd>
@@ -534,17 +536,17 @@ footer { margin-top: 3rem; padding-top: 1.25rem; border-top: 1px solid var(--rul
 </article>
 </section>
 <footer>
-<p>This page is a reading of one workspace: its saved score, plus the grid and the reduction that the engraver recomputes from it. It is not a log of the run — a stage that decided something the workspace does not keep is marked as such above rather than reconstructed.</p>
+<p>This page is a reading of one workspace: its saved score, plus the grid and the reduction that the engraver recomputes from it. It is not a log of the run — a stage that decided something the workspace does not keep is marked as such above rather than reconstructed. A transposition asked for on the command line moves the engraved parts and not this page, which is about the recording rather than about what is being played from.</p>
 <p>Generated by Music Wizard. Everything it needs is in this file.</p>
 </footer>
 <script>/*
  * Copyright 2026 Music Wizard contributors
  * Licensed under the Apache License, Version 2.0.
  *
- * The whole script of the analysis report. It only adds two things a phone
- * cannot get otherwise -- the overview as a way to move the strip, and a tap
- * as a substitute for a hover -- so a browser that runs none of it still gets
- * the complete page.
+ * The whole script of the analysis report. It adds what a phone cannot get
+ * otherwise -- the overview as a way to move the strip, and a tap as a
+ * substitute for a hover -- so a browser that runs none of it still gets the
+ * complete page.
  */
 
 (function () {
