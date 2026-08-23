@@ -18,6 +18,7 @@ package dev.olivelli.musicwizard.dsp;
 
 import dev.olivelli.musicwizard.audio.AudioBuffer;
 import dev.olivelli.musicwizard.audio.Spectrogram;
+import dev.olivelli.musicwizard.core.workspace.ChromaTrace;
 import java.util.List;
 import java.util.Objects;
 import java.util.stream.IntStream;
@@ -237,6 +238,19 @@ public record NnlsChroma(Chroma treble, Chroma bass, double tuningOffsetSemitone
     static NoteDictionary analysisDictionary(LogFrequencyAxis axis, Spectrogram spectrogram) {
         return new NoteDictionary(axis, LOWEST_MIDI, HIGHEST_NOTE_MIDI,
                 spectrogram.sampleRate(), spectrogram.windowSize(), true);
+    }
+
+    /**
+     * The model this front end explains a transform with, for a run's record
+     * (#676). Read from the constants the fit itself uses, so a record cannot
+     * describe a model the chroma did not come from.
+     */
+    public static ChromaTrace.Fit fitOf(Spectrogram spectrogram) {
+        Objects.requireNonNull(spectrogram, "spectrogram");
+        return new ChromaTrace.Fit(spectrogram.sampleRate(), spectrogram.windowSize(),
+                spectrogram.hopSize(), spectrogram.frameRate(), spectrogram.frameCount(),
+                BINS_PER_SEMITONE, LOWEST_MIDI, HIGHEST_NOTE_MIDI,
+                CROSSFADE_LOW_MIDI, CROSSFADE_HIGH_MIDI, TREBLE_ROLL_OFF_MIDI);
     }
 
     /**

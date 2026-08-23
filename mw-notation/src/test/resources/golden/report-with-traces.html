@@ -187,6 +187,17 @@ dl.facts dd { margin: 0; font-variant-numeric: tabular-nums; }
 .swatch { display: inline-block; width: .75rem; height: .75rem; border-radius: 2px;
           border: 1px solid rgba(0, 0, 0, .15); }
 
+.pc-grid { margin: .3rem 0 .9rem; }
+.pc-columns { display: flex; align-items: stretch; gap: 1px; }
+.pc-names { display: flex; flex-direction: column; flex: 0 0 auto;
+            margin-right: .3rem; }
+.pc-name { height: 9px; font-size: .6rem; line-height: 9px; color: var(--faint); }
+.pc-column { display: flex; flex-direction: column; flex: 1 1 0; min-width: 2px; }
+.pc-cell { height: 9px; background: var(--accent); }
+.pc-column.unmeasured .pc-cell { background: none;
+                                 border-bottom: 1px dotted var(--faint); }
+.pc-grid figcaption { font-size: .78rem; color: var(--muted); margin-top: .25rem; }
+
 .strip { display: flex; flex-wrap: wrap; gap: 1px; margin: .3rem 0 .9rem; }
 .strip .cell { width: .55rem; height: .9rem; border-radius: 1px; }
 
@@ -366,6 +377,11 @@ footer { margin-top: 3rem; padding-top: 1.25rem; border-top: 1px solid var(--rul
 <dt>provider</dt><dd>spleeter-2stems</dd>
 </dl>
 </div>
+<div class="run-stage recorded"><span class="run-stage-name">chroma</span><span class="status">ran</span><dl class="facts">
+<dt>tuning</dt><dd>3.8 cents sharp of A440</dd>
+<dt>spans summarised</dt><dd>5</dd>
+</dl>
+</div>
 <div class="run-stage recorded"><span class="run-stage-name">beats</span><span class="status">from the cache</span></div>
 <div class="run-stage absent"><span class="run-stage-name">melody</span><span class="status">did not run</span><p class="run-stage-reason">not asked for; analyze --melody reads one</p></div>
 <div class="run-stage recorded"><span class="run-stage-name">lyrics</span><span class="status">ran</span><dl class="facts">
@@ -474,14 +490,58 @@ footer { margin-top: 3rem; padding-top: 1.25rem; border-top: 1px solid var(--rul
 <dt>Downbeats the grid marks</dt><dd>4</dd>
 </dl>
 </article>
-<article class="phase untraced" id="phase-chroma"><h3><span class="phase-number">4</span>Chroma<span class="status">no trace kept</span></h3>
+<article class="phase recorded" id="phase-chroma"><h3><span class="phase-number">4</span>Chroma<span class="status">ran</span></h3>
 <p class="what">An NNLS fit over the spectrum gives the energy on each of the twelve pitch classes, tuning-corrected, in a bass register and a treble one. It is taken from the full mix and never from a stem, and it is what both the beat tracker's harmonic rhythm and every chord decision below are read from.</p>
 <dl class="io">
 <dt>In</dt><dd>the decoded mix, and the tracked beats to average over</dd>
 <dt>Decided</dt><dd>the recording's tuning, and how the fit divides between the registers</dd>
 <dt>Out</dt><dd>beat-synchronous chroma, and the fit's residual</dd>
 </dl>
-<p class="gap"><span class="gap-label">Not recorded</span>None of it is written to the workspace: not the tuning, not the frames, not the residual. So the page can show what the chroma was used for but not what it looked like (#676).</p>
+<p class="ran"><span class="ran-label">Last run</span>chroma: ran</p>
+<dl class="facts">
+<dt>tuning</dt><dd>3.8 cents sharp of A440</dd>
+<dt>spans summarised</dt><dd>5</dd>
+</dl>
+<h4>What the front end read</h4>
+<dl class="facts">
+<dt>Tuning</dt><dd>3.8 cents sharp of A440</dd>
+<dt>Analysis window</dt><dd>8192 samples  (0.372s)</dd>
+<dt>Hop</dt><dd>1024 samples  (0.046s)</dd>
+<dt>Frames</dt><dd>172 at 21.5 a second</dd>
+<dt>Grid the spectrum is resampled onto</dt><dd>3 bins a semitone</dd>
+<dt>Notes the dictionary models</dt><dd>A0 to C7</dd>
+<dt>Bass fold</dt><dd>everything at and below A2, fading out to nothing at A3</dd>
+<dt>Treble fold</dt><dd>nothing at and below A2, everything from A3 to C6, fading out again to nothing at C7</dd>
+<dt>Chord spans summarised</dt><dd>5</dd>
+</dl>
+<figure class="pc-grid">
+<div class="pc-columns"><div class="pc-names"><span class="pc-name">B</span><span class="pc-name">A#</span><span class="pc-name">A</span><span class="pc-name">G#</span><span class="pc-name">G</span><span class="pc-name">F#</span><span class="pc-name">F</span><span class="pc-name">E</span><span class="pc-name">D#</span><span class="pc-name">D</span><span class="pc-name">C#</span><span class="pc-name">C</span></div>
+<div class="pc-column" title="N.C. at 0:00"><span class="pc-cell" style="opacity:0.22"></span><span class="pc-cell" style="opacity:0.22"></span><span class="pc-cell" style="opacity:0.22"></span><span class="pc-cell" style="opacity:0.22"></span><span class="pc-cell" style="opacity:0.24"></span><span class="pc-cell" style="opacity:0.22"></span><span class="pc-cell" style="opacity:0.22"></span><span class="pc-cell" style="opacity:0.27"></span><span class="pc-cell" style="opacity:0.22"></span><span class="pc-cell" style="opacity:0.24"></span><span class="pc-cell" style="opacity:0.22"></span><span class="pc-cell" style="opacity:0.22"></span></div>
+<div class="pc-column" title="C at 0:01"><span class="pc-cell" style="opacity:0.08"></span><span class="pc-cell" style="opacity:0.03"></span><span class="pc-cell" style="opacity:0.08"></span><span class="pc-cell" style="opacity:0.05"></span><span class="pc-cell" style="opacity:0.51"></span><span class="pc-cell" style="opacity:0.05"></span><span class="pc-cell" style="opacity:0.11"></span><span class="pc-cell" style="opacity:0.54"></span><span class="pc-cell" style="opacity:0.05"></span><span class="pc-cell" style="opacity:0.16"></span><span class="pc-cell" style="opacity:0.03"></span><span class="pc-cell" style="opacity:1"></span></div>
+<div class="pc-column" title="Am at 0:02"><span class="pc-cell" style="opacity:0.41"></span><span class="pc-cell" style="opacity:0.03"></span><span class="pc-cell" style="opacity:0.89"></span><span class="pc-cell" style="opacity:0.03"></span><span class="pc-cell" style="opacity:0.05"></span><span class="pc-cell" style="opacity:0.03"></span><span class="pc-cell" style="opacity:0.05"></span><span class="pc-cell" style="opacity:0.62"></span><span class="pc-cell" style="opacity:0.03"></span><span class="pc-cell" style="opacity:0.08"></span><span class="pc-cell" style="opacity:0.03"></span><span class="pc-cell" style="opacity:0.46"></span></div>
+<div class="pc-column" title="Fmaj7 at 0:04"><span class="pc-cell" style="opacity:0.32"></span><span class="pc-cell" style="opacity:0.03"></span><span class="pc-cell" style="opacity:0.27"></span><span class="pc-cell" style="opacity:0.03"></span><span class="pc-cell" style="opacity:0.08"></span><span class="pc-cell" style="opacity:0.03"></span><span class="pc-cell" style="opacity:0.78"></span><span class="pc-cell" style="opacity:0.46"></span><span class="pc-cell" style="opacity:0.03"></span><span class="pc-cell" style="opacity:0.05"></span><span class="pc-cell" style="opacity:0.03"></span><span class="pc-cell" style="opacity:0.59"></span></div>
+<div class="pc-column" title="G7 at 0:06"><span class="pc-cell" style="opacity:0.41"></span><span class="pc-cell" style="opacity:0.03"></span><span class="pc-cell" style="opacity:0.11"></span><span class="pc-cell" style="opacity:0.03"></span><span class="pc-cell" style="opacity:0.76"></span><span class="pc-cell" style="opacity:0.03"></span><span class="pc-cell" style="opacity:0.41"></span><span class="pc-cell" style="opacity:0.08"></span><span class="pc-cell" style="opacity:0.03"></span><span class="pc-cell" style="opacity:0.7"></span><span class="pc-cell" style="opacity:0.03"></span><span class="pc-cell" style="opacity:0.11"></span></div>
+</div>
+<figcaption>What each chord span holds on each pitch class, in the chroma the root is decoded from. Shaded against the strongest reading on this figure, so a column says what stands out within the piece rather than how loud the span was.</figcaption></figure>
+<figure class="pc-grid">
+<div class="pc-columns"><div class="pc-names"><span class="pc-name">B</span><span class="pc-name">A#</span><span class="pc-name">A</span><span class="pc-name">G#</span><span class="pc-name">G</span><span class="pc-name">F#</span><span class="pc-name">F</span><span class="pc-name">E</span><span class="pc-name">D#</span><span class="pc-name">D</span><span class="pc-name">C#</span><span class="pc-name">C</span></div>
+<div class="pc-column" title="N.C. at 0:00"><span class="pc-cell" style="opacity:0.01"></span><span class="pc-cell" style="opacity:0"></span><span class="pc-cell" style="opacity:0"></span><span class="pc-cell" style="opacity:0"></span><span class="pc-cell" style="opacity:0.01"></span><span class="pc-cell" style="opacity:0"></span><span class="pc-cell" style="opacity:0"></span><span class="pc-cell" style="opacity:0.02"></span><span class="pc-cell" style="opacity:0"></span><span class="pc-cell" style="opacity:0.01"></span><span class="pc-cell" style="opacity:0"></span><span class="pc-cell" style="opacity:0.01"></span></div>
+<div class="pc-column" title="C at 0:01"><span class="pc-cell" style="opacity:0.02"></span><span class="pc-cell" style="opacity:0"></span><span class="pc-cell" style="opacity:0.01"></span><span class="pc-cell" style="opacity:0"></span><span class="pc-cell" style="opacity:0.21"></span><span class="pc-cell" style="opacity:0"></span><span class="pc-cell" style="opacity:0.01"></span><span class="pc-cell" style="opacity:0.24"></span><span class="pc-cell" style="opacity:0"></span><span class="pc-cell" style="opacity:0.02"></span><span class="pc-cell" style="opacity:0"></span><span class="pc-cell" style="opacity:0.79"></span></div>
+<div class="pc-column" title="Am at 0:02"><span class="pc-cell" style="opacity:0.27"></span><span class="pc-cell" style="opacity:0"></span><span class="pc-cell" style="opacity:0.85"></span><span class="pc-cell" style="opacity:0"></span><span class="pc-cell" style="opacity:0.02"></span><span class="pc-cell" style="opacity:0"></span><span class="pc-cell" style="opacity:0"></span><span class="pc-cell" style="opacity:0.56"></span><span class="pc-cell" style="opacity:0"></span><span class="pc-cell" style="opacity:0.01"></span><span class="pc-cell" style="opacity:0"></span><span class="pc-cell" style="opacity:0.16"></span></div>
+<div class="pc-column" title="Fmaj7 at 0:04"><span class="pc-cell" style="opacity:0.22"></span><span class="pc-cell" style="opacity:0"></span><span class="pc-cell" style="opacity:0.09"></span><span class="pc-cell" style="opacity:0"></span><span class="pc-cell" style="opacity:0.02"></span><span class="pc-cell" style="opacity:0"></span><span class="pc-cell" style="opacity:1"></span><span class="pc-cell" style="opacity:0.34"></span><span class="pc-cell" style="opacity:0"></span><span class="pc-cell" style="opacity:0"></span><span class="pc-cell" style="opacity:0"></span><span class="pc-cell" style="opacity:0.44"></span></div>
+<div class="pc-column" title="G7 at 0:06"><span class="pc-cell" style="opacity:0.31"></span><span class="pc-cell" style="opacity:0"></span><span class="pc-cell" style="opacity:0.02"></span><span class="pc-cell" style="opacity:0"></span><span class="pc-cell" style="opacity:0.9"></span><span class="pc-cell" style="opacity:0"></span><span class="pc-cell" style="opacity:0.26"></span><span class="pc-cell" style="opacity:0.02"></span><span class="pc-cell" style="opacity:0"></span><span class="pc-cell" style="opacity:0.54"></span><span class="pc-cell" style="opacity:0"></span><span class="pc-cell" style="opacity:0.04"></span></div>
+</div>
+<figcaption>How much of each span's spectrum only that pitch class can explain: delete its notes from the dictionary, fit the span again, and read what that costs. A pitch class the chroma carries but this leaves blank is one the fit did not need.</figcaption></figure>
+<details class="table">
+<summary>Every chord span, and what it was read from</summary><table><thead><tr><th>#</th><th>Chord</th><th>From</th><th>Beats</th><th>Chroma</th><th>Treble</th><th>Bass</th><th>Residual</th></tr></thead><tbody>
+<tr><td>1</td><td class="symbol">N.C.</td><td>0:00</td><td>2</td><td>E 10%, D 9%, G 9%</td><td>E 10%, A# 9%, B 9%</td><td>C 10%, A# 9%, B 9%</td><td>E 0.02, C 0.01, D 0.01</td></tr>
+<tr><td>2</td><td class="symbol">C</td><td>0:01</td><td>2</td><td>C 37%, E 20%, G 19%</td><td>C 31%, E 25%, G 25%</td><td>C 52%, G 12%, D 7%</td><td>C 1.04, E 0.31, G 0.28</td></tr>
+<tr><td>3</td><td class="symbol">Am</td><td>0:02</td><td>4</td><td>A 33%, E 23%, C 17%</td><td>A 35%, E 26%, B 16%</td><td>A 48%, E 12%, B 10%</td><td>A 1.12, E 0.74, B 0.35</td></tr>
+<tr><td>4</td><td class="symbol">Fmaj7</td><td>0:04</td><td>4</td><td>F 29%, C 22%, E 17%</td><td>F 26%, C 24%, E 19%</td><td>F 44%, C 12%, B 10%</td><td>F 1.31, C 0.58, E 0.44</td></tr>
+<tr><td>5</td><td class="symbol">G7</td><td>0:06</td><td>4</td><td>G 28%, D 26%, F 15%</td><td>G 31%, D 29%, F 13%</td><td>G 45%, D 18%, F 9%</td><td>G 1.18, D 0.71, B 0.4</td></tr>
+</tbody></table>
+</details>
+<p class="note">Summarised over the chord spans and not the beats inside them, so a chord whose own beats disagree reads here as their average. Which of these readings each gate compared, and against what, is the decoder's and is not recorded (#677).</p>
 </article>
 <article class="phase recorded" id="phase-chords"><h3><span class="phase-number">5</span>Chord decoding and the quality decision<span class="status">output on disk</span></h3>
 <p class="what">On a recording, a decoder reads a root out of both registers with the bass as a prior over roots, and the quality out of the treble once per chord rather than once per beat; the two vocabularies are not the same one, since a quality the decoder may choose competes across roots. A score read from a MIDI file has its chords named from the notes the file declares instead.</p>

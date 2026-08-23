@@ -29,6 +29,7 @@ import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.model.TempoMap;
 import dev.olivelli.musicwizard.core.model.TimeSignature;
 import dev.olivelli.musicwizard.core.workspace.BeatTrace;
+import dev.olivelli.musicwizard.core.workspace.ChromaTrace;
 import dev.olivelli.musicwizard.core.workspace.RunLog;
 import dev.olivelli.musicwizard.dsp.BeatTracker;
 import dev.olivelli.musicwizard.dsp.Chroma;
@@ -263,7 +264,11 @@ public final class AudioTranscriber {
         NnlsChroma registers = NnlsChroma.extract(transform, tuning);
         Chroma combinedFrames = registers.combined();
         HarmonicRhythm harmonicRhythm = HarmonicRhythm.of(combinedFrames);
-        runLog.stage("chroma").computed();
+        ChromaTrace.Fit fit = NnlsChroma.fitOf(transform);
+        // What the front end can say before a beat is known, so that a run that
+        // never reaches the chords still records its tuning and its fit. The
+        // spans are added to the same line further down.
+        recordChroma(ChromaTracing.of(tuning, fit));
 
         progress.accept("tracking beats");
         BeatTracker.Result beats = BeatTracker.track(envelope, harmonicRhythm, onsets.pulseRegister());
@@ -405,6 +410,11 @@ public final class AudioTranscriber {
                 ChordEstimator.estimate(chroma, treble, bass, ablation, beatTimes);
         progress.accept(String.format(Locale.ROOT, "found %d chord spans", chords.size()));
         runLog.stage("chords").computed();
+        // The front end's line again, now that there are spans to summarise it
+        // over. The chord spans are the granularity the quality gates decide at
+        // and the ones a reader is looking at when a chord is wrong.
+        recordChroma(ChromaTracing.of(tuning, fit, chords, beatTimes,
+                chroma, treble, bass, ablation));
 
         // Over the whole recording rather than over the chords' own extent: a key
         // is what the listener hears the piece as being in, and it does not stop
@@ -470,6 +480,35 @@ public final class AudioTranscriber {
             }
         }
         return score;
+    }
+
+    /**
+     * What the chroma front end read, for the run's record (#676).
+     *
+     * <p>The line carries the tuning, because two stages are corrected by it:
+     * the whole harmony path, and the melody's spelling (#566).
+     */
+    private void recordChroma(ChromaTrace trace) {
+        RunLog.Stage stage = runLog.stage(ChromaTrace.STAGE).trace(trace)
+                .fact("tuning", tuningRead(trace));
+        if (!trace.spans().isEmpty()) {
+            stage.fact("spans summarised", trace.spans().size());
+        }
+        if (trace.tuningMeasured()) {
+            stage.computed();
+        } else {
+            stage.computed("the spectrum held no peaks to measure a tuning from, so concert"
+                    + " pitch was assumed");
+        }
+    }
+
+    private static String tuningRead(ChromaTrace trace) {
+        if (!trace.tuningMeasured()) {
+            return "assumed A440";
+        }
+        double cents = 100 * trace.tuningOffsetSemitones();
+        return String.format(Locale.ROOT, "%.1f cents %s of A440",
+                Math.abs(cents), cents < 0 ? "flat" : "sharp");
     }
 
     /**

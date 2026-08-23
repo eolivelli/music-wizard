@@ -181,6 +181,17 @@ dl.facts dd { margin: 0; font-variant-numeric: tabular-nums; }
 .swatch { display: inline-block; width: .75rem; height: .75rem; border-radius: 2px;
           border: 1px solid rgba(0, 0, 0, .15); }
 
+.pc-grid { margin: .3rem 0 .9rem; }
+.pc-columns { display: flex; align-items: stretch; gap: 1px; }
+.pc-names { display: flex; flex-direction: column; flex: 0 0 auto;
+            margin-right: .3rem; }
+.pc-name { height: 9px; font-size: .6rem; line-height: 9px; color: var(--faint); }
+.pc-column { display: flex; flex-direction: column; flex: 1 1 0; min-width: 2px; }
+.pc-cell { height: 9px; background: var(--accent); }
+.pc-column.unmeasured .pc-cell { background: none;
+                                 border-bottom: 1px dotted var(--faint); }
+.pc-grid figcaption { font-size: .78rem; color: var(--muted); margin-top: .25rem; }
+
 .strip { display: flex; flex-wrap: wrap; gap: 1px; margin: .3rem 0 .9rem; }
 .strip .cell { width: .55rem; height: .9rem; border-radius: 1px; }
 

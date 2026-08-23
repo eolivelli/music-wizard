@@ -18,7 +18,9 @@ package dev.olivelli.musicwizard.cli;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.workspace.BeatTrace;
+import dev.olivelli.musicwizard.core.workspace.ChromaTrace;
 import dev.olivelli.musicwizard.core.workspace.RunManifest;
 import dev.olivelli.musicwizard.core.workspace.RunManifest.Outcome;
 import dev.olivelli.musicwizard.core.workspace.Workspace;
@@ -86,6 +88,16 @@ class RunManifestCliTest {
         return manifest().stage(name).orElseThrow(() ->
                 new AssertionError("the run recorded no stage named " + name
                         + "; it named " + manifest().stages()));
+    }
+
+    private Score score() {
+        return Workspace.open(workspaceDirectory).readScore().orElseThrow();
+    }
+
+    private ChromaTrace chromaTrace() {
+        return Workspace.open(workspaceDirectory).readRunTraces().orElseThrow()
+                .trace(ChromaTrace.STAGE, ChromaTrace.class)
+                .orElseThrow(() -> new AssertionError("this run recorded no chroma trace"));
     }
 
     private BeatTrace beatTrace() {
@@ -207,10 +219,48 @@ class RunManifestCliTest {
     }
 
     @Test
+    @DisplayName("the chroma front end writes down its tuning, its fit and its spans")
+    void theChromaTraceIsWritten() {
+        analyze();
+
+        ChromaTrace trace = chromaTrace();
+        assertThat(trace.fit()).isNotNull();
+        assertThat(trace.fit().frames()).isPositive();
+        assertThat(trace.fit().lowestNoteMidi()).isLessThan(trace.fit().highestNoteMidi());
+        // One entry per chord span, each covering at least one beat-synchronous
+        // span and each reading one per pitch class.
+        assertThat(trace.spans()).hasSize(score().chords().size());
+        assertThat(trace.spans()).allSatisfy(span -> {
+            assertThat(span.toBeat()).isGreaterThan(span.fromBeat());
+            assertThat(span.combined()).hasSize(12);
+            assertThat(span.treble()).hasSize(12);
+            assertThat(span.bass()).hasSize(12);
+            // The residual is measured on this path, so an empty one would mean
+            // the ablation never reached the record.
+            assertThat(span.significance()).hasSize(12);
+        });
+        assertThat(stage("chroma").facts()).containsKey("tuning");
+    }
+
+    @Test
+    @DisplayName("the chroma line the run keeps is the one with its spans on it")
+    void theChromaTraceIsTheLastOneRecorded() {
+        // The stage records once before the beats and again once there are
+        // spans to summarise, and a run that kept the first would hold a trace
+        // that describes a recording nothing was folded over.
+        analyze();
+
+        assertThat(chromaTrace().spans()).isNotEmpty();
+        assertThat(manifest().stages().stream()
+                .filter(entry -> entry.stage().equals("chroma")).count()).isEqualTo(1);
+    }
+
+    @Test
     @DisplayName("what the stages weighed travels with the cached answer")
     void theTraceIsServedWithTheCachedAnalysis() {
         analyze();
         BeatTrace computed = beatTrace();
+        ChromaTrace weighed = chromaTrace();
 
         // A trace is a function of the cache key exactly as the score is, so a
         // run served the score has to be served the trace: without that, the
@@ -219,6 +269,7 @@ class RunManifestCliTest {
 
         assertThat(stage("beats").outcome()).isEqualTo(Outcome.CACHED);
         assertThat(beatTrace()).isEqualTo(computed);
+        assertThat(chromaTrace()).isEqualTo(weighed);
     }
 
     @Test

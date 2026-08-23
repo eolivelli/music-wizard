@@ -187,6 +187,17 @@ dl.facts dd { margin: 0; font-variant-numeric: tabular-nums; }
 .swatch { display: inline-block; width: .75rem; height: .75rem; border-radius: 2px;
           border: 1px solid rgba(0, 0, 0, .15); }
 
+.pc-grid { margin: .3rem 0 .9rem; }
+.pc-columns { display: flex; align-items: stretch; gap: 1px; }
+.pc-names { display: flex; flex-direction: column; flex: 0 0 auto;
+            margin-right: .3rem; }
+.pc-name { height: 9px; font-size: .6rem; line-height: 9px; color: var(--faint); }
+.pc-column { display: flex; flex-direction: column; flex: 1 1 0; min-width: 2px; }
+.pc-cell { height: 9px; background: var(--accent); }
+.pc-column.unmeasured .pc-cell { background: none;
+                                 border-bottom: 1px dotted var(--faint); }
+.pc-grid figcaption { font-size: .78rem; color: var(--muted); margin-top: .25rem; }
+
 .strip { display: flex; flex-wrap: wrap; gap: 1px; margin: .3rem 0 .9rem; }
 .strip .cell { width: .55rem; height: .9rem; border-radius: 1px; }
 
@@ -366,6 +377,11 @@ footer { margin-top: 3rem; padding-top: 1.25rem; border-top: 1px solid var(--rul
 <dt>provider</dt><dd>spleeter-2stems</dd>
 </dl>
 </div>
+<div class="run-stage recorded"><span class="run-stage-name">chroma</span><span class="status">ran</span><dl class="facts">
+<dt>tuning</dt><dd>3.8 cents sharp of A440</dd>
+<dt>spans summarised</dt><dd>5</dd>
+</dl>
+</div>
 <div class="run-stage recorded"><span class="run-stage-name">beats</span><span class="status">from the cache</span></div>
 <div class="run-stage absent"><span class="run-stage-name">melody</span><span class="status">did not run</span><p class="run-stage-reason">not asked for; analyze --melody reads one</p></div>
 <div class="run-stage recorded"><span class="run-stage-name">lyrics</span><span class="status">ran</span><dl class="facts">
@@ -451,14 +467,19 @@ footer { margin-top: 3rem; padding-top: 1.25rem; border-top: 1px solid var(--rul
 <dt>Downbeats the grid marks</dt><dd>4</dd>
 </dl>
 </article>
-<article class="phase untraced" id="phase-chroma"><h3><span class="phase-number">4</span>Chroma<span class="status">no trace kept</span></h3>
+<article class="phase recorded" id="phase-chroma"><h3><span class="phase-number">4</span>Chroma<span class="status">ran</span></h3>
 <p class="what">An NNLS fit over the spectrum gives the energy on each of the twelve pitch classes, tuning-corrected, in a bass register and a treble one. It is taken from the full mix and never from a stem, and it is what both the beat tracker's harmonic rhythm and every chord decision below are read from.</p>
 <dl class="io">
 <dt>In</dt><dd>the decoded mix, and the tracked beats to average over</dd>
 <dt>Decided</dt><dd>the recording's tuning, and how the fit divides between the registers</dd>
 <dt>Out</dt><dd>beat-synchronous chroma, and the fit's residual</dd>
 </dl>
-<p class="gap"><span class="gap-label">Not recorded</span>None of it is written to the workspace: not the tuning, not the frames, not the residual. So the page can show what the chroma was used for but not what it looked like (#676).</p>
+<p class="ran"><span class="ran-label">Last run</span>chroma: ran</p>
+<dl class="facts">
+<dt>tuning</dt><dd>3.8 cents sharp of A440</dd>
+<dt>spans summarised</dt><dd>5</dd>
+</dl>
+<p class="gap"><span class="gap-label">Not recorded</span>This workspace does not hold what the front end read: not the model it fitted with, not the fit's own residual, not what any chord span was read from (#676).</p>
 </article>
 <article class="phase recorded" id="phase-chords"><h3><span class="phase-number">5</span>Chord decoding and the quality decision<span class="status">output on disk</span></h3>
 <p class="what">On a recording, a decoder reads a root out of both registers with the bass as a prior over roots, and the quality out of the treble once per chord rather than once per beat; the two vocabularies are not the same one, since a quality the decoder may choose competes across roots. A score read from a MIDI file has its chords named from the notes the file declares instead.</p>
