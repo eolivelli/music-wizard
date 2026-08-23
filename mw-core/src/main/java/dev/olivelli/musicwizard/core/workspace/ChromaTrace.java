@@ -34,7 +34,8 @@ import java.util.Objects;
  *                              measure, so concert pitch was assumed rather
  *                              than found
  * @param fit                   the model the spectrum was explained with, or
- *                              null where the front end recorded none
+ *                              null where none was recorded or the record does
+ *                              not describe one
  * @param spans                 one entry per chord span, in time order, or
  *                              empty where nothing was folded onto spans
  */
@@ -49,7 +50,29 @@ public record ChromaTrace(
     public static final String STAGE = "chroma";
 
     public ChromaTrace {
+        // An absent field and a zero are the same thing in this file, so a fit
+        // a later build reshapes would be drawn as a model nothing ran on.
+        // Dropped rather than refused: the spans are the half worth keeping,
+        // and a throw here would reach the run that writes one.
+        fit = describesAModel(fit) ? fit : null;
         spans = spans == null ? List.of() : List.copyOf(spans);
+    }
+
+    /**
+     * Whether a fit is a model at all, as opposed to a record this build reads
+     * every field of as nothing.
+     *
+     * <p>{@code frames} is the one figure this cannot speak for, since a
+     * recording shorter than one analysis window really does give none.
+     */
+    private static boolean describesAModel(Fit fit) {
+        return fit != null
+                && fit.sampleRate() > 0 && fit.windowSize() > 0 && fit.hopSize() > 0
+                && fit.frameRate() > 0 && fit.binsPerSemitone() > 0 && fit.frames() >= 0
+                && fit.lowestNoteMidi() < fit.crossfadeLowMidi()
+                && fit.crossfadeLowMidi() < fit.crossfadeHighMidi()
+                && fit.crossfadeHighMidi() <= fit.trebleRollOffMidi()
+                && fit.trebleRollOffMidi() <= fit.highestNoteMidi();
     }
 
     /**
@@ -87,18 +110,6 @@ public record ChromaTrace(
             int crossfadeHighMidi,
             int trebleRollOffMidi) {
 
-        public Fit {
-            // A record whose register fields a build named differently parses
-            // as zeros, and the page states them as a measurement. Refused for
-            // the reason a reading of the wrong width is.
-            if (!(lowestNoteMidi < crossfadeLowMidi && crossfadeLowMidi < crossfadeHighMidi
-                    && crossfadeHighMidi <= trebleRollOffMidi
-                    && trebleRollOffMidi < highestNoteMidi)) {
-                throw new IllegalArgumentException("the registers do not divide the note range: "
-                        + lowestNoteMidi + ", " + crossfadeLowMidi + ", " + crossfadeHighMidi
-                        + ", " + trebleRollOffMidi + ", " + highestNoteMidi);
-            }
-        }
     }
 
     /**

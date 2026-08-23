@@ -185,14 +185,9 @@ final class ReportFixtures {
                                 reading(".05 0 .71 0 .02 .34 0 1.18 0 .03 0 .4"))));
     }
 
-    /**
-     * A front end that read a clip too short to give it a frame, which is what a
-     * run the beat tracker finds no pulse in leaves.
-     */
+    /** A front end that ran and folded nothing onto spans. */
     static ChromaTrace chromaWithoutSpans() {
-        return new ChromaTrace(0, false,
-                new ChromaTrace.Fit(22050, 8192, 1024, 21.533203125, 0, 3, 21, 96, 45, 57, 84),
-                List.of());
+        return new ChromaTrace(0, false, fit(), List.of());
     }
 
     private static ChromaTrace.Fit fit() {

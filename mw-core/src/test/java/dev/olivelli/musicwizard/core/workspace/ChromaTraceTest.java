@@ -85,16 +85,40 @@ class ChromaTraceTest {
     }
 
     @Test
-    @DisplayName("a fit whose register fields were named differently reads as absent")
-    void aFitThatDoesNotDivideTheNoteRangeIsRefused() {
+    @DisplayName("a fit whose fields a later build renamed is dropped, not stated")
+    void aFitThatDescribesNoModelIsDropped() {
         // Unknown properties are ignored and missing ones are zero, so a record
-        // from a build that named these differently would otherwise parse as a
-        // model with every register boundary at the bottom of the range.
-        RunTraces stale = RunTraceJson.fromJson("{\"schemaVersion\":1,\"traces\":{\"chroma\":"
-                + "{\"fit\":{\"lowestNoteMidi\":21,\"highestNoteMidi\":96,"
-                + "\"bassBelowMidi\":45,\"trebleAboveMidi\":57}}}}");
+        // from a build that named these differently parses as a model whose
+        // every figure reads as nothing -- which the page would state.
+        String renamedRegisters = "{\"fit\":{\"sampleRate\":22050,\"windowSize\":8192,"
+                + "\"hopSize\":1024,\"frameRate\":21.5,\"frames\":172,"
+                + "\"binsPerSemitone\":3,\"lowestNoteMidi\":21,\"highestNoteMidi\":96,"
+                + "\"bassBelowMidi\":45,\"trebleAboveMidi\":57}}";
+        String renamedTransform = "{\"fit\":{\"rate\":22050,\"window\":8192,\"hop\":1024,"
+                + "\"lowestNoteMidi\":21,\"highestNoteMidi\":96,\"crossfadeLowMidi\":45,"
+                + "\"crossfadeHighMidi\":57,\"trebleRollOffMidi\":84}}";
 
-        assertThat(stale.trace(ChromaTrace.STAGE, ChromaTrace.class)).isEmpty();
+        for (String written : List.of(renamedRegisters, renamedTransform)) {
+            ChromaTrace read = RunTraceJson.fromJson(
+                    "{\"schemaVersion\":1,\"traces\":{\"chroma\":" + written + "}}")
+                    .trace(ChromaTrace.STAGE, ChromaTrace.class).orElseThrow();
+            assertThat(read.fit()).as(written).isNull();
+        }
+    }
+
+    @Test
+    @DisplayName("a model with no roll-off, and one that gave no frame, are both kept")
+    void aModelThisBuildCouldHaveWrittenIsKept() {
+        // Neither is malformed: a fold that keeps its top octave rolls off
+        // where it ends, and a clip shorter than one analysis window gives no
+        // frame at all.
+        ChromaTrace.Fit noRollOff =
+                new ChromaTrace.Fit(22050, 8192, 1024, 21.5, 172, 3, 21, 96, 45, 57, 96);
+        ChromaTrace.Fit noFrames =
+                new ChromaTrace.Fit(22050, 8192, 1024, 21.5, 0, 3, 21, 96, 45, 57, 84);
+
+        assertThat(new ChromaTrace(0, false, noRollOff, List.of()).fit()).isEqualTo(noRollOff);
+        assertThat(new ChromaTrace(0, false, noFrames, List.of()).fit()).isEqualTo(noFrames);
     }
 
     @Test

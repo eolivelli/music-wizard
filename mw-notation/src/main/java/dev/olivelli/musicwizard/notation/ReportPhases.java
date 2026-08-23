@@ -339,7 +339,9 @@ final class ReportPhases {
         List<Fact> table = new ArrayList<>();
         table.add(fact("Tuning", tuningRead(trace)));
         ChromaTrace.Fit fit = trace.fit();
-        if (fit != null) {
+        if (fit == null) {
+            table.add(fact("Model the spectrum was fitted with", "not recorded"));
+        } else {
             table.add(fact("Analysis window", fit.windowSize() + " samples  ("
                     + HtmlWriter.number(seconds(fit.windowSize(), fit.sampleRate()), 3) + "s)"));
             table.add(fact("Hop", fit.hopSize() + " samples  ("
@@ -1016,8 +1018,7 @@ final class ReportPhases {
 
     /**
      * The pitch classes carrying most of a reading, largest first. Shares are
-     * written as percentages and the residual as the ratio it is, and a reading
-     * that was never taken is said to be missing rather than empty-handed.
+     * written as percentages and the residual as the ratio it is.
      */
     private static String strongest(List<Double> values, boolean asShare) {
         if (values.isEmpty()) {

@@ -137,8 +137,6 @@ class AnalysisReportTest {
     @Test
     @DisplayName("a front end that folded nothing onto spans says so and draws nothing")
     void aChromaTraceWithNoSpansIsStated() {
-        // What a recording with no trackable pulse leaves: the fit ran over
-        // frames and no beat folded them onto a chord.
         String page = AnalysisReport.toHtml(ReportFixtures.everything(), RECORDING,
                 ReportFixtures.run(), ReportFixtures.weighed(
                         ReportFixtures.chromaWithoutSpans()));
@@ -162,10 +160,11 @@ class AnalysisReportTest {
                 ReportFixtures.run(), ReportFixtures.weighed(withoutResidual));
 
         assertThat(page).contains("What the front end read", "<td>not measured</td>",
-                "No residual was measured over these spans");
+                "No residual was measured over these spans",
+                // The fit itself is absent here too, and its absence is stated
+                // rather than left to a reader to notice.
+                "<dt>Model the spectrum was fitted with</dt><dd>not recorded</dd>");
         assertThat(page).doesNotContain("How much of each span's spectrum",
-                // The fit itself is absent here too, and an absent model is not
-                // described as one.
                 "Notes the dictionary models");
     }
 
