@@ -258,7 +258,7 @@ final class ReportPhases {
         chordTable(spans);
         note("The chord symbols on this page are spelled for the key MW read, which is a"
                 + " decision taken when the page is written rather than when the recording"
-                + " was analysed: the estimator writes every black key as a sharp.");
+                + " was analysed.");
         gap("Which candidate roots lost, what the residual gate admitted or refused, how"
                 + " the third was settled across the run, and what the bass prior"
                 + " contributed are all decided inside the estimator and none of it is"
