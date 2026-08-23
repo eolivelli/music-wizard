@@ -78,8 +78,7 @@ final class ReportFixtures {
      * What one run recorded about itself: every outcome the page draws
      * differently, and a stage the page has no phase for.
      *
-     * <p>Not one run the CLI could produce: it is one of each outcome, so that
-     * a golden covers every shape the page draws for a stage.
+     * <p>Not one run the CLI could produce: it is one of each outcome.
      *
      * <p>The clock and the build are constants for the same reason every figure
      * above is: a golden file compares the whole page, and a run's own

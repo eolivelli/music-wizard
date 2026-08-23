@@ -83,7 +83,7 @@ class AnalysisReportTest {
         assertThat(page).contains("recorded nothing about its own run");
         // The four the record would answer keep saying they are unanswered.
         assertThat(page).contains(
-                "Nothing in this workspace says which of the two happened",
+                "Nothing in this workspace says what this file held",
                 "Nothing in this workspace says whether a separator ran",
                 "Nothing in this workspace says which signal these notes were read from",
                 "Nothing in this workspace says whether the words were supplied");
@@ -121,8 +121,8 @@ class AnalysisReportTest {
     @DisplayName("reading a MIDI file symbolically is what the decode phase says happened")
     void theSymbolicPathAnswersTheDecodePhase() {
         // A MIDI workspace decodes nothing and its record names no decode, so
-        // the page must not say the record is silent about which of the two
-        // happened. The record says exactly which.
+        // the phase has to take the other stage as its answer: describing the
+        // arm that did not run is what the page is for not doing.
         RunManifest readSymbolically = new RunManifest(
                 RunManifest.CURRENT_SCHEMA_VERSION, "1.2.3-test",
                 "2026-01-01T00:00:00Z", "2026-01-01T00:00:01Z", Map.of(),
@@ -134,7 +134,10 @@ class AnalysisReportTest {
 
         assertThat(statusOf(page, "decode")).isEqualTo("ran");
         assertThat(page).contains("Last run</span>read midi: ran");
-        assertThat(page).doesNotContain("Nothing in this workspace says which of the two");
+        // And the phase describes the arm that ran, not the other one.
+        assertThat(page).contains("the events the file declares, and how long it plays");
+        assertThat(page).doesNotContain("one signal, and how long the recording is");
+        assertThat(page).doesNotContain("Nothing in this workspace says what this file held");
         assertThat(page).doesNotContain("recorded nothing about its own run");
     }
 

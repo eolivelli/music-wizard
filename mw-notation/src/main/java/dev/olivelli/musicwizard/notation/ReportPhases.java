@@ -132,8 +132,8 @@ final class ReportPhases {
         facts(fact("Length", ReportTimeline.clock(score.durationSeconds())
                 + "  (" + HtmlWriter.number(score.durationSeconds(), 2) + "s)"));
         if (read.isEmpty()) {
-            gap("Nothing in this workspace says which of the two happened, nor what the"
-                    + " file was, nor what it was read as (#674).");
+            gap("Nothing in this workspace says what this file held, or the rate it was"
+                    + " read at (#674).");
         }
         close();
     }
