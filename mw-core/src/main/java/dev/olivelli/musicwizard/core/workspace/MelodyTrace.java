@@ -110,7 +110,8 @@ public record MelodyTrace(
      * from a stem is asked whether its own pitches sit on the grid that offset
      * names before it is rounded on one.
      *
-     * @param offsetSemitones   how far the recording was said to sit above A440
+     * @param offsetSemitones   how far the recording was said to sit above A440,
+     *                          or zero where nothing measured one
      * @param agreement         how strongly this track's own voiced frames sit on
      *                          that grid, or null wherever the comparison was
      *                          never made — which {@code read} distinguishes
@@ -126,13 +127,6 @@ public record MelodyTrace(
             double required,
             double appliedSemitones,
             String read) {
-
-        /**
-         * The front end measured no tuning on the mix, so there was none to
-         * offer. Not the same as a recording that is in tune, which measures as
-         * one of the slots beside concert pitch.
-         */
-        public static final String NOT_MEASURED = "not-measured";
 
         /** The offset says nothing the tuning estimator can resolve. */
         public static final String CONCERT_PITCH = "concert-pitch";
@@ -155,13 +149,10 @@ public record MelodyTrace(
         }
 
         /**
-         * Whether the front end measured a tuning to offer at all.
-         *
-         * <p>Read off the offset rather than off {@link #read}, so that a
-         * record written before this build distinguished the two is still
-         * drawn honestly: exactly zero is the tuning estimator's "no evidence"
-         * answer, since every offset it measures is a histogram slot's centre
-         * and no centre is zero.
+         * Whether the front end measured a tuning to offer at all — zero being
+         * the estimator's answer for no evidence. {@link #read} says what
+         * became of an offset there was, and answers nothing where there was
+         * none.
          */
         public boolean measured() {
             return offsetSemitones != 0;

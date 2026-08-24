@@ -911,9 +911,21 @@ final class ReportPhases {
         table.add(fact("Notes were rounded on", tuning.appliedSemitones() == 0
                 ? "A440" : tuningRead(true, tuning.appliedSemitones())));
         facts(table.toArray(new Fact[0]));
-        note(switch (tuning.read()) {
-            case MelodyTrace.Tuning.NOT_MEASURED -> "The front end measured no tuning on the"
-                    + " mix, so the melody stage was offered no grid but A440.";
+        note(whyTheGrid(tuning));
+    }
+
+    /**
+     * Why the notes were rounded where they were.
+     *
+     * <p>Whether a tuning existed at all is one question and what became of one
+     * is another; this and the row above it settle the first the same way.
+     */
+    private static String whyTheGrid(MelodyTrace.Tuning tuning) {
+        if (!tuning.measured()) {
+            return "The front end measured no tuning on the mix, so the melody stage was"
+                    + " offered no grid but A440.";
+        }
+        return switch (tuning.read()) {
             case MelodyTrace.Tuning.CONCERT_PITCH -> "The mix's tuning reads as concert pitch,"
                     + " so there was no other grid to round on. A shift that narrow moves only"
                     + " notes already sitting on a rounding boundary, in whichever direction"
@@ -934,7 +946,7 @@ final class ReportPhases {
                     + " by it would move whatever share of the notes the shift is wide across a"
                     + " boundary for nothing.";
             default -> tuning.read();
-        });
+        };
     }
 
     /** What the fold judged the melody's own octave to be, and what it moved (#614). */

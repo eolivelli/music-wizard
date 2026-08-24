@@ -145,15 +145,6 @@ public record Chroma(double[][] vectors, double frameRate) {
         return Math.abs(offsetSemitones) < TUNING_RESOLUTION_SEMITONES;
     }
 
-    /**
-     * Whether {@link #estimateTuning} measured a tuning at all, as opposed to
-     * finding no evidence: exactly zero is the answer it gives for the second,
-     * since no slot centre is zero. A recording genuinely in tune answers with
-     * a slot centre beside zero, which {@link #readsAsConcertPitch} is for.
-     */
-    public static boolean measuredATuning(double offsetSemitones) {
-        return offsetSemitones != 0;
-    }
 
     /**
      * Estimates how far the recording sits from A4 = 440 Hz, in semitones.

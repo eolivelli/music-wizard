@@ -964,11 +964,11 @@ class MelodyEstimationTest {
         }
 
         @Test
-        @DisplayName("an offset the front end never measured is not one it measured at zero")
-        void anUnmeasuredOffsetIsItsOwnReading() {
+        @DisplayName("an offset the front end never measured is recorded as no measurement")
+        void anUnmeasuredOffsetIsNotAMeasurement() {
             MelodyTrace.Tuning tuning = trace(track(69.0, 40)).tuning();
 
-            assertThat(tuning.read()).isEqualTo(MelodyTrace.Tuning.NOT_MEASURED);
+            assertThat(tuning.measured()).isFalse();
             assertThat(tuning.agreement()).isNull();
             assertThat(tuning.appliedSemitones()).isZero();
         }

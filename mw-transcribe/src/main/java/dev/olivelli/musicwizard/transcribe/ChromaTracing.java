@@ -47,8 +47,8 @@ final class ChromaTracing {
 
     /** What the front end can say before any beat is known. */
     static ChromaTrace of(double tuningOffsetSemitones, ChromaTrace.Fit fit) {
-        return new ChromaTrace(tuningOffsetSemitones,
-                Chroma.measuredATuning(tuningOffsetSemitones), fit, List.of());
+        return new ChromaTrace(tuningOffsetSemitones, measured(tuningOffsetSemitones),
+                fit, List.of());
     }
 
     /**
@@ -77,8 +77,17 @@ final class ChromaTracing {
                     ablation == null || to > ablation.spanCount()
                             ? List.of() : rounded(ablation.significanceOver(from, to))));
         }
-        return new ChromaTrace(tuningOffsetSemitones,
-                Chroma.measuredATuning(tuningOffsetSemitones), fit, spans);
+        return new ChromaTrace(tuningOffsetSemitones, measured(tuningOffsetSemitones),
+                fit, spans);
+    }
+
+    /**
+     * Exactly zero is {@code Chroma.estimateTuning}'s "no evidence" answer:
+     * every offset it measures is a histogram slot's centre, and no slot centre
+     * is zero.
+     */
+    private static boolean measured(double tuningOffsetSemitones) {
+        return tuningOffsetSemitones != 0;
     }
 
     private static int beatAt(List<Double> beatTimes, double seconds, int highest) {

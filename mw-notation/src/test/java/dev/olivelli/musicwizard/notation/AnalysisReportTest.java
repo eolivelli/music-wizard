@@ -823,38 +823,23 @@ class AnalysisReportTest {
     }
 
     @Test
-    @DisplayName("an offset nothing measured is not drawn as one measured at nothing")
+    @DisplayName("an offset nothing measured is drawn as no measurement, row and reason alike")
     void anUnmeasuredOffsetIsNotDrawnAsZeroCents() {
-        // Exactly zero is the tuning estimator's "no evidence" answer, and the
-        // chroma phase already says so on this page. The melody phase reads
-        // the same fact through the same words rather than a second copy.
-        String page = AnalysisReport.toHtml(ReportFixtures.everything(), RECORDING,
-                ReportFixtures.run(), ReportFixtures.weighed(
-                        ReportFixtures.melodyRoundedOn(new MelodyTrace.Tuning(
-                                0, null, 0.2, 0, MelodyTrace.Tuning.NOT_MEASURED))));
-
-        assertThat(page).contains("<dt>Tuning of the mix</dt><dd>not measured — the spectrum"
-                        + " held no peaks to read one from, so concert pitch was assumed</dd>",
-                "The front end measured no tuning on the mix");
-        assertThat(page).doesNotContain("<dd>0 cents sharp of A440</dd>",
-                "<dd>0 cents flat of A440</dd>");
-    }
-
-    @Test
-    @DisplayName("a record from before the two were told apart is still drawn honestly")
-    void anEarlierRecordOfAnUnmeasuredOffsetIsNotDrawnAsZeroCents() {
-        // A workspace analysed by a build whose only reading for a zero offset
-        // was concert-pitch. Traces survive across builds and no cache key is
-        // computed from one, so this file is re-drawn rather than re-analysed.
+        // Zero is the tuning estimator's answer for no evidence, and the chroma
+        // phase already says so on this page. The melody phase reads that fact
+        // in one place, so the row and the sentence under it cannot disagree.
         String page = AnalysisReport.toHtml(ReportFixtures.everything(), RECORDING,
                 ReportFixtures.run(), ReportFixtures.weighed(
                         ReportFixtures.melodyRoundedOn(new MelodyTrace.Tuning(
                                 0, null, 0.2, 0, MelodyTrace.Tuning.CONCERT_PITCH))));
 
         assertThat(page).contains("<dt>Tuning of the mix</dt><dd>not measured — the spectrum"
-                + " held no peaks to read one from, so concert pitch was assumed</dd>");
+                        + " held no peaks to read one from, so concert pitch was assumed</dd>",
+                "The front end measured no tuning on the mix");
         assertThat(page).doesNotContain("<dd>0 cents sharp of A440</dd>",
-                "<dd>0 cents flat of A440</dd>");
+                "<dd>0 cents flat of A440</dd>",
+                // The reading that would assert the measurement the row denies.
+                "The mix's tuning reads as concert pitch");
     }
 
     @Test

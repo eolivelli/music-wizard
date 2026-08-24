@@ -665,9 +665,6 @@ public final class MelodyEstimator {
         // A track with nothing voiced in it disagrees with nothing, so the
         // readings below are kept apart rather than collapsed into whether the
         // rounding took the offer.
-        if (!Chroma.measuredATuning(tuningOffsetSemitones)) {
-            return refused(tuningOffsetSemitones, MelodyTrace.Tuning.NOT_MEASURED);
-        }
         if (Chroma.readsAsConcertPitch(tuningOffsetSemitones)) {
             return refused(tuningOffsetSemitones, MelodyTrace.Tuning.CONCERT_PITCH);
         }
