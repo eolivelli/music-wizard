@@ -202,6 +202,16 @@ dl.facts dd { margin: 0; font-variant-numeric: tabular-nums; }
 .strip { display: flex; flex-wrap: wrap; gap: 1px; margin: .3rem 0 .9rem; }
 .strip .cell { width: .55rem; height: .9rem; border-radius: 1px; }
 
+.run-lane { margin: .3rem 0 .9rem; }
+.run-lane .runs { position: relative; height: 14px; background: var(--panel);
+                  border: 1px solid var(--rule); border-radius: 2px; }
+.run-lane .run { position: absolute; top: 0; bottom: 0; min-width: 1px;
+                 background: var(--accent); }
+.run-lane .run.silent { background: none; border-bottom: 2px dotted var(--faint); }
+.run-lane .axis { display: flex; justify-content: space-between; font-size: .7rem;
+                  color: var(--faint); font-variant-numeric: tabular-nums; }
+.run-lane figcaption { font-size: .78rem; color: var(--muted); margin-top: .25rem; }
+
 details.table { margin: .3rem 0 .9rem; font-size: .85rem; }
 details.table summary { cursor: pointer; color: var(--accent); }
 .phase table { border-collapse: collapse; width: 100%; margin-top: .5rem;
@@ -576,7 +586,7 @@ footer { margin-top: 3rem; padding-top: 1.25rem; border-top: 1px solid var(--rul
 <div class="columns"><span class="column" style="height:20px" title="2 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:60px" title="6 of them"></span></div>
 <div class="axis"><span>0.125</span><span>0.5</span></div>
 <figcaption>How long the notes are, in seconds</figcaption></figure>
-<p class="gap"><span class="gap-label">Not recorded</span>The pitch track and the voicedness the segmentation read are not recorded, so the page shows the notes and not the decision that cut them (#679).</p>
+<p class="gap"><span class="gap-label">Not recorded</span>Where this pitch track was cut into notes, and by which rule, is not in this workspace, so the page shows the notes and not the decisions that made them (#679). A recording analysed again records them.</p>
 </article>
 <article class="phase recorded" id="phase-lyrics"><h3><span class="phase-number">8</span>Lyric alignment<span class="status">output on disk</span></h3>
 <p class="what">Words come either from an LRC file the user supplied or from the transcriber, are split into syllables by the hyphenation patterns for their language, and are placed against the vocal stem.</p>

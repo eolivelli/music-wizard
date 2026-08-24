@@ -20,6 +20,7 @@ import dev.olivelli.musicwizard.core.model.Confidence;
 import dev.olivelli.musicwizard.core.model.Note;
 import dev.olivelli.musicwizard.core.model.NoteTrack;
 import dev.olivelli.musicwizard.core.model.PartRole;
+import dev.olivelli.musicwizard.core.workspace.MelodyTrace;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -223,6 +224,19 @@ public final class MelodyEstimator {
     }
 
     /**
+     * A melody and what the segmentation did to arrive at it.
+     *
+     * @param trace a summary of the pass that ran, never a second segmentation
+     */
+    public record Segmented(NoteTrack melody, MelodyTrace trace) {
+
+        public Segmented {
+            Objects.requireNonNull(melody, "melody");
+            Objects.requireNonNull(trace, "trace");
+        }
+    }
+
+    /**
      * Segments a pitch track into a melody part.
      *
      * <p>The notes carry wall-clock timing only. Quantizing them onto the beat
@@ -232,7 +246,7 @@ public final class MelodyEstimator {
         Objects.requireNonNull(pitches, "pitches");
         return segment(pitches, null, 0, STEADY_SEMITONES,
                 RANGE_FLOOR_SEMITONES, RANGE_SPREAD_QUANTILE, MOST_OCTAVES_OUT,
-                ONE_GESTURE_SEMITONES);
+                ONE_GESTURE_SEMITONES).melody();
     }
 
     /**
@@ -248,7 +262,7 @@ public final class MelodyEstimator {
         Objects.requireNonNull(envelope, "envelope");
         return segment(pitches, envelope, 0, STEADY_SEMITONES,
                 RANGE_FLOOR_SEMITONES, RANGE_SPREAD_QUANTILE, MOST_OCTAVES_OUT,
-                ONE_GESTURE_SEMITONES);
+                ONE_GESTURE_SEMITONES).melody();
     }
 
     /**
@@ -262,6 +276,17 @@ public final class MelodyEstimator {
      */
     public static NoteTrack estimate(PitchTrack pitches, OnsetEnvelope envelope,
                                      double tuningOffsetSemitones) {
+        return explain(pitches, envelope, tuningOffsetSemitones).melody();
+    }
+
+    /**
+     * The same, with what the segmentation did on the way there (#679).
+     *
+     * <p>The trace names no signal: which one this track was tracked from is
+     * the caller's fact, and {@link MelodyTrace#readFrom} is where it is added.
+     */
+    public static Segmented explain(PitchTrack pitches, OnsetEnvelope envelope,
+                                    double tuningOffsetSemitones) {
         Objects.requireNonNull(pitches, "pitches");
         Objects.requireNonNull(envelope, "envelope");
         if (!Double.isFinite(tuningOffsetSemitones)) {
@@ -292,7 +317,7 @@ public final class MelodyEstimator {
         }
         return segment(pitches, envelope, tuningOffsetSemitones, steadySemitones,
                 RANGE_FLOOR_SEMITONES, RANGE_SPREAD_QUANTILE, MOST_OCTAVES_OUT,
-                ONE_GESTURE_SEMITONES);
+                ONE_GESTURE_SEMITONES).melody();
     }
 
     /**
@@ -337,10 +362,11 @@ public final class MelodyEstimator {
                     + " non-negative, got: " + gestureSemitones);
         }
         return segment(pitches, envelope, tuningOffsetSemitones, steadySemitones,
-                rangeFloorSemitones, rangeSpreadQuantile, mostOctavesOut, gestureSemitones);
+                rangeFloorSemitones, rangeSpreadQuantile, mostOctavesOut, gestureSemitones)
+                .melody();
     }
 
-    private static NoteTrack segment(PitchTrack pitches, OnsetEnvelope envelope,
+    private static Segmented segment(PitchTrack pitches, OnsetEnvelope envelope,
                                      double tuningOffsetSemitones, double steadySemitones,
                                      double rangeFloorSemitones, double rangeSpreadQuantile,
                                      int mostOctavesOut, double gestureSemitones) {
@@ -348,8 +374,13 @@ public final class MelodyEstimator {
         // offset shifts where a semitone boundary falls, so a decision taken
         // per run would let one note of a phrase be rounded on a grid the next
         // one is not.
-        double grid = honours(pitches, tuningOffsetSemitones) ? tuningOffsetSemitones : 0;
+        MelodyTrace.Tuning tuning = tuning(pitches, tuningOffsetSemitones);
+        double grid = tuning.appliedSemitones();
         List<Note> notes = new ArrayList<>();
+        List<String> startedBy = new ArrayList<>();
+        List<Integer> ofRun = new ArrayList<>();
+        List<MelodyTrace.Run> runs = new ArrayList<>();
+        int voicedFrames = 0;
         int frame = 0;
         while (frame < pitches.frameCount()) {
             if (!pitches.voiced()[frame]) {
@@ -360,12 +391,41 @@ public final class MelodyEstimator {
             while (end < pitches.frameCount() && pitches.voiced()[end]) {
                 end++;
             }
-            notes.addAll(notesOfRun(pitches, envelope, frame, end, grid, steadySemitones));
+            voicedFrames += end - frame;
+            Cut cut = notesOfRun(pitches, envelope, frame, end, grid, steadySemitones);
+            notes.addAll(cut.notes());
+            startedBy.addAll(cut.startedBy());
+            cut.notes().forEach(note -> ofRun.add(runs.size()));
+            runs.add(cut.run());
             frame = end;
         }
-        List<Note> folded = foldOctaves(notes, rangeFloorSemitones, rangeSpreadQuantile,
+        Folded folded = foldOctaves(notes, rangeFloorSemitones, rangeSpreadQuantile,
                 mostOctavesOut, gestureSemitones);
-        return new NoteTrack(PartRole.LEAD_VOCAL, "Voice", folded, trackConfidence(folded));
+        List<Note> voices = folded.notes();
+        return new Segmented(
+                new NoteTrack(PartRole.LEAD_VOCAL, "Voice", voices, trackConfidence(voices)),
+                new MelodyTrace(null, track(pitches, voicedFrames), tuning, folded.fold(),
+                        runs, folded.gestures(), traced(voices, startedBy, ofRun, folded)));
+    }
+
+    private static MelodyTrace.Track track(PitchTrack pitches, int voicedFrames) {
+        return new MelodyTrace.Track(pitches.sampleRate(), pitches.windowSize(),
+                pitches.hopSize(), pitches.frameRate(), pitches.frameCount(), voicedFrames,
+                pitches.frameCount() == 0
+                        ? 0 : pitches.timeOf(pitches.frameCount() - 1) + 1 / pitches.frameRate());
+    }
+
+    /** One entry per printed note, joined to the run and the gesture that shaped it. */
+    private static List<MelodyTrace.Note> traced(List<Note> notes, List<String> startedBy,
+                                                 List<Integer> ofRun, Folded folded) {
+        List<MelodyTrace.Note> traced = new ArrayList<>(notes.size());
+        for (int i = 0; i < notes.size(); i++) {
+            Note note = notes.get(i);
+            traced.add(new MelodyTrace.Note(note.onsetSeconds(), note.offsetSeconds(),
+                    note.midiPitch(), startedBy.get(i), ofRun.get(i),
+                    folded.gestureOf(i), folded.shiftOf(i)));
+        }
+        return traced;
     }
 
     /**
@@ -393,11 +453,11 @@ public final class MelodyEstimator {
      * would be pitch classes with no representative in it at all, so every note
      * of one would be moved on no evidence.
      */
-    private static List<Note> foldOctaves(List<Note> notes, double rangeFloorSemitones,
-                                          double rangeSpreadQuantile, int mostOctavesOut,
-                                          double gestureSemitones) {
+    private static Folded foldOctaves(List<Note> notes, double rangeFloorSemitones,
+                                      double rangeSpreadQuantile, int mostOctavesOut,
+                                      double gestureSemitones) {
         if (notes.isEmpty()) {
-            return notes;
+            return new Folded(notes, null, List.of(), new int[0], new int[0]);
         }
         double[] pitches = new double[notes.size()];
         double[] weights = new double[notes.size()];
@@ -413,9 +473,14 @@ public final class MelodyEstimator {
         double half = Math.max(rangeFloorSemitones,
                 weightedQuantile(deviations, weights, rangeSpreadQuantile));
         if (2 * half < 12) {
-            return notes;
+            return new Folded(notes,
+                    new MelodyTrace.Fold(centre, half, MelodyTrace.Fold.REFUSED),
+                    List.of(), new int[notes.size()], new int[notes.size()]);
         }
         List<Note> folded = new ArrayList<>(notes.size());
+        List<MelodyTrace.Gesture> gestures = new ArrayList<>();
+        int[] gestureOfNote = new int[notes.size()];
+        int[] shiftOfNote = new int[notes.size()];
         int from = 0;
         while (from < notes.size()) {
             int to = from + 1;
@@ -423,13 +488,60 @@ public final class MelodyEstimator {
                     gestureSemitones)) {
                 to++;
             }
-            int semitones = gestureShift(notes.subList(from, to), centre, half, mostOctavesOut);
-            for (Note note : notes.subList(from, to)) {
+            List<Note> gesture = notes.subList(from, to);
+            Shift shift = gestureShift(gesture, centre, half, mostOctavesOut);
+            int semitones = shift.semitones();
+            for (int i = from; i < to; i++) {
+                gestureOfNote[i] = gestures.size();
+                shiftOfNote[i] = semitones;
+            }
+            gestures.add(describe(gesture, shift));
+            for (Note note : gesture) {
                 folded.add(semitones == 0 ? note : note.transposedBy(semitones));
             }
             from = to;
         }
-        return folded;
+        return new Folded(folded,
+                new MelodyTrace.Fold(centre, half, MelodyTrace.Fold.APPLIED),
+                gestures, gestureOfNote, shiftOfNote);
+    }
+
+    /** What the fold judged one gesture on, as it stood before any move. */
+    private static MelodyTrace.Gesture describe(List<Note> gesture, Shift shift) {
+        int lowest = Integer.MAX_VALUE;
+        int highest = Integer.MIN_VALUE;
+        double end = 0;
+        for (Note note : gesture) {
+            lowest = Math.min(lowest, note.midiPitch());
+            highest = Math.max(highest, note.midiPitch());
+            end = Math.max(end, note.offsetSeconds());
+        }
+        return new MelodyTrace.Gesture(gesture.get(0).onsetSeconds(), end, gesture.size(),
+                lowest, highest, shift.heldMidi(), shift.semitones(), shift.read());
+    }
+
+    /**
+     * The notes as the fold left them, and what it decided over each gesture.
+     *
+     * <p>{@code gestureOfNote} and {@code shiftOfNote} are per note of the list
+     * handed in, whose order the fold keeps.
+     */
+    private record Folded(List<Note> notes, MelodyTrace.Fold fold,
+                          List<MelodyTrace.Gesture> gestures,
+                          int[] gestureOfNote, int[] shiftOfNote) {
+
+        /** Which gesture decided a note's octave, or null where none did. */
+        Integer gestureOf(int note) {
+            return gestures.isEmpty() ? null : gestureOfNote[note];
+        }
+
+        int shiftOf(int note) {
+            return gestures.isEmpty() ? 0 : shiftOfNote[note];
+        }
+    }
+
+    /** What the fold makes of one gesture: how far to move it, and on what reading. */
+    private record Shift(int semitones, Integer heldMidi, String read) {
     }
 
     /**
@@ -451,13 +563,13 @@ public final class MelodyEstimator {
      * intervals survive the move; a gesture that reaches into the band is in
      * the melody's octave whatever the rest of it does.
      */
-    private static int gestureShift(List<Note> gesture, double centre, double half,
-                                    int mostOctavesOut) {
+    private static Shift gestureShift(List<Note> gesture, double centre, double half,
+                                      int mostOctavesOut) {
         double[] pitches = new double[gesture.size()];
         double[] weights = new double[gesture.size()];
         for (int i = 0; i < gesture.size(); i++) {
             if (Math.abs(gesture.get(i).midiPitch() - centre) <= half) {
-                return 0;
+                return new Shift(0, null, MelodyTrace.Gesture.INSIDE);
             }
             pitches[i] = gesture.get(i).midiPitch();
             weights[i] = gesture.get(i).durationSeconds();
@@ -466,10 +578,11 @@ public final class MelodyEstimator {
         int semitones = foldedPitch(held, centre, half, mostOctavesOut) - held;
         for (Note note : gesture) {
             if (note.midiPitch() + semitones < 0 || note.midiPitch() + semitones > 127) {
-                return 0;
+                return new Shift(0, held, MelodyTrace.Gesture.OUT_OF_RANGE);
             }
         }
-        return semitones;
+        return new Shift(semitones, held, semitones == 0
+                ? MelodyTrace.Gesture.OUT_OF_REACH : MelodyTrace.Gesture.MOVED);
     }
 
     /**
@@ -539,22 +652,32 @@ public final class MelodyEstimator {
     }
 
     /**
-     * Whether an offset is worth rounding on: it has to say something
-     * {@link Chroma#estimateTuning} can resolve, and the track's own pitches
-     * have to sit on the grid it names.
+     * Whether an offset is worth rounding on, and what that was read from: it
+     * has to say something {@link Chroma#estimateTuning} can resolve, and the
+     * track's own pitches have to sit on the grid it names.
      *
      * <p>An offset that reads as concert pitch is not rounded on at all: a
      * shift that narrow decides nothing but notes already on a rounding
-     * boundary, in whichever direction they happened to lie.
+     * boundary, in whichever direction they happened to lie. It is not
+     * corroborated either, because there is nothing to corroborate.
      */
-    private static boolean honours(PitchTrack pitches, double tuningOffsetSemitones) {
-        return !Chroma.readsAsConcertPitch(tuningOffsetSemitones)
-                && corroborates(pitches, tuningOffsetSemitones);
+    private static MelodyTrace.Tuning tuning(PitchTrack pitches, double tuningOffsetSemitones) {
+        if (Chroma.readsAsConcertPitch(tuningOffsetSemitones)) {
+            return new MelodyTrace.Tuning(tuningOffsetSemitones, null,
+                    TUNING_CORROBORATION_FLOOR, 0, MelodyTrace.Tuning.CONCERT_PITCH);
+        }
+        Double agreement = corroboration(pitches, tuningOffsetSemitones);
+        boolean honoured = agreement != null && agreement >= TUNING_CORROBORATION_FLOOR;
+        return new MelodyTrace.Tuning(tuningOffsetSemitones, agreement,
+                TUNING_CORROBORATION_FLOOR, honoured ? tuningOffsetSemitones : 0,
+                honoured ? MelodyTrace.Tuning.CORROBORATED
+                        : MelodyTrace.Tuning.UNCORROBORATED);
     }
 
     /**
-     * Whether the track's own pitches sit on the grid an offset names, against
-     * {@link #TUNING_CORROBORATION_FLOOR}.
+     * How strongly the track's own pitches sit on the grid an offset names,
+     * against {@link #TUNING_CORROBORATION_FLOOR}, or null where no voiced frame
+     * carried a reading to measure it from.
      *
      * <p>Read frame by frame rather than from the notes, so that the decision
      * does not depend on the cuts it goes on to move, and weighted by
@@ -562,7 +685,7 @@ public final class MelodyEstimator {
      * like one it was sure of. Unvoiced frames carry the decoder's memory
      * rather than a measurement ({@link PitchTrack}) and are left out.
      */
-    private static boolean corroborates(PitchTrack pitches, double tuningOffsetSemitones) {
+    private static Double corroboration(PitchTrack pitches, double tuningOffsetSemitones) {
         double agreement = 0;
         double weight = 0;
         for (int frame = 0; frame < pitches.frameCount(); frame++) {
@@ -574,12 +697,19 @@ public final class MelodyEstimator {
             agreement += pitches.voicedness()[frame] * Math.cos(2 * Math.PI * distance);
             weight += pitches.voicedness()[frame];
         }
-        return weight > 0 && agreement / weight >= TUNING_CORROBORATION_FLOOR;
+        return weight > 0 ? agreement / weight : null;
     }
 
-    /** One unbroken voiced run, cut into notes. */
-    private static List<Note> notesOfRun(PitchTrack pitches, OnsetEnvelope envelope,
-                                         int from, int to, double grid, double steadySemitones) {
+    /**
+     * One unbroken voiced run, cut into notes, and what the cutting did to it.
+     *
+     * @param startedBy one entry per note, naming the rule that placed its start
+     */
+    private record Cut(List<Note> notes, List<String> startedBy, MelodyTrace.Run run) {
+    }
+
+    private static Cut notesOfRun(PitchTrack pitches, OnsetEnvelope envelope,
+                                  int from, int to, double grid, double steadySemitones) {
         double frameSeconds = 1 / pitches.frameRate();
         int confirmFrames = Math.max(1, (int) Math.ceil(MIN_NOTE_SECONDS / frameSeconds));
         List<int[]> spans = cut(pitches, from, to, confirmFrames);
@@ -598,6 +728,7 @@ public final class MelodyEstimator {
             onsets[i] = pitches.timeOf(merged.get(i)[0]);
         }
         List<Note> notes = new ArrayList<>(merged.size());
+        List<String> startedBy = new ArrayList<>(merged.size());
         for (int i = 0; i < merged.size(); i++) {
             int[] span = merged.get(i);
             // Up to the next surviving note rather than to its own last frame,
@@ -619,9 +750,15 @@ public final class MelodyEstimator {
                 double pieceStart = starts.get(piece);
                 double pieceEnd = piece + 1 < starts.size() ? starts.get(piece + 1) : end;
                 notes.add(Note.ofSeconds(pieceStart, pieceEnd - pieceStart, pitch, confidence));
+                startedBy.add(piece > 0 ? MelodyTrace.Note.REARTICULATION
+                        : i == 0 ? MelodyTrace.Note.RUN : MelodyTrace.Note.PITCH);
             }
         }
-        return notes;
+        double runStart = pitches.timeOf(from);
+        return new Cut(notes, startedBy, new MelodyTrace.Run(runStart, runEnd,
+                spans.size(), kept.size(), kept.size() - merged.size(),
+                notes.size() - merged.size(), notes.size(),
+                (merged.isEmpty() ? runEnd : onsets[0]) - runStart));
     }
 
     /**

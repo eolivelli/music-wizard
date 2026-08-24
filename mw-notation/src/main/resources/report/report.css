@@ -196,6 +196,16 @@ dl.facts dd { margin: 0; font-variant-numeric: tabular-nums; }
 .strip { display: flex; flex-wrap: wrap; gap: 1px; margin: .3rem 0 .9rem; }
 .strip .cell { width: .55rem; height: .9rem; border-radius: 1px; }
 
+.run-lane { margin: .3rem 0 .9rem; }
+.run-lane .runs { position: relative; height: 14px; background: var(--panel);
+                  border: 1px solid var(--rule); border-radius: 2px; }
+.run-lane .run { position: absolute; top: 0; bottom: 0; min-width: 1px;
+                 background: var(--accent); }
+.run-lane .run.silent { background: none; border-bottom: 2px dotted var(--faint); }
+.run-lane .axis { display: flex; justify-content: space-between; font-size: .7rem;
+                  color: var(--faint); font-variant-numeric: tabular-nums; }
+.run-lane figcaption { font-size: .78rem; color: var(--muted); margin-top: .25rem; }
+
 details.table { margin: .3rem 0 .9rem; font-size: .85rem; }
 details.table summary { cursor: pointer; color: var(--accent); }
 .phase table { border-collapse: collapse; width: 100%; margin-top: .5rem;

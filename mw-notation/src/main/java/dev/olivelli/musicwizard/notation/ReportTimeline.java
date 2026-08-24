@@ -459,6 +459,16 @@ final class ReportTimeline {
         return String.format(Locale.ROOT, "%d:%02d", whole / 60, whole % 60);
     }
 
+    /**
+     * The same, to a hundredth, for things shorter than the second it rounds
+     * to: a sung note and the run it was cut from both routinely are.
+     */
+    static String moment(double seconds) {
+        long hundredths = (long) Math.floor(Math.max(0, seconds) * 100);
+        return String.format(Locale.ROOT, "%d:%02d.%02d",
+                hundredths / 6000, hundredths / 100 % 60, hundredths % 100);
+    }
+
     static String bpm(double beatsPerMinute) {
         return HtmlWriter.number(beatsPerMinute, 1);
     }
