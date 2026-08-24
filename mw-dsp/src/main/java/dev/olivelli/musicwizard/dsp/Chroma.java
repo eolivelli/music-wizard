@@ -145,7 +145,6 @@ public record Chroma(double[][] vectors, double frameRate) {
         return Math.abs(offsetSemitones) < TUNING_RESOLUTION_SEMITONES;
     }
 
-
     /**
      * Estimates how far the recording sits from A4 = 440 Hz, in semitones.
      *
