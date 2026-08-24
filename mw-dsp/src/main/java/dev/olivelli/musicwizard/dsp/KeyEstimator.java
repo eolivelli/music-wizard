@@ -21,6 +21,9 @@ import dev.olivelli.musicwizard.core.model.ChordProgression;
 import dev.olivelli.musicwizard.core.model.Confidence;
 import dev.olivelli.musicwizard.core.model.Key;
 import dev.olivelli.musicwizard.core.model.Mode;
+import dev.olivelli.musicwizard.core.workspace.KeyTrace;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -176,12 +179,14 @@ public final class KeyEstimator {
      * that one source, kept so a caller reads {@code signatureConfidence()}
      * rather than unwrapping an Optional the estimator always fills.
      *
-     * @param key the key, spanning the whole requested range and carrying both
-     *            component confidences
+     * @param key   the key, spanning the whole requested range and carrying both
+     *              component confidences
+     * @param trace what the two decisions were weighed from (#678)
      */
-    public record Estimate(Key key) {
+    public record Estimate(Key key, KeyTrace trace) {
         public Estimate {
             Objects.requireNonNull(key, "key");
+            Objects.requireNonNull(trace, "trace");
             if (key.signatureConfidence().isEmpty()) {
                 throw new IllegalArgumentException(
                         "an estimate's key must carry its component confidences");
@@ -223,11 +228,13 @@ public final class KeyEstimator {
             return Optional.empty();
         }
 
+        Weighed[][] evidence = new Weighed[12][2];
         double[][] scores = new double[12][2];
         for (int tonic = 0; tonic < 12; tonic++) {
             for (Mode mode : Mode.values()) {
+                evidence[tonic][mode.ordinal()] = score(progression, tonic, mode);
                 scores[tonic][mode.ordinal()] =
-                        score(progression, tonic, mode) / sounding;
+                        evidence[tonic][mode.ordinal()].total() / sounding;
             }
         }
 
@@ -250,12 +257,16 @@ public final class KeyEstimator {
         // The best key in some other signature: the relative pair share one, so
         // both of them are excluded here and separated by the tonic margin below.
         double otherSignature = Double.NEGATIVE_INFINITY;
+        int otherTonic = 0;
+        Mode otherMode = Mode.MAJOR;
         for (int tonic = 0; tonic < 12; tonic++) {
             for (Mode mode : Mode.values()) {
                 boolean samePair = (tonic == bestTonic && mode == bestMode)
                         || (tonic == relativeTonic && mode == relativeMode);
-                if (!samePair) {
-                    otherSignature = Math.max(otherSignature, scores[tonic][mode.ordinal()]);
+                if (!samePair && scores[tonic][mode.ordinal()] > otherSignature) {
+                    otherSignature = scores[tonic][mode.ordinal()];
+                    otherTonic = tonic;
+                    otherMode = mode;
                 }
             }
         }
@@ -281,13 +292,60 @@ public final class KeyEstimator {
         Key key = Key.estimated(
                 Key.tonicOf(signatureOf(bestTonic, bestMode), bestMode), bestMode,
                 startSeconds, endSeconds, signature, tonic);
-        return Optional.of(new Estimate(key));
+        KeyTrace trace = new KeyTrace(KeyTrace.FROM_CHORDS, sounding,
+                endSeconds - startSeconds, weighed, candidates(evidence, sounding),
+                decision(name(bestTonic, bestMode), name(otherTonic, otherMode),
+                        best - otherSignature),
+                decision(name(bestTonic, bestMode), name(relativeTonic, relativeMode),
+                        best - relative));
+        return Optional.of(new Estimate(key, trace));
+    }
+
+    /** Every key that was scored, and the evidence each of them got there on. */
+    private static List<KeyTrace.Candidate> candidates(Weighed[][] evidence, double sounding) {
+        List<KeyTrace.Candidate> candidates = new ArrayList<>(24);
+        for (int tonic = 0; tonic < 12; tonic++) {
+            for (Mode mode : Mode.values()) {
+                Weighed weighed = evidence[tonic][mode.ordinal()];
+                candidates.add(new KeyTrace.Candidate(name(tonic, mode),
+                        weighed.total() / sounding,
+                        weighed.tonicChordSpans(), weighed.tonicChordSeconds(),
+                        weighed.raisedSeventhSpans(), weighed.raisedSeventhSeconds()));
+            }
+        }
+        return candidates;
+    }
+
+    /**
+     * One comparison as it was made, with the tie tolerance {@link #beats}
+     * applies read off it rather than restated on the page.
+     */
+    private static KeyTrace.Decision decision(String winner, String runnerUp, double margin) {
+        return new KeyTrace.Decision(winner, runnerUp, margin,
+                Math.abs(margin) > TIE ? "separated" : "tied");
+    }
+
+    /** The name the page prints a key under, chosen or not. */
+    private static String name(int tonic, Mode mode) {
+        return Key.displayName(Key.tonicOf(signatureOf(tonic, mode), mode), mode);
+    }
+
+    /**
+     * What one key was worth over the progression, and the two tallies that are
+     * the only things able to separate it from its relative.
+     */
+    private record Weighed(double total, int tonicChordSpans, double tonicChordSeconds,
+                           int raisedSeventhSpans, double raisedSeventhSeconds) {
     }
 
     /** Duration-weighted score of one key, not yet divided by the sounding time. */
-    private static double score(ChordProgression progression, int tonic, Mode mode) {
+    private static Weighed score(ChordProgression progression, int tonic, Mode mode) {
         int[] scale = mode == Mode.MINOR ? NATURAL_MINOR : MAJOR_SCALE;
         double total = 0;
+        int tonicChordSpans = 0;
+        double tonicChordSeconds = 0;
+        int raisedSeventhSpans = 0;
+        double raisedSeventhSeconds = 0;
         for (Chord chord : progression.chords()) {
             if (chord.isNoChord()) {
                 continue;
@@ -307,6 +365,8 @@ public final class KeyEstimator {
                 // The harmonic-minor dominant: its third is the raised seventh,
                 // which is in the minor key and not in the relative major.
                 fit = 1;
+                raisedSeventhSpans++;
+                raisedSeventhSeconds += chord.durationSeconds();
             } else {
                 int inScale = 0;
                 for (int i = 0; i < triadTones; i++) {
@@ -322,9 +382,14 @@ public final class KeyEstimator {
             boolean modeAgrees = mode == Mode.MINOR ? minorThird : majorThird;
             boolean tonicChord = root == tonic
                     && (modeAgrees || !(majorThird || minorThird));
+            if (tonicChord) {
+                tonicChordSpans++;
+                tonicChordSeconds += chord.durationSeconds();
+            }
             total += chord.durationSeconds() * (fit + (tonicChord ? TONIC_CHORD_WEIGHT : 0));
         }
-        return total;
+        return new Weighed(total, tonicChordSpans, tonicChordSeconds,
+                raisedSeventhSpans, raisedSeventhSeconds);
     }
 
     /**

@@ -202,7 +202,16 @@ public record Key(
 
     /** Name such as {@code F# minor}. */
     public String displayName() {
-        return tonic.letter().name() + tonic.accidental().displaySuffix() + " " + mode.name().toLowerCase();
+        return displayName(tonic, mode);
+    }
+
+    /**
+     * The same name for a key that has not been built, so that something naming
+     * a key it did not choose cannot word it differently from one that did.
+     */
+    public static String displayName(PitchSpelling tonic, Mode mode) {
+        return tonic.letter().name() + tonic.accidental().displaySuffix()
+                + " " + mode.name().toLowerCase();
     }
 
     /**

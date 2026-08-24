@@ -18,11 +18,13 @@ package dev.olivelli.musicwizard.notation;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import dev.olivelli.musicwizard.core.model.Chord;
 import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.model.TempoMap;
 import dev.olivelli.musicwizard.core.workspace.BeatTrace;
 import dev.olivelli.musicwizard.core.workspace.ChordTrace;
 import dev.olivelli.musicwizard.core.workspace.ChromaTrace;
+import dev.olivelli.musicwizard.core.workspace.KeyTrace;
 import dev.olivelli.musicwizard.core.workspace.RunManifest;
 import dev.olivelli.musicwizard.core.workspace.RunTraceJson;
 import dev.olivelli.musicwizard.core.workspace.RunTraces;
@@ -249,6 +251,150 @@ class AnalysisReportTest {
         assertThat(page).contains("The decoder recorded no span and no root");
         assertThat(page).doesNotContain("Every chord span, and what it beat",
                 "Which candidate roots lost");
+    }
+
+    @Test
+    @DisplayName("what the key's two decisions were weighed from is drawn, or its absence stated")
+    void theKeyTraceIsDrawnOrItsAbsenceStated() {
+        String weighed = AnalysisReport.toHtml(ReportFixtures.everything(), RECORDING,
+                ReportFixtures.run(), ReportFixtures.weighed());
+        String blank = AnalysisReport.toHtml(
+                ReportFixtures.everything(), RECORDING, ReportFixtures.run());
+
+        assertThat(weighed).contains("What the two decisions were weighed from",
+                // The signature decision, and the best key outside the winning
+                // pair -- which the page cannot get from the key alone.
+                "<dt>Best key in another signature</dt><dd>F major</dd>",
+                // The tonic decision, and the one column that separated the
+                // pair here: the minor spends longer on its own tonic chord.
+                "<dt>Its relative</dt><dd>C major</dd>",
+                "<td class=\"symbol\">A minor</td><td>1.143</td><td>1 chord, 2s</td>",
+                "Every key that was scored");
+        assertThat(weighed).doesNotContain("The chord evidence each of the two decisions");
+
+        assertThat(blank).contains("The chord evidence each of the two decisions weighed is"
+                + " not recorded", "(#678)");
+        assertThat(blank).doesNotContain("What the two decisions were weighed from");
+    }
+
+    @Test
+    @DisplayName("the key trace and the score it is drawn beside describe one piece of music")
+    void theTraceAndTheScoreNameOneKey() {
+        // A page whose key facts and key evidence disagreed would be
+        // documenting a page no run could produce: the key is read off these
+        // chords, so the winner and what it was weighed on both follow from
+        // them.
+        Score score = ReportFixtures.everything();
+        KeyTrace trace = ReportFixtures.keyDecisions();
+        assertThat(trace.tonic().winner())
+                .isEqualTo(score.primaryKey().orElseThrow().displayName());
+        assertThat(candidate(trace, "A minor").tonicChordSeconds())
+                .isEqualTo(soundingOn(score, "Am"));
+        assertThat(candidate(trace, "C major").tonicChordSeconds())
+                .isEqualTo(soundingOn(score, "C"));
+        assertThat(trace.soundingSeconds()).isEqualTo(score.chords().chords().stream()
+                .filter(chord -> !chord.isNoChord())
+                .mapToDouble(Chord::durationSeconds).sum());
+
+        Score tied = ReportFixtures.tiedRelativePair();
+        KeyTrace atTheFloor = ReportFixtures.tiedKeyDecisions();
+        assertThat(atTheFloor.tonic().winner())
+                .isEqualTo(tied.primaryKey().orElseThrow().displayName());
+        assertThat(candidate(atTheFloor, "A minor").tonicChordSeconds())
+                .isEqualTo(candidate(atTheFloor, "C major").tonicChordSeconds())
+                .isEqualTo(soundingOn(tied, "Am"));
+    }
+
+    private static KeyTrace.Candidate candidate(KeyTrace trace, String key) {
+        return trace.candidates().stream()
+                .filter(entry -> entry.key().equals(key))
+                .findFirst().orElseThrow();
+    }
+
+    /** How long one chord symbol sounds for in a score. */
+    private static double soundingOn(Score score, String symbol) {
+        return score.chords().chords().stream()
+                .filter(chord -> chord.symbol().equals(symbol))
+                .mapToDouble(Chord::durationSeconds).sum();
+    }
+
+    @Test
+    @DisplayName("a tonic decision at its floor is stated as a decision, not as an answer")
+    void aTonicDecisionAtItsFloorSaysSo() {
+        // The failure mode the estimator is designed around: nothing in the
+        // harmony separates the relative pair, so a stated preference chose and
+        // the confidence beside it is the coin flip that is worth.
+        String page = AnalysisReport.toHtml(ReportFixtures.tiedRelativePair(), RECORDING,
+                ReportFixtures.run(),
+                RunTraceJson.of(Map.of(KeyTrace.STAGE, ReportFixtures.tiedKeyDecisions())));
+
+        assertThat(page).contains("Here the two came to one score",
+                "reported the coin flip a stated preference is worth",
+                "<dt>Margin</dt><dd>0</dd>");
+        // A tie is the two scores cancelling, which is not the two rules
+        // staying silent: both of these keys hold their own tonic chord, and
+        // the page must not tell the reader otherwise while showing it.
+        assertThat(page).contains("<td class=\"symbol\">C major</td><td>1.125</td>"
+                        + "<td>1 chord, 2s</td>",
+                "<td class=\"symbol\">A minor</td><td>1.125</td><td>1 chord, 2s</td>");
+        assertThat(page).doesNotContain("neither of those said anything",
+                "no dominant in it and equal time on both tonics");
+        // And the signature decision above it, which was not at its floor, is
+        // not worded as though it were.
+        assertThat(page).contains("The two scores lie apart, so the harmony chose the"
+                + " signature.");
+    }
+
+    @Test
+    @DisplayName("the pair is drawn winner first, whatever order the trace scored them in")
+    void theRelativePairIsDrawnWinnerFirst() {
+        // The trace lists candidates in the order they were scored, which puts
+        // the relative major above its minor whatever won. Reading the first
+        // row as the answer is the obvious thing to do, so it has to be one.
+        String page = AnalysisReport.toHtml(ReportFixtures.everything(), RECORDING,
+                ReportFixtures.run(), ReportFixtures.weighed());
+
+        // From the table's own body: the facts above it print winner then
+        // runner-up whatever the rows do, so a slice that included them would
+        // pass on the test's own premise.
+        String rows = page.substring(page.indexOf("Which of the relative pair is home"));
+        rows = rows.substring(rows.indexOf("<table class=\"shown\">"),
+                rows.indexOf("</table>"));
+        assertThat(rows.indexOf("<td class=\"symbol\">A minor</td>"))
+                .isLessThan(rows.indexOf("<td class=\"symbol\">C major</td>"));
+        assertThat(ReportFixtures.keyDecisions().candidates())
+                .as("and the trace itself scored them the other way round")
+                .extracting(KeyTrace.Candidate::key)
+                .containsSubsequence("C major", "A minor");
+    }
+
+    @Test
+    @DisplayName("a key the file declared says nothing was weighed")
+    void aDeclaredKeyIsNotDrawnAsAnEstimate() {
+        String page = AnalysisReport.toHtml(ReportFixtures.everything(), RECORDING,
+                ReportFixtures.run(),
+                RunTraceJson.of(Map.of(KeyTrace.STAGE, KeyTrace.declared())));
+
+        assertThat(page).contains("The file declares its key signature and whether it is"
+                + " major or minor, so nothing was weighed");
+        assertThat(page).doesNotContain("Every key that was scored");
+    }
+
+    @Test
+    @DisplayName("a key trace naming no comparison is stated, not drawn as a decision")
+    void aKeyTraceWithNoComparisonIsStated() {
+        // What a trace written by a build that renamed either decision reads
+        // as: unknown properties are ignored and missing ones default, so the
+        // page has to say so rather than draw a comparison of nothing.
+        RunTraces renamed = RunTraceJson.fromJson("{\"schemaVersion\":1,\"traces\":"
+                + "{\"key\":{\"source\":\"chords\",\"chosen\":\"A minor\"}}}");
+
+        String page = AnalysisReport.toHtml(ReportFixtures.everything(), RECORDING,
+                ReportFixtures.run(), renamed);
+
+        assertThat(page).contains("This workspace's record of the key names no comparison");
+        assertThat(page).doesNotContain("What the two decisions were weighed from",
+                "Every key that was scored");
     }
 
     @Test

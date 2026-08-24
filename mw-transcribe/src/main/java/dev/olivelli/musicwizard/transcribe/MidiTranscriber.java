@@ -28,6 +28,7 @@ import dev.olivelli.musicwizard.core.model.Provenance;
 import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.model.TempoMap;
 import dev.olivelli.musicwizard.core.model.TimeSignature;
+import dev.olivelli.musicwizard.core.workspace.KeyTrace;
 import dev.olivelli.musicwizard.core.workspace.RunLog;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -273,7 +274,11 @@ public final class MidiTranscriber {
         runLog.stage("chords").computed(chords.isEmpty()
                 ? "nothing in the file states a chord"
                 : "named from the notes the file declares");
-        runLog.stage("key").computed(keys.isEmpty()
+        RunLog.Stage key = runLog.stage(KeyTrace.STAGE);
+        if (!keys.isEmpty()) {
+            key.trace(KeyTrace.declared());
+        }
+        key.computed(keys.isEmpty()
                 ? "the file declares no key signature"
                 : "read from the file's own key signature");
 

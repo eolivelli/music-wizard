@@ -38,6 +38,7 @@ import dev.olivelli.musicwizard.core.model.TimeSignature;
 import dev.olivelli.musicwizard.core.workspace.BeatTrace;
 import dev.olivelli.musicwizard.core.workspace.ChordTrace;
 import dev.olivelli.musicwizard.core.workspace.ChromaTrace;
+import dev.olivelli.musicwizard.core.workspace.KeyTrace;
 import dev.olivelli.musicwizard.core.workspace.RunManifest;
 import dev.olivelli.musicwizard.core.workspace.RunTraceJson;
 import dev.olivelli.musicwizard.core.workspace.RunTraces;
@@ -126,22 +127,27 @@ final class ReportFixtures {
      * label, and one stage this build's page has no phase for.
      */
     static RunTraces weighed() {
-        return weighed(defaultOctave(), chroma(), chordDecisions());
+        return weighed(defaultOctave(), chroma(), chordDecisions(), keyDecisions());
     }
 
     /** The same, with a register reading of the caller's choosing. */
     static RunTraces weighed(BeatTrace.Octave octave) {
-        return weighed(octave, chroma(), chordDecisions());
+        return weighed(octave, chroma(), chordDecisions(), keyDecisions());
     }
 
     /** The same, with a chroma trace of the caller's choosing. */
     static RunTraces weighed(ChromaTrace chroma) {
-        return weighed(defaultOctave(), chroma, chordDecisions());
+        return weighed(defaultOctave(), chroma, chordDecisions(), keyDecisions());
     }
 
     /** The same, with a decoder trace of the caller's choosing. */
     static RunTraces weighed(ChordTrace chords) {
-        return weighed(defaultOctave(), chroma(), chords);
+        return weighed(defaultOctave(), chroma(), chords, keyDecisions());
+    }
+
+    /** The same, with a key trace of the caller's choosing. */
+    static RunTraces weighed(KeyTrace key) {
+        return weighed(defaultOctave(), chroma(), chordDecisions(), key);
     }
 
     private static BeatTrace.Octave defaultOctave() {
@@ -149,7 +155,7 @@ final class ReportFixtures {
     }
 
     private static RunTraces weighed(BeatTrace.Octave octave, ChromaTrace chroma,
-                                     ChordTrace chords) {
+                                     ChordTrace chords, KeyTrace key) {
         BeatTrace beats = new BeatTrace(240.5, 120.25, octave,
                 List.of(
                         new BeatTrace.Window(0, 25, true, 240.5, 0.61, 0.88, 120.25,
@@ -163,6 +169,7 @@ final class ReportFixtures {
         collected.put(BeatTrace.STAGE, beats);
         collected.put(ChromaTrace.STAGE, chroma);
         collected.put(ChordTrace.STAGE, chords);
+        collected.put(KeyTrace.STAGE, key);
         collected.put("hummed-bass", Map.of("hummed", true));
         return RunTraceJson.of(collected);
     }
@@ -217,6 +224,108 @@ final class ReportFixtures {
                         new ChordTrace.Root("A",
                                 new ChordTrace.Count(4, 4, "majority", 0),
                                 new ChordTrace.Count(0, 4, "minority", 0))));
+    }
+
+    /**
+     * What {@link #chords()} is worth to each of the twenty-four keys, and the
+     * chords that got it there.
+     *
+     * <p>Five fields: the key, its score in sixths of the sounding time — every
+     * term the estimator adds is a third of a triad or half a tonic chord, so
+     * nothing here needs a finer unit — then the chords that were the key's own
+     * tonic chord and the ones scored as its harmonic-minor dominant, each as a
+     * count and a duration. A relative pair shares every scale note, so those
+     * last two are the only columns that can separate one.
+     *
+     * <p>In the order the estimator scores them, since that is the order it
+     * records them in and the page's own sort keeps it where two scores are
+     * equal. Written as exact fractions, so two rows that tie here are a run
+     * whose sum landed on one value rather than a run this file rounded.
+     */
+    private static final String[] KEYS = {
+            "C major,45,1,1,0,0", "C minor,28,0,0,1,2",
+            "Db major,14,0,0,0,0", "C# minor,18,0,0,0,0",
+            "D major,28,0,0,0,0", "D minor,38,0,0,0,0",
+            "Eb major,24,0,0,0,0", "Eb minor,8,0,0,0,0",
+            "E major,18,0,0,0,0", "E minor,38,0,0,0,0",
+            "F major,44,1,2,0,0", "F minor,22,0,0,1,1",
+            "Gb major,8,0,0,0,0", "F# minor,22,0,0,0,0",
+            "G major,44,1,2,0,0", "G minor,32,0,0,0,0",
+            "Ab major,20,0,0,0,0", "G# minor,10,0,0,0,0",
+            "A major,22,0,0,0,0", "A minor,48,1,2,0,0",
+            "Bb major,32,0,0,0,0", "Bb minor,18,0,0,1,2",
+            "B major,10,0,0,0,0", "B minor,28,0,0,0,0"};
+
+    /**
+     * The same loop with nothing to separate the relative pair: the shared seven
+     * notes, no chord on the fifth degree of the minor, and the same time on
+     * each of the two tonics. It is {@link #tiedRelativePair()}'s harmony, and
+     * it is what reaches the tonic decision's floor.
+     */
+    private static final String[] TIED_KEYS = {
+            "C major,54,1,2,0,0", "C minor,32,0,0,1,2",
+            "Db major,16,0,0,0,0", "C# minor,20,0,0,0,0",
+            "D major,32,0,0,0,0", "D minor,44,0,0,0,0",
+            "Eb major,28,0,0,0,0", "Eb minor,8,0,0,0,0",
+            "E major,20,0,0,0,0", "E minor,44,0,0,0,0",
+            "F major,50,1,2,0,0", "F minor,28,0,0,1,2",
+            "Gb major,8,0,0,0,0", "F# minor,24,0,0,0,0",
+            "G major,50,1,2,0,0", "G minor,36,0,0,0,0",
+            "Ab major,24,0,0,0,0", "G# minor,12,0,0,0,0",
+            "A major,24,0,0,0,0", "A minor,54,1,2,0,0",
+            "Bb major,36,0,0,0,0", "Bb minor,20,0,0,1,2",
+            "B major,12,0,0,0,0", "B minor,32,0,0,0,0"};
+
+    /** How much of {@link #DURATION} {@link #chords()} puts a sounding chord on. */
+    private static final double SOUNDING = DURATION - 2 * SECONDS_PER_BEAT;
+
+    /** See {@link #KEYS}. */
+    private static final int SIXTHS = 6;
+
+    /**
+     * What the key's two decisions were weighed from: a loop whose relative
+     * minor spends longer on its own tonic chord than the major does, which is
+     * what separates the pair here, and no chord on the fifth degree of either.
+     */
+    static KeyTrace keyDecisions() {
+        List<KeyTrace.Candidate> scored = candidates(KEYS, SOUNDING);
+        return new KeyTrace(KeyTrace.FROM_CHORDS, SOUNDING, DURATION, SOUNDING / DURATION,
+                scored,
+                decision(scored, "A minor", "F major"),
+                decision(scored, "A minor", "C major"));
+    }
+
+    /** What {@link #TIED_KEYS} was weighed from, and what the tie left. */
+    static KeyTrace tiedKeyDecisions() {
+        List<KeyTrace.Candidate> scored = candidates(TIED_KEYS, DURATION);
+        return new KeyTrace(KeyTrace.FROM_CHORDS, DURATION, DURATION, 1, scored,
+                decision(scored, "C major", "F major"),
+                decision(scored, "C major", "A minor"));
+    }
+
+    /** One comparison, with its margin and its reading taken off the scores. */
+    private static KeyTrace.Decision decision(List<KeyTrace.Candidate> scored,
+                                              String winner, String runnerUp) {
+        double margin = score(scored, winner) - score(scored, runnerUp);
+        return new KeyTrace.Decision(winner, runnerUp, margin,
+                margin == 0 ? "tied" : "separated");
+    }
+
+    private static double score(List<KeyTrace.Candidate> scored, String key) {
+        return scored.stream().filter(candidate -> candidate.key().equals(key))
+                .findFirst().orElseThrow().score();
+    }
+
+    private static List<KeyTrace.Candidate> candidates(String[] rows, double sounding) {
+        List<KeyTrace.Candidate> candidates = new ArrayList<>(rows.length);
+        for (String row : rows) {
+            String[] fields = row.split(",");
+            candidates.add(new KeyTrace.Candidate(fields[0],
+                    Integer.parseInt(fields[1]) / (SIXTHS * sounding),
+                    Integer.parseInt(fields[2]), Double.parseDouble(fields[3]),
+                    Integer.parseInt(fields[4]), Double.parseDouble(fields[5])));
+        }
+        return candidates;
     }
 
     /**
@@ -414,9 +523,33 @@ final class ReportFixtures {
                 .withMetadata("Report Fixture", "The Test Suite")
                 .withBeatGrid(beats())
                 .withChords(chords())
-                .withKeys(List.of(Key.estimated(
-                        new PitchSpelling(NoteLetter.C, Accidental.NATURAL, 4), Mode.MAJOR,
-                        0, DURATION, Confidence.of(0.7), Confidence.of(0.4))));
+                .withKeys(List.of(key(NoteLetter.A, Mode.MINOR, 0.3125, 0.59375)));
+    }
+
+    /**
+     * Harmony that leaves the relative pair undecidable, and the key that
+     * follows: the shared seven notes, no chord on the fifth degree of the
+     * minor, and the same time on each of the two tonics.
+     *
+     * <p>Paired with {@link #tiedKeyDecisions()}, which is what that harmony
+     * weighs to.
+     */
+    static Score tiedRelativePair() {
+        List<Chord> spans = new ArrayList<>();
+        spans.add(span(NoteLetter.C, ChordQuality.MAJOR, 0, 4, 0.8));
+        spans.add(span(NoteLetter.A, ChordQuality.MINOR, 4, 8, 0.8));
+        spans.add(span(NoteLetter.F, ChordQuality.MAJOR, 8, 12, 0.8));
+        spans.add(span(NoteLetter.G, ChordQuality.MAJOR, 12, 16, 0.8));
+        return Score.empty(TempoMap.constant(BEATS_PER_MINUTE, TimeSignature.FOUR_FOUR), DURATION)
+                .withMetadata("Report Fixture", "The Test Suite")
+                .withBeatGrid(beats())
+                .withChords(new ChordProgression(spans, Confidence.of(0.72)))
+                .withKeys(List.of(key(NoteLetter.C, Mode.MAJOR, 0.3125, 0.5)));
+    }
+
+    private static Key key(NoteLetter tonic, Mode mode, double signature, double home) {
+        return Key.estimated(new PitchSpelling(tonic, Accidental.NATURAL, 4), mode,
+                0, DURATION, Confidence.of(signature), Confidence.of(home));
     }
 
     /**

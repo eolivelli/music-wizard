@@ -44,6 +44,7 @@ h2 { font-size: 1.35rem; margin: 0 0 .35rem; }
 h3 { font-size: 1.05rem; margin: 0 0 .4rem; display: flex; align-items: baseline; gap: .5rem; }
 h4 { font-size: .8rem; text-transform: uppercase; letter-spacing: .05em; color: var(--faint);
      margin: 1.1rem 0 .3rem; }
+h5 { font-size: .8rem; color: var(--muted); margin: .9rem 0 .2rem; }
 .artist { margin: .2rem 0 0; color: var(--muted); font-size: 1.1rem; }
 .lede { color: var(--muted); margin: .35rem 0 1rem; max-width: 46rem; }
 
@@ -203,14 +204,16 @@ dl.facts dd { margin: 0; font-variant-numeric: tabular-nums; }
 
 details.table { margin: .3rem 0 .9rem; font-size: .85rem; }
 details.table summary { cursor: pointer; color: var(--accent); }
-details.table table { border-collapse: collapse; width: 100%; margin-top: .5rem; }
-details.table th, details.table td { text-align: left; padding: .18rem .5rem;
-                                     border-bottom: 1px solid var(--rule);
-                                     font-variant-numeric: tabular-nums; }
-details.table th { font-size: .7rem; text-transform: uppercase; letter-spacing: .04em;
-                   color: var(--faint); }
-details.table td.symbol { font-weight: 600; }
-details.table td.words { font-variant-numeric: normal; }
+.phase table { border-collapse: collapse; width: 100%; margin-top: .5rem;
+               font-size: .85rem; }
+.phase table.shown { margin-bottom: .9rem; }
+.phase th, .phase td { text-align: left; padding: .18rem .5rem;
+                       border-bottom: 1px solid var(--rule);
+                       font-variant-numeric: tabular-nums; }
+.phase th { font-size: .7rem; text-transform: uppercase; letter-spacing: .04em;
+            color: var(--faint); }
+.phase td.symbol { font-weight: 600; }
+.phase td.words { font-variant-numeric: normal; }
 
 .note { font-size: .85rem; color: var(--muted); margin: .3rem 0 .6rem; }
 .gap { font-size: .85rem; color: var(--warn); margin: .6rem 0 0; }

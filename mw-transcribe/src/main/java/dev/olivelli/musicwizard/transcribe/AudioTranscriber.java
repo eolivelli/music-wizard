@@ -31,6 +31,7 @@ import dev.olivelli.musicwizard.core.model.TimeSignature;
 import dev.olivelli.musicwizard.core.workspace.BeatTrace;
 import dev.olivelli.musicwizard.core.workspace.ChordTrace;
 import dev.olivelli.musicwizard.core.workspace.ChromaTrace;
+import dev.olivelli.musicwizard.core.workspace.KeyTrace;
 import dev.olivelli.musicwizard.core.workspace.RunLog;
 import dev.olivelli.musicwizard.dsp.BeatTracker;
 import dev.olivelli.musicwizard.dsp.Chroma;
@@ -429,11 +430,12 @@ public final class AudioTranscriber {
                 // chart cannot describe one key three ways.
                 estimate -> {
                     progress.accept("key " + estimate.key().displayNameWithConfidence());
-                    runLog.stage("key").computed();
+                    runLog.stage(KeyTrace.STAGE).trace(estimate.trace()).computed();
                 },
                 () -> {
                     progress.accept("no chord sounds, so no key was estimated");
-                    runLog.stage("key").computed("no chord sounds, so no key was estimated");
+                    runLog.stage(KeyTrace.STAGE)
+                            .computed("no chord sounds, so no key was estimated");
                 });
 
         Score score = Score.empty(tempoMap, audio.durationSeconds())
