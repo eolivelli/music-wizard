@@ -374,6 +374,28 @@ class KeyEstimationTest {
         }
 
         @Test
+        @DisplayName("a tie where both rules spoke and cancelled is still recorded as a tie")
+        void aTieIsNotSilence() {
+            // A tie is the two scores coming out level, which is not the same
+            // as neither rule saying anything: here A minor holds the raised
+            // seventh and C major holds more of its own tonic chord, and the
+            // two cancel. Anything reading the tie as "no evidence" would
+            // describe this recording backwards.
+            ChordProgression progression = new ChordProgression(List.of(
+                    chord("Am", 0, 1), chord("E7", 1, 4),
+                    chord("C", 4, 7), chord("F", 7, 8)), Confidence.of(0.8));
+
+            KeyTrace trace = KeyEstimator.estimate(progression, 0, 8).orElseThrow().trace();
+
+            assertThat(trace.tonic().read()).isEqualTo("tied");
+            assertThat(trace.tonic().margin()).isZero();
+            assertThat(trace.tonic().winner()).isEqualTo("C major");
+            assertThat(candidate(trace, "A minor").raisedSeventhSpans()).isPositive();
+            assertThat(candidate(trace, "C major").tonicChordSeconds())
+                    .isGreaterThan(candidate(trace, "A minor").tonicChordSeconds());
+        }
+
+        @Test
         @DisplayName("the margins are the differences between the scores that are recorded")
         void theMarginsAreTheRecordedScores() {
             // Two numbers a reader will subtract for themselves, so a page that

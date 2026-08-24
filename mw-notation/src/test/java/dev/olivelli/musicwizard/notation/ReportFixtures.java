@@ -236,20 +236,25 @@ final class ReportFixtures {
      * tonic chord and the ones scored as its harmonic-minor dominant, each as a
      * count and a duration. A relative pair shares every scale note, so those
      * last two are the only columns that can separate one.
+     *
+     * <p>In the order the estimator scores them, since that is the order it
+     * records them in and the page's own sort keeps it where two scores are
+     * equal. Written as exact fractions, so two rows that tie here are a run
+     * whose sum landed on one value rather than a run this file rounded.
      */
     private static final String[] KEYS = {
-            "A minor,48,1,2,0,0", "C major,45,1,1,0,0",
-            "F major,44,1,2,0,0", "G major,44,1,2,0,0",
-            "D minor,38,0,0,0,0", "E minor,38,0,0,0,0",
-            "G minor,32,0,0,0,0", "Bb major,32,0,0,0,0",
-            "C minor,28,0,0,1,2", "D major,28,0,0,0,0", "B minor,28,0,0,0,0",
-            "Eb major,24,0,0,0,0",
-            "F minor,22,0,0,1,1", "F# minor,22,0,0,0,0", "A major,22,0,0,0,0",
-            "Ab major,20,0,0,0,0",
-            "Bb minor,18,0,0,1,2", "C# minor,18,0,0,0,0", "E major,18,0,0,0,0",
-            "Db major,14,0,0,0,0",
-            "G# minor,10,0,0,0,0", "B major,10,0,0,0,0",
-            "Eb minor,8,0,0,0,0", "Gb major,8,0,0,0,0"};
+            "C major,45,1,1,0,0", "C minor,28,0,0,1,2",
+            "Db major,14,0,0,0,0", "C# minor,18,0,0,0,0",
+            "D major,28,0,0,0,0", "D minor,38,0,0,0,0",
+            "Eb major,24,0,0,0,0", "Eb minor,8,0,0,0,0",
+            "E major,18,0,0,0,0", "E minor,38,0,0,0,0",
+            "F major,44,1,2,0,0", "F minor,22,0,0,1,1",
+            "Gb major,8,0,0,0,0", "F# minor,22,0,0,0,0",
+            "G major,44,1,2,0,0", "G minor,32,0,0,0,0",
+            "Ab major,20,0,0,0,0", "G# minor,10,0,0,0,0",
+            "A major,22,0,0,0,0", "A minor,48,1,2,0,0",
+            "Bb major,32,0,0,0,0", "Bb minor,18,0,0,1,2",
+            "B major,10,0,0,0,0", "B minor,28,0,0,0,0"};
 
     /**
      * The same loop with nothing to separate the relative pair: the shared seven
@@ -258,17 +263,18 @@ final class ReportFixtures {
      * it is what reaches the tonic decision's floor.
      */
     private static final String[] TIED_KEYS = {
-            "C major,54,1,2,0,0", "A minor,54,1,2,0,0",
-            "F major,50,1,2,0,0", "G major,50,1,2,0,0",
-            "D minor,44,0,0,0,0", "E minor,44,0,0,0,0",
-            "G minor,36,0,0,0,0", "Bb major,36,0,0,0,0",
-            "C minor,32,0,0,1,2", "D major,32,0,0,0,0", "B minor,32,0,0,0,0",
-            "Eb major,28,0,0,0,0", "F minor,28,0,0,1,2",
-            "F# minor,24,0,0,0,0", "A major,24,0,0,0,0", "Ab major,24,0,0,0,0",
-            "C# minor,20,0,0,0,0", "E major,20,0,0,0,0", "Bb minor,20,0,0,1,2",
-            "Db major,16,0,0,0,0",
-            "G# minor,12,0,0,0,0", "B major,12,0,0,0,0",
-            "Eb minor,8,0,0,0,0", "Gb major,8,0,0,0,0"};
+            "C major,54,1,2,0,0", "C minor,32,0,0,1,2",
+            "Db major,16,0,0,0,0", "C# minor,20,0,0,0,0",
+            "D major,32,0,0,0,0", "D minor,44,0,0,0,0",
+            "Eb major,28,0,0,0,0", "Eb minor,8,0,0,0,0",
+            "E major,20,0,0,0,0", "E minor,44,0,0,0,0",
+            "F major,50,1,2,0,0", "F minor,28,0,0,1,2",
+            "Gb major,8,0,0,0,0", "F# minor,24,0,0,0,0",
+            "G major,50,1,2,0,0", "G minor,36,0,0,0,0",
+            "Ab major,24,0,0,0,0", "G# minor,12,0,0,0,0",
+            "A major,24,0,0,0,0", "A minor,54,1,2,0,0",
+            "Bb major,36,0,0,0,0", "Bb minor,20,0,0,1,2",
+            "B major,12,0,0,0,0", "B minor,32,0,0,0,0"};
 
     /** How much of {@link #DURATION} {@link #chords()} puts a sounding chord on. */
     private static final double SOUNDING = DURATION - 2 * SECONDS_PER_BEAT;
@@ -285,19 +291,29 @@ final class ReportFixtures {
         List<KeyTrace.Candidate> scored = candidates(KEYS, SOUNDING);
         return new KeyTrace(KeyTrace.FROM_CHORDS, SOUNDING, DURATION, SOUNDING / DURATION,
                 scored,
-                new KeyTrace.Decision("A minor", "F major",
-                        scored.get(0).score() - scored.get(2).score(), "separated"),
-                new KeyTrace.Decision("A minor", "C major",
-                        scored.get(0).score() - scored.get(1).score(), "separated"));
+                decision(scored, "A minor", "F major"),
+                decision(scored, "A minor", "C major"));
     }
 
     /** What {@link #TIED_KEYS} was weighed from, and what the tie left. */
     static KeyTrace tiedKeyDecisions() {
         List<KeyTrace.Candidate> scored = candidates(TIED_KEYS, DURATION);
         return new KeyTrace(KeyTrace.FROM_CHORDS, DURATION, DURATION, 1, scored,
-                new KeyTrace.Decision("C major", "F major",
-                        scored.get(0).score() - scored.get(2).score(), "separated"),
-                new KeyTrace.Decision("C major", "A minor", 0, "tied"));
+                decision(scored, "C major", "F major"),
+                decision(scored, "C major", "A minor"));
+    }
+
+    /** One comparison, with its margin and its reading taken off the scores. */
+    private static KeyTrace.Decision decision(List<KeyTrace.Candidate> scored,
+                                              String winner, String runnerUp) {
+        double margin = score(scored, winner) - score(scored, runnerUp);
+        return new KeyTrace.Decision(winner, runnerUp, margin,
+                margin == 0 ? "tied" : "separated");
+    }
+
+    private static double score(List<KeyTrace.Candidate> scored, String key) {
+        return scored.stream().filter(candidate -> candidate.key().equals(key))
+                .findFirst().orElseThrow().score();
     }
 
     private static List<KeyTrace.Candidate> candidates(String[] rows, double sounding) {

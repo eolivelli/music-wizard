@@ -328,14 +328,39 @@ class AnalysisReportTest {
                 ReportFixtures.run(),
                 RunTraceJson.of(Map.of(KeyTrace.STAGE, ReportFixtures.tiedKeyDecisions())));
 
-        assertThat(page).contains("Here the two scored the same, so neither of those said"
-                        + " anything and the estimator did not guess",
-                "reported the coin flip that a stated preference is worth",
+        assertThat(page).contains("Here the two came to one score",
+                "reported the coin flip a stated preference is worth",
                 "<dt>Margin</dt><dd>0</dd>");
+        // A tie is the two scores cancelling, which is not the two rules
+        // staying silent: both of these keys hold their own tonic chord, and
+        // the page must not tell the reader otherwise while showing it.
+        assertThat(page).contains("<td class=\"symbol\">C major</td><td>1.125</td>"
+                        + "<td>1 chord, 2s</td>",
+                "<td class=\"symbol\">A minor</td><td>1.125</td><td>1 chord, 2s</td>");
+        assertThat(page).doesNotContain("neither of those said anything",
+                "no dominant in it and equal time on both tonics");
         // And the signature decision above it, which was not at its floor, is
         // not worded as though it were.
         assertThat(page).contains("The two scores lie apart, so the harmony chose the"
                 + " signature.");
+    }
+
+    @Test
+    @DisplayName("the pair is drawn winner first, whatever order the trace scored them in")
+    void theRelativePairIsDrawnWinnerFirst() {
+        // The trace lists candidates in the order they were scored, which puts
+        // the relative major above its minor whatever won. Reading the first
+        // row as the answer is the obvious thing to do, so it has to be one.
+        String page = AnalysisReport.toHtml(ReportFixtures.everything(), RECORDING,
+                ReportFixtures.run(), ReportFixtures.weighed());
+
+        String pair = page.substring(page.indexOf("Which of the relative pair is home"));
+        pair = pair.substring(0, pair.indexOf("</table>"));
+        assertThat(pair.indexOf("A minor")).isLessThan(pair.indexOf("C major"));
+        assertThat(ReportFixtures.keyDecisions().candidates())
+                .as("and the trace itself scored them the other way round")
+                .extracting(KeyTrace.Candidate::key)
+                .containsSubsequence("C major", "A minor");
     }
 
     @Test

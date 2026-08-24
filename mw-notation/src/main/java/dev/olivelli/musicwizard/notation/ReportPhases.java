@@ -50,6 +50,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.function.Function;
+import java.util.stream.Stream;
 
 /**
  * The phase-by-phase half of {@link AnalysisReport}.
@@ -690,11 +691,12 @@ final class ReportPhases {
         facts(fact("Chords sounded for",
                         HtmlWriter.number(trace.soundingSeconds(), 2) + "s of "
                                 + HtmlWriter.number(trace.spanSeconds(), 2) + "s"),
-                fact("Both confidences scaled by", Math.round(100 * trace.weighed()) + "%"));
+                fact("Which is", Math.round(100 * trace.weighed()) + "% of the span"));
         note("A margin says which key won and nothing about how much was weighed, and the two"
                 + " come apart: half a second of one chord inside four minutes of silence wins"
-                + " by as wide a margin as a whole recording. So both confidences are scaled"
-                + " by the share above.");
+                + " by as wide a margin as a whole recording. So what a margin earns each"
+                + " confidence above its floor is scaled by the share above; the floor itself"
+                + " is what chance leaves and no amount of silence takes it away.");
         signatureDecision(trace.signature());
         tonicDecision(trace.tonic(), trace.candidates());
         candidateTable(trace.candidates());
@@ -708,10 +710,10 @@ final class ReportPhases {
                 fact("Margin", HtmlWriter.number(signature.margin(), 3)));
         note("separated".equals(signature.read())
                 ? "The two scores lie apart, so the harmony chose the signature."
-                : "The two scores are one score, so nothing in the harmony chose between"
-                        + " these signatures and a stated preference did — the major over the"
-                        + " minor, and between two keys of one mode the simpler key"
-                        + " signature. The confidence beside it is at the floor that leaves.");
+                : "The two scores are one score, so nothing in the harmony chose between these"
+                        + " signatures. A stated preference did, and it is a preference rather"
+                        + " than a reading: any margin at all outranks it, and the confidence"
+                        + " beside it is at the floor that leaves.");
     }
 
     /**
@@ -732,20 +734,22 @@ final class ReportPhases {
                 + " read for nothing at all — on a recording those two spans are a fade-in"
                 + " and a tail decoded from almost no signal.");
         if (!"separated".equals(tonic.read())) {
-            note("Here the two scored the same, so neither of those said anything and the"
-                    + " estimator did not guess. It wrote the major, which is the more often"
-                    + " right of the two in this repertoire, and reported the coin flip that"
-                    + " a stated preference is worth. A loop built from the shared seven"
-                    + " notes with no dominant in it and equal time on both tonics reaches"
-                    + " here by design, and a listener may well hear the minor.");
+            note("Here the two came to one score — whatever the table above holds for each of"
+                    + " them, it came to the same thing — so the harmony chose neither and the"
+                    + " estimator did not guess. It wrote the major, the more often right of"
+                    + " the two in this repertoire, and reported the coin flip a stated"
+                    + " preference is worth. A listener may well hear the minor.");
         }
     }
 
-    /** The two members of the pair side by side, with what each was weighed on. */
+    /**
+     * The two members of the pair side by side, with what each was weighed on,
+     * the one that won first — the trace lists its candidates in the order they
+     * were scored, which is not an order this comparison is in.
+     */
     private void relativePairTable(KeyTrace.Decision tonic, List<KeyTrace.Candidate> candidates) {
-        List<KeyTrace.Candidate> pair = candidates.stream()
-                .filter(candidate -> candidate.key().equals(tonic.winner())
-                        || candidate.key().equals(tonic.runnerUp()))
+        List<KeyTrace.Candidate> pair = Stream.of(tonic.winner(), tonic.runnerUp())
+                .flatMap(key -> candidates.stream().filter(entry -> entry.key().equals(key)))
                 .toList();
         if (pair.isEmpty()) {
             return;

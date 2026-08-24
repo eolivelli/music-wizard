@@ -106,8 +106,14 @@ class KeyTraceOnTheAudioPathTest {
     }
 
     @Test
-    @DisplayName("a recording that names no key records no weighing rather than an empty one")
-    void silenceRecordsNoTrace() {
+    @DisplayName("a run that reaches no key records no weighing rather than an empty one")
+    void aRunWithNoPulseRecordsNoTrace() {
+        // Silence stops at the no-pulse early return, so the stage never runs.
+        // The other way to name no key -- a pulse over chords the decoder calls
+        // N.C. throughout -- is not reachable from synthetic audio here, since
+        // a click's own transient decodes to a chord; that the estimator
+        // answers nothing for it is KeyEstimationTest's, and this is the wiring
+        // either answer travels through.
         Score score = transcribe(new AudioBuffer(new float[SAMPLE_RATE * 4], SAMPLE_RATE));
 
         assertThat(score.keys()).isEmpty();
