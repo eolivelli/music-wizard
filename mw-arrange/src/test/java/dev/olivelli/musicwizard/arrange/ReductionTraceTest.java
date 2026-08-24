@@ -391,6 +391,21 @@ class ReductionTraceTest {
         }
 
         @Test
+        @DisplayName("a chord admitting the arrival says it did, not that it could not choose")
+        void aChordAgreeingWithTheArrivalSaysSo() {
+            // The chart separated the two pitches and confirmed the one already
+            // chosen, which is not the chart failing to separate them.
+            ReductionTrace.Pitch pitch = PlayableMelody
+                    .explain(sungOver(notes(note(0.0, 1.0, 62), note(1.0, 0.2, 60)), chart(1.0)))
+                    .heads().get(0).pitch();
+
+            assertThat(pitch.read()).isEqualTo(ReductionTrace.Pitch.CONFIRMED);
+            assertThat(pitch.arrivalMidi()).isEqualTo(60);
+            assertThat(pitch.dominantMidi()).isEqualTo(62);
+            assertThat(pitch.chord()).isEqualTo("C");
+        }
+
+        @Test
         @DisplayName("a trusted chord that admits neither pitch says it did not separate them")
         void aChordThatAnswersNeitherWaySaysSo() {
             ReductionTrace.Pitch pitch = PlayableMelody

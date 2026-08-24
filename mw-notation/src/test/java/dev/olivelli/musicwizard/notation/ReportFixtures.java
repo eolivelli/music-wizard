@@ -748,13 +748,46 @@ final class ReportFixtures {
         // Two notes one syllable claims, which print as one head.
         notes.add(sungNote(10, 1, 72));
         notes.add(sungNote(11, 1, 74));
+        // Two more, arriving on a pitch the G7 under them admits and leaving
+        // one it does not, which is the chart agreeing with the arrival rather
+        // than choosing against it.
+        notes.add(sungNote(12, 1, 72));
+        notes.add(sungNote(13, 0.2, 74));
         return withHarmony()
                 .withTrack(new NoteTrack(PartRole.LEAD_VOCAL, "Voice", notes,
                         Confidence.of(0.66)))
                 .withLyrics(new Lyrics(List.of(new LyricLine(List.of(
-                        LyricWord.ofSeconds("held", 10.4 * SECONDS_PER_BEAT,
-                                11.4 * SECONDS_PER_BEAT, Confidence.of(0.9))),
+                        sungSyllable("held", 10.4, 11.4),
+                        sungSyllable("on", 12.2, 13.2)),
                         Confidence.of(0.9))), "en", Confidence.of(0.85)));
+    }
+
+    /**
+     * One pitch throughout, the chart admitting it either side of a span that
+     * does not: the line leaves and returns without the printed pitch moving.
+     *
+     * <p>The rule fires and the two rolls look the same, which is the case a
+     * page keyed on the pitches alone cannot draw.
+     */
+    static Score returnedInPlace() {
+        List<Chord> spans = new ArrayList<>();
+        spans.add(span(NoteLetter.A, ChordQuality.MAJOR, 0, 5, 0.8));
+        spans.add(span(NoteLetter.C, ChordQuality.MAJOR, 5, 5.6, 0.8));
+        spans.add(span(NoteLetter.A, ChordQuality.MAJOR, 5.6, 16, 0.8));
+        return Score.empty(TempoMap.constant(BEATS_PER_MINUTE, TimeSignature.FOUR_FOUR), DURATION)
+                .withMetadata("Report Fixture", "The Test Suite")
+                .withBeatGrid(beats())
+                .withChords(new ChordProgression(spans, Confidence.of(0.8)))
+                .withKeys(List.of(key(NoteLetter.C, Mode.MAJOR, 0.8, 0.8)))
+                .withTrack(new NoteTrack(PartRole.LEAD_VOCAL, "Voice",
+                        List.of(sungNote(4, 1, 61), sungNote(5, 0.5, 61),
+                                sungNote(5.5, 1, 61)),
+                        Confidence.of(0.66)));
+    }
+
+    private static LyricWord sungSyllable(String text, double fromBeat, double toBeat) {
+        return LyricWord.ofSeconds(text, fromBeat * SECONDS_PER_BEAT,
+                toBeat * SECONDS_PER_BEAT, Confidence.of(0.9));
     }
 
     private static Note sungNote(double beat, double beats, int midiPitch) {

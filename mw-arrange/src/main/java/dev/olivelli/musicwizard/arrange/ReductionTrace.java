@@ -165,20 +165,21 @@ public record ReductionTrace(NoteTrack part, List<Source> notes, List<Head> head
      * as an arrival, the chart is asked whether the dominant is a chord tone the
      * arrival is not.
      *
-     * <p>{@code read} keeps apart the three ways the chart can fail to answer:
-     * naming no chord under the group, naming one this does not trust, and
-     * naming one that admits both pitches or neither. They are one outcome and
-     * three different facts about the recording.
+     * <p>{@code read} keeps apart the ways the chart can leave the arrival
+     * standing: naming no chord under the group, naming one this does not trust,
+     * naming one that admits both pitches or neither, and naming one that admits
+     * the arrival itself. They are one outcome and four different facts about
+     * the recording.
      *
      * @param arrivalMidi    the pitch the group ends on
      * @param arrivalBeats   how long that pitch sounds across the whole group
      * @param dominantMidi   the pitch that sounds longest
      * @param dominantBeats  how long that one sounds
      * @param requiredBeats  what the arrival had to reach to settle unaided
-     * @param chord          the span covering most of the group, whatever became
-     *                       of it, or null where none covers it at all
-     * @param chordConfidence how far that span was trusted, or null under the
-     *                       same condition
+     * @param chord          the span the chart was asked about, whatever became
+     *                       of it, or null where it was not asked
+     * @param chordConfidence how far that span was trusted, under the same
+     *                       condition
      * @param requiredConfidence how far it had to be trusted to break a tie
      * @param read           one of the constants below
      */
@@ -202,8 +203,11 @@ public record ReductionTrace(NoteTrack part, List<Source> notes, List<Head> head
         /** A chord covers it, below the confidence a tie-break needs. */
         public static final String UNTRUSTED = "untrusted";
 
-        /** The chord was read, and it does not separate the two pitches. */
+        /** The chord was read, and it admits both pitches or neither. */
         public static final String UNAIDED = "unaided";
+
+        /** The chord was read, and it admits the arrival and not the other pitch. */
+        public static final String CONFIRMED = "confirmed";
 
         /** The chart put the pitch the group holds longest in place of the arrival. */
         public static final String CHART = "chart";

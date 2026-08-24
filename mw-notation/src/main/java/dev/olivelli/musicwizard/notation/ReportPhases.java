@@ -1444,9 +1444,7 @@ final class ReportPhases {
         note("A head ends on the furthest release of the notes it covers, so what it welds"
                 + " together includes any silence between them. Its pitch is the one the group"
                 + " settles on rather than the one it sounds longest: over a scoop those"
-                + " differ, and it is the arrival that was sung. The last column is a second"
-                + " decision taken once every head is chosen, so a head can print a pitch the"
-                + " column beside it says the group settled on.");
+                + " differ, and it is the arrival that was sung.");
     }
 
     /** Every note of the estimate, and what became of it. */
@@ -1521,7 +1519,9 @@ final class ReportPhases {
                     + ", under the " + HtmlWriter.number(pitch.requiredConfidence(), 2)
                     + " a chord has to reach to break a tie";
             case ReductionTrace.Pitch.UNAIDED -> unsettled(pitch) + ", and " + pitch.chord()
-                    + " does not separate them";
+                    + " admits both or neither";
+            case ReductionTrace.Pitch.CONFIRMED -> unsettled(pitch) + ", and " + pitch.chord()
+                    + " admits the arrival and not " + noteName(pitch.dominantMidi());
             case ReductionTrace.Pitch.CHART -> noteName(pitch.dominantMidi()) + " in place of"
                     + " the arrival " + noteName(pitch.arrivalMidi()) + ", the group having"
                     + " settled on neither and " + pitch.chord() + " admitting only this one";

@@ -669,18 +669,21 @@ class AnalysisReportTest {
 
         // The counts, which are the reduction's own rather than the page's.
         assertThat(page).contains(
-                "<dt>Notes in the estimate</dt><dd>7</dd>",
-                "<dt>Notes in the playable part</dt><dd>5</dd>",
-                "<dt>Notes a syllable's own head absorbed</dt><dd>1</dd>",
+                "<dt>Notes in the estimate</dt><dd>9</dd>",
+                "<dt>Notes in the playable part</dt><dd>6</dd>",
+                "<dt>Notes a syllable's own head absorbed</dt><dd>2</dd>",
                 "<dt>Notes absorbed as an ornament</dt><dd>1</dd>",
-                "<dt>Heads that took the aligner's syllable start</dt><dd>1</dd>",
+                "<dt>Heads that took the aligner's syllable start</dt><dd>2</dd>",
                 "<dt>Heads the pass between them returned</dt><dd>1</dd>");
         // Each rule's own reading, per head and per note.
         assertThat(page).contains(
                 "printed as A4, read as A#4",
                 "the ornament rule, which joins a note to the one it leads into",
                 "one syllable claiming it and its neighbours",
-                "the aligner, at 0:05.20");
+                "the aligner, at 0:05.20",
+                // The chart agreeing with the arrival, which is not the chart
+                // failing to separate the two pitches.
+                "and G7 admits the arrival and not C5");
         // The note the excursion rule then moved off is not claimed to be the
         // pitch that was printed: the head prints A4 and the note is A#4.
         assertThat(page).contains("its head took its pitch from it")
@@ -688,6 +691,20 @@ class AnalysisReportTest {
         // And the picture: an absorbed note is joined to the head that took it,
         // and a moved head is drawn as one.
         assertThat(page).contains("class=\"tie ornament\"", "class=\"tie absorbed\"",
+                "class=\"note returned\"");
+    }
+
+    @Test
+    @DisplayName("a head returned onto the pitch it left is drawn and worded as returned")
+    void aReturnThatMovedNoPitchIsStillDrawn() {
+        // The rule fired and the two rolls hold the same pitch, so a page that
+        // read the rule off the pitches would show nothing at all here.
+        String page = AnalysisReport.toHtml(ReportFixtures.returnedInPlace(), RECORDING);
+
+        assertThat(page).contains(
+                "<dt>Heads the pass between them returned</dt><dd>1, 0 of them onto another"
+                        + " pitch</dd>",
+                "returned to C#4, which is the pitch it was read at",
                 "class=\"note returned\"");
     }
 

@@ -761,12 +761,7 @@ public final class PlayableMelody {
                 settled = dominant;
                 read = ReductionTrace.Pitch.CHART;
             } else {
-                // Three refusals rather than one: what the chart said about this
-                // group is a different fact from whether it was asked.
-                read = over.filter(c -> !c.isNoChord()).isEmpty()
-                        ? ReductionTrace.Pitch.NO_CHORD
-                        : chord.isEmpty() ? ReductionTrace.Pitch.UNTRUSTED
-                                : ReductionTrace.Pitch.UNAIDED;
+                read = whatTheChartSaid(over, chord, settled, dominant);
             }
         }
         ReductionTrace.Pitch reading = new ReductionTrace.Pitch(arrival,
@@ -780,6 +775,30 @@ public final class PlayableMelody {
             }
         }
         throw new IllegalStateException("the settled pitch is not in the group it came from");
+    }
+
+    /**
+     * Why the group's arrival stands, where the chart did not put the pitch it
+     * holds longest in place of it.
+     *
+     * <p>Four readings rather than one, because a chart that was never asked,
+     * one that was not trusted, one that admits both pitches or neither and one
+     * that admits the arrival are four different facts about the recording, and
+     * only the third is the chart failing to separate them.
+     *
+     * @param over  the span covering most of the group, refused or not
+     * @param chord the same span where it is one the tie-break may read
+     */
+    private static String whatTheChartSaid(Optional<Chord> over, Optional<Chord> chord,
+                                           int arrival, int dominant) {
+        if (over.filter(c -> !c.isNoChord()).isEmpty()) {
+            return ReductionTrace.Pitch.NO_CHORD;
+        }
+        if (chord.isEmpty()) {
+            return ReductionTrace.Pitch.UNTRUSTED;
+        }
+        return sounds(chord.get(), arrival) && !sounds(chord.get(), dominant)
+                ? ReductionTrace.Pitch.CONFIRMED : ReductionTrace.Pitch.UNAIDED;
     }
 
     private static boolean sounds(Chord chord, int midiPitch) {
