@@ -1271,8 +1271,9 @@ final class ReportPhases {
                 fact("Heads that took the aligner's syllable start",
                         String.valueOf(counts.fromAligner())),
                 fact("Heads whose pitch the chart chose", String.valueOf(counts.chartTies())),
-                fact("Heads printed at the pitch the line returned to",
-                        String.valueOf(counts.moved())));
+                fact("Heads the pass between them returned", counts.returned()
+                        + (counts.returned() == counts.moved() ? ""
+                                : ", " + counts.moved() + " of them onto another pitch")));
         note("A syllable carries one note, so the notes it claims print as one head and the"
                 + " rest of them are absorbed into it — unless some stage marked it a melisma,"
                 + " which says the melody moves under it and its run is to be printed. Where"
@@ -1322,8 +1323,8 @@ final class ReportPhases {
         out.line("</div>");
         out.element("figcaption", "The estimate above, the part below, on the recording's own"
                 + " clock. A line joins every note the estimate lost to the head that absorbed"
-                + " it. A head drawn as an outline is one the pass between the heads printed at"
-                + " another pitch.");
+                + " it. A head drawn as an outline is one the pass between the heads"
+                + " returned.");
         out.line("</figure>");
     }
 
@@ -1332,7 +1333,7 @@ final class ReportPhases {
         out.open("div", "class", "legend");
         out.element("span", "Notes of the estimate:", "class", "legend-lead");
         for (String[] rule : new String[][] {
-                {"printed", "its pitch is the head's"},
+                {"chosen", "its head took its pitch from it"},
                 {"absorbed", "absorbed into its syllable's head"},
                 {"ornament", "absorbed as an ornament"}}) {
             out.open("span", "class", "chip");
@@ -1374,8 +1375,9 @@ final class ReportPhases {
                     + ReportTimeline.moment(head.fromSeconds()) + "  from "
                     + (head.notes() == 1 ? "note " + (head.fromNote() + 1)
                             : head.notes() + " notes from " + (head.fromNote() + 1)));
-            out.empty("rect", "class", head.midiPitch() == head.returned().fromMidi()
-                            ? "note" : "note returned",
+            out.empty("rect", "class",
+                    ReductionTrace.Return.RETURNED.equals(head.returned().read())
+                            ? "note returned" : "note",
                     "x", HtmlWriter.number(head.fromSeconds() * pxPerSecond, 2),
                     "y", HtmlWriter.number(ROLL_LANE + TIE_BAND + 4
                             + (highest - head.midiPitch()) * rowHeight, 2),
@@ -1406,7 +1408,7 @@ final class ReportPhases {
 
     private static String rollClass(ReductionTrace.Source source) {
         if (!ReductionTrace.Source.ABSORBED.equals(source.read())) {
-            return "printed";
+            return "chosen";
         }
         return ReductionTrace.Source.ORNAMENT.equals(source.groupedBy())
                 ? "ornament" : "absorbed";
@@ -1439,10 +1441,12 @@ final class ReportPhases {
         }
         out.line("</tbody></table>");
         out.line("</details>");
-        note("A head runs from the first onset of the notes it covers to their furthest"
-                + " release, so what it welds together includes any silence between them. Its"
-                + " pitch is the one the group settles on rather than the one it sounds"
-                + " longest: over a scoop those differ, and it is the arrival that was sung.");
+        note("A head ends on the furthest release of the notes it covers, so what it welds"
+                + " together includes any silence between them. Its pitch is the one the group"
+                + " settles on rather than the one it sounds longest: over a scoop those"
+                + " differ, and it is the arrival that was sung. The last column is a second"
+                + " decision taken once every head is chosen, so a head can print a pitch the"
+                + " column beside it says the group settled on.");
     }
 
     /** Every note of the estimate, and what became of it. */
@@ -1464,8 +1468,8 @@ final class ReportPhases {
             out.element("td", silence(source), "class", "words");
             out.element("td", groupedBy(source.groupedBy()), "class", "words");
             out.element("td", String.valueOf(source.head() + 1));
-            out.element("td", ReductionTrace.Source.PRINTED.equals(source.read())
-                    ? "its pitch is the one printed" : "absorbed", "class", "words");
+            out.element("td", ReductionTrace.Source.CHOSEN.equals(source.read())
+                    ? "its head took its pitch from it" : "absorbed", "class", "words");
             out.line("</tr>");
         }
         out.line("</tbody></table>");
@@ -1510,17 +1514,27 @@ final class ReportPhases {
         return switch (pitch.read()) {
             case ReductionTrace.Pitch.SETTLED -> head.notes() == 1
                     ? "the note's own" : "the pitch the group arrives at";
-            case ReductionTrace.Pitch.UNAIDED -> "the arrival, though it sounds "
-                    + HtmlWriter.number(pitch.arrivalBeats(), 2) + " beats against "
-                    + noteName(pitch.dominantMidi()) + "'s "
-                    + HtmlWriter.number(pitch.dominantBeats(), 2)
-                    + (pitch.chord() == null ? " and no chart span covers the group"
-                            : " and " + pitch.chord() + " does not separate them");
+            case ReductionTrace.Pitch.NO_CHORD -> unsettled(pitch)
+                    + ", and no chord sounds under the group";
+            case ReductionTrace.Pitch.UNTRUSTED -> unsettled(pitch) + ", and " + pitch.chord()
+                    + " is read at " + HtmlWriter.number(pitch.chordConfidence(), 2)
+                    + ", under the " + HtmlWriter.number(pitch.requiredConfidence(), 2)
+                    + " a chord has to reach to break a tie";
+            case ReductionTrace.Pitch.UNAIDED -> unsettled(pitch) + ", and " + pitch.chord()
+                    + " does not separate them";
             case ReductionTrace.Pitch.CHART -> noteName(pitch.dominantMidi()) + " in place of"
                     + " the arrival " + noteName(pitch.arrivalMidi()) + ", the group having"
                     + " settled on neither and " + pitch.chord() + " admitting only this one";
             default -> pitch.read();
         };
+    }
+
+    /** What the group holds against what it arrives at, which is what the chart is asked about. */
+    private static String unsettled(ReductionTrace.Pitch pitch) {
+        return "the arrival, though it sounds "
+                + HtmlWriter.number(pitch.arrivalBeats(), 2) + " beats against "
+                + noteName(pitch.dominantMidi()) + "'s "
+                + HtmlWriter.number(pitch.dominantBeats(), 2);
     }
 
     private static String takenFrom(ReductionTrace.Onset onset) {
@@ -1541,6 +1555,10 @@ final class ReportPhases {
     private static String betweenHeads(ReductionTrace.Return returned) {
         return switch (returned.read()) {
             case ReductionTrace.Return.SUPPORTED -> "the harmony admits its pitch";
+            case ReductionTrace.Return.NO_CHORD -> "nothing to refuse it: no chord sounds"
+                    + " under it";
+            case ReductionTrace.Return.NO_KEY -> "nothing to refuse it: the score carries no"
+                    + " key here, and the chord alone cannot";
             case ReductionTrace.Return.OVERLAPPED -> "another head sounds while it does";
             case ReductionTrace.Return.HELD -> "held " + HtmlWriter.number(returned.beats(), 2)
                     + " beats, too long to be a wobble";
@@ -1555,9 +1573,11 @@ final class ReportPhases {
             case ReductionTrace.Return.DEPARTED -> "too far from "
                     + noteName(returned.leftMidi()) + " and " + noteName(returned.rightMidi())
                     + " to have wobbled";
-            case ReductionTrace.Return.RETURNED -> "printed as "
-                    + noteName(returned.homeMidi()) + ", read as "
-                    + noteName(returned.fromMidi());
+            case ReductionTrace.Return.RETURNED -> returned.homeMidi().equals(returned.fromMidi())
+                    ? "returned to " + noteName(returned.fromMidi()) + ", which is the pitch it"
+                            + " was read at"
+                    : "printed as " + noteName(returned.homeMidi()) + ", read as "
+                            + noteName(returned.fromMidi());
             default -> returned.read();
         };
     }

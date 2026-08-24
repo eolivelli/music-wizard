@@ -17,6 +17,7 @@
 package dev.olivelli.musicwizard.arrange;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import dev.olivelli.musicwizard.core.model.Accidental;
 import dev.olivelli.musicwizard.core.model.Chord;
@@ -48,9 +49,9 @@ import org.junit.jupiter.api.Test;
  * What the reduction says it did, against what it did (#680).
  *
  * <p>The records are read back onto the estimate and the part: a head that says
- * its pitch came from a note has to print that note's pitch, and the notes the
- * heads cover have to be the estimate, each exactly once. That is the property
- * a record of reasoning can fail while the reasoning stays right.
+ * it took its pitch from a note has to have taken it from that note, and the
+ * notes the heads cover have to be the estimate, each exactly once. That is the
+ * property a record of reasoning can fail while the reasoning stays right.
  *
  * <p>Fixtures run at one beat a second, so a duration in seconds and the same
  * figure in beats are the same number.
@@ -127,15 +128,15 @@ class ReductionTraceTest {
         }
 
         @Test
-        @DisplayName("a note is printed exactly where its head takes its pitch from it")
-        void oneNoteOfEachHeadIsPrinted() {
+        @DisplayName("a note is chosen exactly where its head takes its pitch from it")
+        void oneNoteOfEachHeadIsChosen() {
             forEachScore(score -> {
                 ReductionTrace trace = PlayableMelody.explain(score);
                 for (int i = 0; i < trace.notes().size(); i++) {
                     ReductionTrace.Source source = trace.notes().get(i);
-                    boolean printed = trace.heads().get(source.head()).pitchNote() == i;
-                    assertThat(source.read()).isEqualTo(printed
-                            ? ReductionTrace.Source.PRINTED
+                    boolean chosen = trace.heads().get(source.head()).pitchNote() == i;
+                    assertThat(source.read()).isEqualTo(chosen
+                            ? ReductionTrace.Source.CHOSEN
                             : ReductionTrace.Source.ABSORBED);
                 }
             });
@@ -192,7 +193,7 @@ class ReductionTraceTest {
                             ReductionTrace.Source.SYLLABLE);
             assertThat(trace.notes()).extracting(ReductionTrace.Source::read)
                     .containsExactly(ReductionTrace.Source.ABSORBED,
-                            ReductionTrace.Source.PRINTED);
+                            ReductionTrace.Source.CHOSEN);
             assertThat(trace.heads().get(0).line()).isZero();
             assertThat(trace.heads().get(0).melisma()).isFalse();
             assertThat(trace.counts().collapsed()).isEqualTo(1);
@@ -361,15 +362,44 @@ class ReductionTraceTest {
         }
 
         @Test
-        @DisplayName("an unsettled group the chart cannot separate keeps its arrival")
-        void anUnsettledArrivalSaysTheChartDidNotAnswer() {
+        @DisplayName("an unsettled group with no chord under it says that, not that it was read")
+        void noChordIsNotAChordThatDidNotSeparate() {
             ReductionTrace.Pitch pitch = PlayableMelody
-                    .explain(sungOverNothing(notes(note(0.0, 1.0, 60), note(1.0, 0.2, 61))))
+                    .explain(sungOver(notes(note(0.0, 1.0, 60), note(1.0, 0.2, 61)),
+                            ChordProgression.empty()))
+                    .heads().get(0).pitch();
+
+            assertThat(pitch.read()).isEqualTo(ReductionTrace.Pitch.NO_CHORD);
+            assertThat(pitch.arrivalMidi()).isEqualTo(61);
+            assertThat(pitch.chord()).isNull();
+            assertThat(pitch.chordConfidence()).isNull();
+        }
+
+        @Test
+        @DisplayName("a chord below the floor is refused as untrusted, not as unhelpful")
+        void anUntrustedChordSaysWhatItWasReadAt() {
+            // The same group the chart would separate at a confidence it trusts,
+            // so the reading is the floor and nothing else.
+            ReductionTrace.Pitch pitch = PlayableMelody
+                    .explain(sungOver(notes(note(0.0, 1.0, 60), note(1.0, 0.2, 61)), chart(0.2)))
+                    .heads().get(0).pitch();
+
+            assertThat(pitch.read()).isEqualTo(ReductionTrace.Pitch.UNTRUSTED);
+            assertThat(pitch.chord()).isEqualTo("C");
+            assertThat(pitch.chordConfidence()).isEqualTo(0.2);
+            assertThat(pitch.chordConfidence()).isLessThan(pitch.requiredConfidence());
+        }
+
+        @Test
+        @DisplayName("a trusted chord that admits neither pitch says it did not separate them")
+        void aChordThatAnswersNeitherWaySaysSo() {
+            ReductionTrace.Pitch pitch = PlayableMelody
+                    .explain(sungOver(notes(note(0.0, 1.0, 62), note(1.0, 0.2, 61)), chart(1.0)))
                     .heads().get(0).pitch();
 
             assertThat(pitch.read()).isEqualTo(ReductionTrace.Pitch.UNAIDED);
-            assertThat(pitch.arrivalMidi()).isEqualTo(61);
-            assertThat(pitch.chord()).isNull();
+            assertThat(pitch.chord()).isEqualTo("C");
+            assertThat(pitch.chordConfidence()).isEqualTo(1.0);
         }
     }
 
@@ -392,6 +422,29 @@ class ReductionTraceTest {
             assertThat(returned.leftMidi()).isEqualTo(60);
             assertThat(returned.rightMidi()).isEqualTo(60);
             assertThat(trace.counts().moved()).isEqualTo(1);
+        }
+
+        @Test
+        @DisplayName("a head returned onto its own pitch is counted as returned and not as moved")
+        void aReturnOntoItsOwnPitchIsNotAMove() {
+            // The same pitch, accounted for on either side of a span that does
+            // not admit it: what the rule reaches and a comparison of the
+            // printed pitches cannot see.
+            Score score = withKey(played(
+                    notes(note(0.0, 1.0, 61), note(1.0, 0.5, 61), note(1.5, 1.0, 61)),
+                    new ChordProgression(List.of(
+                            triad(NoteLetter.A, ChordQuality.MAJOR, 0.0, 1.1),
+                            triad(NoteLetter.C, ChordQuality.MAJOR, 1.1, 1.4),
+                            triad(NoteLetter.A, ChordQuality.MAJOR, 1.4, 3.0)),
+                            Confidence.of(0.8))));
+
+            ReductionTrace trace = PlayableMelody.explain(score);
+
+            ReductionTrace.Return returned = trace.heads().get(1).returned();
+            assertThat(returned.read()).isEqualTo(ReductionTrace.Return.RETURNED);
+            assertThat(returned.homeMidi()).isEqualTo(returned.fromMidi());
+            assertThat(trace.counts().returned()).isEqualTo(1);
+            assertThat(trace.counts().moved()).isZero();
         }
 
         @Test
@@ -434,6 +487,26 @@ class ReductionTraceTest {
         }
 
         @Test
+        @DisplayName("a score with no chart says the rule had nothing to refuse a head with")
+        void noChartIsNotSupport() {
+            Score score = withKey(played(notes(note(0.0, 1.0, 61))));
+
+            assertThat(PlayableMelody.explain(score).heads().get(0).returned().read())
+                    .isEqualTo(ReductionTrace.Return.NO_CHORD);
+        }
+
+        @Test
+        @DisplayName("a score with no key says the same, and does not read as support")
+        void noKeyIsNotSupportEither() {
+            // The chord alone cannot refuse a head: a diatonic passing tone is
+            // outside every chord and perfectly readable.
+            Score score = played(notes(note(0.0, 1.0, 61)), chart(1.0));
+
+            assertThat(PlayableMelody.explain(score).heads().get(0).returned().read())
+                    .isEqualTo(ReductionTrace.Return.NO_KEY);
+        }
+
+        @Test
         @DisplayName("a head with no supported head on both sides says it was unbounded")
         void anUnboundedHeadIsNamed() {
             Score score = inC(notes(note(0.0, 0.5, 61), note(0.5, 1.0, 60)));
@@ -445,6 +518,15 @@ class ReductionTraceTest {
             assertThat(returned.leftMidi()).isNull();
             assertThat(returned.rightMidi()).isEqualTo(60);
         }
+    }
+
+    @Test
+    @DisplayName("half a syllable is not a claim")
+    void aSyllableIsALineAndAWord() {
+        assertThatThrownBy(() -> new ReductionTrace.Source(0, 1, 60, 0, null, 0.0, 2.0, 0,
+                ReductionTrace.Source.ALONE, ReductionTrace.Source.CHOSEN))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("both a line and a word");
     }
 
     // ------------------------------------------------------------- fixtures
@@ -524,11 +606,6 @@ class ReductionTraceTest {
         return sungOver(notes, chart(1.0));
     }
 
-    /** The same with no chart at all, which is what leaves the tie unbroken. */
-    private static Score sungOverNothing(List<Note> notes) {
-        return sungOver(notes, ChordProgression.empty());
-    }
-
     private static Score sungOver(List<Note> notes, ChordProgression chords) {
         double end = notes.get(notes.size() - 1).offsetSeconds();
         return score(notes, chords, new Lyrics(
@@ -537,10 +614,21 @@ class ReductionTraceTest {
     }
 
     private static ChordProgression chart(double confidence) {
-        return new ChordProgression(List.of(new Chord(
-                new PitchSpelling(NoteLetter.C, Accidental.NATURAL, 4), ChordQuality.MAJOR,
-                Optional.empty(), 0.0, 8.0, Optional.empty(), Optional.empty(),
-                Confidence.of(confidence))), Confidence.of(confidence));
+        return new ChordProgression(List.of(
+                triad(NoteLetter.C, ChordQuality.MAJOR, 0.0, 8.0, confidence)),
+                Confidence.of(confidence));
+    }
+
+    private static Chord triad(NoteLetter root, ChordQuality quality, double fromSeconds,
+                               double toSeconds) {
+        return triad(root, quality, fromSeconds, toSeconds, 1.0);
+    }
+
+    private static Chord triad(NoteLetter root, ChordQuality quality, double fromSeconds,
+                               double toSeconds, double confidence) {
+        return new Chord(new PitchSpelling(root, Accidental.NATURAL, 4), quality,
+                Optional.empty(), fromSeconds, toSeconds, Optional.empty(), Optional.empty(),
+                Confidence.of(confidence));
     }
 
     private static Note note(double onsetSeconds, double durationSeconds, int midiPitch) {

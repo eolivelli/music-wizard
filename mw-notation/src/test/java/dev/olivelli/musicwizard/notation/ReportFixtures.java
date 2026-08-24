@@ -731,9 +731,8 @@ final class ReportFixtures {
      * syllable whose two notes print as one head at the start the aligner
      * measured.
      *
-     * <p>{@link #melody()} exercises none of them — it is one legible note per
-     * beat — and a fixture that reduced to itself would leave the page's rules
-     * stated and undrawn.
+     * <p>A melody that reduced to itself would leave the page's rules stated and
+     * undrawn.
      */
     static Score reduced() {
         List<Note> notes = new ArrayList<>();

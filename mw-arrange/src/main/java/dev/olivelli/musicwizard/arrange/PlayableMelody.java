@@ -285,7 +285,7 @@ public final class PlayableMelody {
                         claim.syllable() == UNSUNG ? null : (int) (claim.syllable() >> 32),
                         claim.syllable() == UNSUNG ? null : (int) claim.syllable(),
                         claim.silenceBeats(), claimBeats, head, group.groupedBy(),
-                        i == settled ? ReductionTrace.Source.PRINTED
+                        i == settled ? ReductionTrace.Source.CHOSEN
                                 : ReductionTrace.Source.ABSORBED));
             }
         }
@@ -683,7 +683,8 @@ public final class PlayableMelody {
             double beats = first.durationBeats();
             return new Collapsed(first.note(),
                     new ReductionTrace.Pitch(first.pitch(), beats, first.pitch(), beats,
-                            SETTLED_SHARE * beats, null, ReductionTrace.Pitch.SETTLED),
+                            SETTLED_SHARE * beats, null, null, CHART_CONFIDENCE_FLOOR,
+                            ReductionTrace.Pitch.SETTLED),
                     0, 0);
         }
         // The furthest release rather than the last note's, since nothing
@@ -750,22 +751,29 @@ public final class PlayableMelody {
             }
         }
         String read = ReductionTrace.Pitch.SETTLED;
-        String symbol = null;
+        Optional<Chord> over = Optional.empty();
         if (dominant != settled && sounding.get(settled) < SETTLED_SHARE * dominantBeats) {
-            read = ReductionTrace.Pitch.UNAIDED;
-            Optional<Chord> over = chordOver(group, chords, map);
-            symbol = over.map(Chord::symbol).orElse(null);
+            over = chordOver(group, chords, map);
             Optional<Chord> chord = over
                     .filter(c -> !c.isNoChord())
                     .filter(c -> c.confidence().isAtLeast(CHART_CONFIDENCE_FLOOR));
             if (chord.isPresent() && sounds(chord.get(), dominant) && !sounds(chord.get(), settled)) {
                 settled = dominant;
                 read = ReductionTrace.Pitch.CHART;
+            } else {
+                // Three refusals rather than one: what the chart said about this
+                // group is a different fact from whether it was asked.
+                read = over.filter(c -> !c.isNoChord()).isEmpty()
+                        ? ReductionTrace.Pitch.NO_CHORD
+                        : chord.isEmpty() ? ReductionTrace.Pitch.UNTRUSTED
+                                : ReductionTrace.Pitch.UNAIDED;
             }
         }
         ReductionTrace.Pitch reading = new ReductionTrace.Pitch(arrival,
                 sounding.get(arrival), dominant, dominantBeats,
-                SETTLED_SHARE * dominantBeats, symbol, read);
+                SETTLED_SHARE * dominantBeats, over.map(Chord::symbol).orElse(null),
+                over.map(c -> c.confidence().value()).orElse(null),
+                CHART_CONFIDENCE_FLOOR, read);
         for (int i = group.size() - 1; i >= 0; i--) {
             if (group.get(i).pitch() == settled) {
                 return new Settled(i, reading);
@@ -811,10 +819,12 @@ public final class PlayableMelody {
      */
     private static Returned returned(List<Note> heads, Score score, Excursion excursion) {
         TempoMap map = score.tempoMap();
+        String[] admits = new String[heads.size()];
         boolean[] supported = new boolean[heads.size()];
         boolean[] alone = new boolean[heads.size()];
         for (int i = 0; i < heads.size(); i++) {
-            supported[i] = accountedFor(score, heads.get(i));
+            admits[i] = admits(score, heads.get(i));
+            supported[i] = !REFUSED.equals(admits[i]);
             alone[i] = alone(heads, i);
         }
         List<Note> out = new ArrayList<>(heads);
@@ -823,8 +833,7 @@ public final class PlayableMelody {
             Note head = heads.get(i);
             double beats = beatsOf(head, map);
             if (supported[i] || !alone[i] || beats > excursion.beats()) {
-                reads.add(read(head, null, null, null, beats, supported[i]
-                        ? ReductionTrace.Return.SUPPORTED
+                reads.add(read(head, null, null, null, beats, supported[i] ? admits[i]
                         : !alone[i] ? ReductionTrace.Return.OVERLAPPED
                                 : ReductionTrace.Return.HELD));
                 continue;
@@ -900,16 +909,31 @@ public final class PlayableMelody {
      * decision the reduction makes rather than a second transcription of it.
      */
     public static boolean accountedFor(Score score, Note head) {
+        return !REFUSED.equals(admits(score, head));
+    }
+
+    /** What {@link #accountedFor} answers {@code false} on. */
+    private static final String REFUSED = "refused";
+
+    /**
+     * The same, as the reading behind it: whether the harmony admitted the
+     * pitch, or was in no position to refuse it.
+     */
+    private static String admits(Score score, Note head) {
         Objects.requireNonNull(score, "score");
         Objects.requireNonNull(head, "head");
         TempoMap map = score.tempoMap();
         Optional<Chord> chord = chordOver(startBeat(head, map), endBeat(head, map),
                 score.chords(), map).filter(c -> !c.isNoChord());
         Optional<Key> key = score.keyAt((head.onsetSeconds() + head.offsetSeconds()) / 2);
-        if (chord.isEmpty() || key.isEmpty()) {
-            return true;
+        if (chord.isEmpty()) {
+            return ReductionTrace.Return.NO_CHORD;
         }
-        return sounds(chord.get(), head.midiPitch()) || inSignature(key.get(), head.midiPitch());
+        if (key.isEmpty()) {
+            return ReductionTrace.Return.NO_KEY;
+        }
+        return sounds(chord.get(), head.midiPitch()) || inSignature(key.get(), head.midiPitch())
+                ? ReductionTrace.Return.SUPPORTED : REFUSED;
     }
 
     private static boolean inSignature(Key key, int midiPitch) {

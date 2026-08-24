@@ -674,17 +674,35 @@ class AnalysisReportTest {
                 "<dt>Notes a syllable's own head absorbed</dt><dd>1</dd>",
                 "<dt>Notes absorbed as an ornament</dt><dd>1</dd>",
                 "<dt>Heads that took the aligner's syllable start</dt><dd>1</dd>",
-                "<dt>Heads printed at the pitch the line returned to</dt><dd>1</dd>");
+                "<dt>Heads the pass between them returned</dt><dd>1</dd>");
         // Each rule's own reading, per head and per note.
         assertThat(page).contains(
                 "printed as A4, read as A#4",
                 "the ornament rule, which joins a note to the one it leads into",
                 "one syllable claiming it and its neighbours",
                 "the aligner, at 0:05.20");
+        // The note the excursion rule then moved off is not claimed to be the
+        // pitch that was printed: the head prints A4 and the note is A#4.
+        assertThat(page).contains("its head took its pitch from it")
+                .doesNotContain("its pitch is the one printed");
         // And the picture: an absorbed note is joined to the head that took it,
         // and a moved head is drawn as one.
         assertThat(page).contains("class=\"tie ornament\"", "class=\"tie absorbed\"",
                 "class=\"note returned\"");
+    }
+
+    @Test
+    @DisplayName("a reduction the harmony could not weigh in on says so, not that it agreed")
+    void anInertExcursionRuleIsStatedAsInert() {
+        // The rule needs a chord and a key to refuse anything. A page that
+        // printed "the harmony admits its pitch" for a score carrying neither
+        // would read exactly like one whose every head the harmony really does
+        // admit.
+        Score noKey = ReportFixtures.reduced().withKeys(List.of());
+
+        assertThat(AnalysisReport.toHtml(noKey, RECORDING))
+                .contains("nothing to refuse it: the score carries no key here")
+                .doesNotContain("the harmony admits its pitch");
     }
 
     @Test

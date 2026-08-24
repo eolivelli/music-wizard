@@ -259,9 +259,10 @@ public final class PlayablePartCheck {
                 counts.unclaimed(), counts.collapsed(), counts.ornaments());
         System.out.printf(Locale.ROOT,
                 "heads: %d over %d claimed syllables (%d melismas), %d took the aligner's"
-                        + " start, %d took a chart tone, %d were returned%n",
+                        + " start, %d took a chart tone, %d were returned (%d onto another"
+                        + " pitch)%n",
                 counts.heads(), counts.syllables(), counts.melismas(), counts.fromAligner(),
-                counts.chartTies(), counts.moved());
+                counts.chartTies(), counts.returned(), counts.moved());
     }
 
     /**

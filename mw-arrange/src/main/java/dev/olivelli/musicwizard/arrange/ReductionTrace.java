@@ -61,8 +61,11 @@ public record ReductionTrace(NoteTrack part, List<Source> notes, List<Head> head
      * @param head          which of {@link ReductionTrace#heads} it reached
      * @param groupedBy     what put it in a head with its neighbours, as one of
      *                      the constants below
-     * @param read          {@code printed} where the head prints this note's
-     *                      pitch, {@code absorbed} where it prints another's
+     * @param read          {@code chosen} where the head took its pitch from
+     *                      this note, {@code absorbed} where it took another's.
+     *                      What the head goes on to print is
+     *                      {@link Head#returned}'s to say, since the pass
+     *                      between the heads can replace it
      */
     public record Source(
             double fromSeconds,
@@ -85,15 +88,16 @@ public record ReductionTrace(NoteTrack part, List<Source> notes, List<Head> head
         /** The ornament rule joined it to the note it leads into. */
         public static final String ORNAMENT = "ornament";
 
-        /** Its pitch is the one its head prints. */
-        public static final String PRINTED = "printed";
+        /** Its head took its pitch from this note. */
+        public static final String CHOSEN = "chosen";
 
-        /** Its head prints another note of the group. */
+        /** Its head took the pitch of another note of the group. */
         public static final String ABSORBED = "absorbed";
 
         public Source {
             Objects.requireNonNull(groupedBy, "groupedBy");
             Objects.requireNonNull(read, "read");
+            requireSyllable(line, word);
         }
 
         /** Whether a syllable claimed the note, which is what the bound decides. */
@@ -141,6 +145,15 @@ public record ReductionTrace(NoteTrack part, List<Source> notes, List<Head> head
             Objects.requireNonNull(pitch, "pitch");
             Objects.requireNonNull(onset, "onset");
             Objects.requireNonNull(returned, "returned");
+            requireSyllable(line, word);
+        }
+    }
+
+    /** A syllable is a line and a word in it, so half of one is not a claim. */
+    private static void requireSyllable(Integer line, Integer word) {
+        if ((line == null) != (word == null)) {
+            throw new IllegalArgumentException("a syllable needs both a line and a word, got "
+                    + line + " and " + word);
         }
     }
 
@@ -152,14 +165,21 @@ public record ReductionTrace(NoteTrack part, List<Source> notes, List<Head> head
      * as an arrival, the chart is asked whether the dominant is a chord tone the
      * arrival is not.
      *
+     * <p>{@code read} keeps apart the three ways the chart can fail to answer:
+     * naming no chord under the group, naming one this does not trust, and
+     * naming one that admits both pitches or neither. They are one outcome and
+     * three different facts about the recording.
+     *
      * @param arrivalMidi    the pitch the group ends on
      * @param arrivalBeats   how long that pitch sounds across the whole group
      * @param dominantMidi   the pitch that sounds longest
      * @param dominantBeats  how long that one sounds
      * @param requiredBeats  what the arrival had to reach to settle unaided
-     * @param chord          the span the tie was taken to, or null where the
-     *                       question never arose or nothing was trusted enough
-     *                       to answer it
+     * @param chord          the span covering most of the group, whatever became
+     *                       of it, or null where none covers it at all
+     * @param chordConfidence how far that span was trusted, or null under the
+     *                       same condition
+     * @param requiredConfidence how far it had to be trusted to break a tie
      * @param read           one of the constants below
      */
     public record Pitch(
@@ -169,12 +189,20 @@ public record ReductionTrace(NoteTrack part, List<Source> notes, List<Head> head
             double dominantBeats,
             double requiredBeats,
             String chord,
+            Double chordConfidence,
+            double requiredConfidence,
             String read) {
 
         /** The group settled on what it arrived at, and nothing was asked. */
         public static final String SETTLED = "settled";
 
-        /** It had not settled, and the chart did not separate the two pitches. */
+        /** Nothing covering the group names a chord, so the chart had no answer. */
+        public static final String NO_CHORD = "no-chord";
+
+        /** A chord covers it, below the confidence a tie-break needs. */
+        public static final String UNTRUSTED = "untrusted";
+
+        /** The chord was read, and it does not separate the two pitches. */
         public static final String UNAIDED = "unaided";
 
         /** The chart put the pitch the group holds longest in place of the arrival. */
@@ -230,6 +258,11 @@ public record ReductionTrace(NoteTrack part, List<Source> notes, List<Head> head
     /**
      * What the pass over the finished heads made of this one (#670).
      *
+     * <p>The rule needs both a chord and a key to refuse anything, so a head one
+     * of them does not cover is left alone without being asked. That is a
+     * reading of its own here and not support, since a recording with no chart
+     * or no key would otherwise read as one whose harmony admits every head.
+     *
      * @param fromMidi   the pitch the group chose, which the head prints unless
      *                   the pass replaced it
      * @param leftMidi   the nearest head before it the harmony accounts for, or
@@ -250,6 +283,12 @@ public record ReductionTrace(NoteTrack part, List<Source> notes, List<Head> head
 
         /** The chord under it or the key signature admits its pitch. */
         public static final String SUPPORTED = "supported";
+
+        /** Nothing under it names a chord, so the rule had nothing to refuse it with. */
+        public static final String NO_CHORD = "no-chord";
+
+        /** No key covers it, and one reference cannot refuse a head alone. */
+        public static final String NO_KEY = "no-key";
 
         /** Another head sounds while it does, so nothing left and nothing returned. */
         public static final String OVERLAPPED = "overlapped";
@@ -292,7 +331,11 @@ public record ReductionTrace(NoteTrack part, List<Source> notes, List<Head> head
      * @param melismas      of those, the ones marked as a melisma
      * @param fromAligner   heads whose onset came from the aligner
      * @param chartTies     heads whose printed pitch the chart chose
-     * @param moved         heads the excursion pass printed at another pitch
+     * @param returned      heads the pass between them replaced
+     * @param moved         those of them it printed at another pitch. Fewer than
+     *                      {@code returned} where the line came back to the very
+     *                      pitch it left, which the rule reaches and the pitches
+     *                      cannot show
      */
     public record Counts(
             int estimateNotes,
@@ -304,6 +347,7 @@ public record ReductionTrace(NoteTrack part, List<Source> notes, List<Head> head
             int melismas,
             int fromAligner,
             int chartTies,
+            int returned,
             int moved) {
     }
 
@@ -330,6 +374,7 @@ public record ReductionTrace(NoteTrack part, List<Source> notes, List<Head> head
         Set<Long> sustained = new HashSet<>();
         int fromAligner = 0;
         int chartTies = 0;
+        int returned = 0;
         int moved = 0;
         for (Head head : heads) {
             if (head.line() != null) {
@@ -345,11 +390,14 @@ public record ReductionTrace(NoteTrack part, List<Source> notes, List<Head> head
             if (Pitch.CHART.equals(head.pitch().read())) {
                 chartTies++;
             }
+            if (Return.RETURNED.equals(head.returned().read())) {
+                returned++;
+            }
             if (head.returned().fromMidi() != head.midiPitch()) {
                 moved++;
             }
         }
         return new Counts(notes.size(), heads.size(), unclaimed, collapsed, ornaments,
-                claimed.size(), sustained.size(), fromAligner, chartTies, moved);
+                claimed.size(), sustained.size(), fromAligner, chartTies, returned, moved);
     }
 }
