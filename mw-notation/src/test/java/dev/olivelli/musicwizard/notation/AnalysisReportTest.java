@@ -346,8 +346,25 @@ class AnalysisReportTest {
                 RunTraceJson.of(Map.of(KeyTrace.STAGE, KeyTrace.declared())));
 
         assertThat(page).contains("The file declares its key signature and whether it is"
-                + " major or minor, so nothing here was weighed");
+                + " major or minor, so nothing was weighed");
         assertThat(page).doesNotContain("Every key that was scored");
+    }
+
+    @Test
+    @DisplayName("a key trace naming no comparison is stated, not drawn as a decision")
+    void aKeyTraceWithNoComparisonIsStated() {
+        // What a trace written by a build that renamed either decision reads
+        // as: unknown properties are ignored and missing ones default, so the
+        // page has to say so rather than draw a comparison of nothing.
+        RunTraces renamed = RunTraceJson.fromJson("{\"schemaVersion\":1,\"traces\":"
+                + "{\"key\":{\"source\":\"chords\",\"chosen\":\"A minor\"}}}");
+
+        String page = AnalysisReport.toHtml(ReportFixtures.everything(), RECORDING,
+                ReportFixtures.run(), renamed);
+
+        assertThat(page).contains("This workspace's record of the key names no comparison");
+        assertThat(page).doesNotContain("What the two decisions were weighed from",
+                "Every key that was scored");
     }
 
     @Test

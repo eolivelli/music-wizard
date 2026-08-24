@@ -676,14 +676,14 @@ final class ReportPhases {
     private void whatTheKeyWasWeighedFrom(KeyTrace trace) {
         if (KeyTrace.DECLARED.equals(trace.source())) {
             note("The file declares its key signature and whether it is major or minor, so"
-                    + " nothing here was weighed and both confidences are certain. Everything"
-                    + " below describes the other path, where the key is read off estimated"
-                    + " chords.");
+                    + " nothing was weighed: which of the relative pair is home is read off"
+                    + " the file's own flag rather than chosen, and both confidences above"
+                    + " are certain because the writer said so.");
             return;
         }
         if (trace.signature() == null || trace.tonic() == null) {
-            note("This run recorded no comparison, which is what a key taken without scoring"
-                    + " a candidate leaves.");
+            note("This workspace's record of the key names no comparison, so there is nothing"
+                    + " here to draw.");
             return;
         }
         out.element("h4", "What the two decisions were weighed from").line("");
