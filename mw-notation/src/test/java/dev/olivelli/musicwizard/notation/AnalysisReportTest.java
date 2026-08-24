@@ -811,7 +811,7 @@ class AnalysisReportTest {
 
         assertThat(page).contains("What the segmentation cut",
                 "<dt>Frames the tracker heard a pitch in</dt><dd>0 of 689  (0%)</dd>",
-                "The tracker heard a pitch in no frame of that signal",
+                "No run of voiced frames was recorded, so there was nothing to cut",
                 "No note reached the octave fold.");
         assertThat(page).doesNotContain("Every note, and what began it");
     }

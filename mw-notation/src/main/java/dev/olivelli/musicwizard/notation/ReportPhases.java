@@ -994,9 +994,9 @@ final class ReportPhases {
     /** What each voiced run was cut into, and how much of it no note covers. */
     private void runTable(List<MelodyTrace.Run> runs) {
         if (runs.isEmpty()) {
-            note("The tracker heard a pitch in no frame of that signal, so there was no run to"
-                    + " cut. That is what a stem the separator emptied looks like from here,"
-                    + " and equally what silence looks like.");
+            note("No run of voiced frames was recorded, so there was nothing to cut. That is"
+                    + " what a stem the separator emptied looks like from here, and equally"
+                    + " what silence looks like.");
             return;
         }
         out.line("<details class=\"table\">");
