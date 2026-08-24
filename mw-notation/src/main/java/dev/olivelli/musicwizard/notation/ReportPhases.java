@@ -734,8 +734,7 @@ final class ReportPhases {
                 + " read for nothing at all — on a recording those two spans are a fade-in"
                 + " and a tail decoded from almost no signal.");
         if (!"separated".equals(tonic.read())) {
-            note("Here the two came to one score — whatever the table above holds for each of"
-                    + " them, it came to the same thing — so the harmony chose neither and the"
+            note("Here the two came to one score, so the harmony chose neither and the"
                     + " estimator did not guess. It wrote the major, the more often right of"
                     + " the two in this repertoire, and reported the coin flip a stated"
                     + " preference is worth. A listener may well hear the minor.");

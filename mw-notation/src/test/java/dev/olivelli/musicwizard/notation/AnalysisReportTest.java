@@ -354,9 +354,14 @@ class AnalysisReportTest {
         String page = AnalysisReport.toHtml(ReportFixtures.everything(), RECORDING,
                 ReportFixtures.run(), ReportFixtures.weighed());
 
-        String pair = page.substring(page.indexOf("Which of the relative pair is home"));
-        pair = pair.substring(0, pair.indexOf("</table>"));
-        assertThat(pair.indexOf("A minor")).isLessThan(pair.indexOf("C major"));
+        // From the table's own body: the facts above it print winner then
+        // runner-up whatever the rows do, so a slice that included them would
+        // pass on the test's own premise.
+        String rows = page.substring(page.indexOf("Which of the relative pair is home"));
+        rows = rows.substring(rows.indexOf("<table class=\"shown\">"),
+                rows.indexOf("</table>"));
+        assertThat(rows.indexOf("<td class=\"symbol\">A minor</td>"))
+                .isLessThan(rows.indexOf("<td class=\"symbol\">C major</td>"));
         assertThat(ReportFixtures.keyDecisions().candidates())
                 .as("and the trace itself scored them the other way round")
                 .extracting(KeyTrace.Candidate::key)
