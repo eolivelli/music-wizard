@@ -615,8 +615,7 @@ class AnalysisReportTest {
         assertThat(page).doesNotContain(
                 "Nothing in this workspace says whether the words were supplied");
         // Every gap the record does not fill is still stated.
-        assertThat(page).contains("(#676)", "(#677)", "(#678)", "(#679)",
-                "(#680)", "(#684)");
+        assertThat(page).contains("(#676)", "(#677)", "(#678)", "(#679)", "(#684)");
     }
 
     @Test
@@ -661,6 +660,31 @@ class AnalysisReportTest {
         assertThat(statusOf(page, "beats")).isEqualTo("nothing in the score");
         assertThat(page).contains("Last run</span>beats: ran — no pulse was found");
         assertThat(page).doesNotContain("<span class=\"status\">did not run</span>");
+    }
+
+    @Test
+    @DisplayName("the reduction names the rule that accounted for every note")
+    void theReductionNamesEachRule() {
+        String page = AnalysisReport.toHtml(ReportFixtures.reduced(), RECORDING);
+
+        // The counts, which are the reduction's own rather than the page's.
+        assertThat(page).contains(
+                "<dt>Notes in the estimate</dt><dd>7</dd>",
+                "<dt>Notes in the playable part</dt><dd>5</dd>",
+                "<dt>Notes a syllable's own head absorbed</dt><dd>1</dd>",
+                "<dt>Notes absorbed as an ornament</dt><dd>1</dd>",
+                "<dt>Heads that took the aligner's syllable start</dt><dd>1</dd>",
+                "<dt>Heads printed at the pitch the line returned to</dt><dd>1</dd>");
+        // Each rule's own reading, per head and per note.
+        assertThat(page).contains(
+                "printed as A4, read as A#4",
+                "the ornament rule, which joins a note to the one it leads into",
+                "one syllable claiming it and its neighbours",
+                "the aligner, at 0:05.20");
+        // And the picture: an absorbed note is joined to the head that took it,
+        // and a moved head is drawn as one.
+        assertThat(page).contains("class=\"tie ornament\"", "class=\"tie absorbed\"",
+                "class=\"note returned\"");
     }
 
     @Test

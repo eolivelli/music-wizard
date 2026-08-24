@@ -212,6 +212,22 @@ dl.facts dd { margin: 0; font-variant-numeric: tabular-nums; }
                   color: var(--faint); font-variant-numeric: tabular-nums; }
 .run-lane figcaption { font-size: .78rem; color: var(--muted); margin-top: .25rem; }
 
+.reduction-roll { margin: .3rem 0 .9rem; }
+.roll-scroll { overflow-x: auto; overflow-y: hidden; border: 1px solid var(--rule);
+               border-radius: .4rem; background: var(--panel); }
+.roll-scroll svg { display: block; }
+.mw-reduction .estimate .note { fill: #2f6feb; }
+.mw-reduction .estimate .note.absorbed { fill: #8ea9e0; }
+.mw-reduction .estimate .note.ornament { fill: #d8a33a; }
+.mw-reduction .heads .note { fill: #17916b; }
+.mw-reduction .heads .note.returned { fill: none; stroke: #17916b; stroke-width: 1.2; }
+.mw-reduction .tie { stroke: #8ea9e0; stroke-width: .6; }
+.mw-reduction .tie.ornament { stroke: #d8a33a; }
+.swatch.printed { background: #2f6feb; }
+.swatch.absorbed { background: #8ea9e0; }
+.swatch.ornament { background: #d8a33a; }
+.reduction-roll figcaption { font-size: .78rem; color: var(--muted); margin-top: .25rem; }
+
 details.table { margin: .3rem 0 .9rem; font-size: .85rem; }
 details.table summary { cursor: pointer; color: var(--accent); }
 .phase table { border-collapse: collapse; width: 100%; margin-top: .5rem;
@@ -869,7 +885,74 @@ footer { margin-top: 3rem; padding-top: 1.25rem; border-top: 1px solid var(--rul
 <dt>Notes in the playable part</dt><dd>8</dd>
 <dt>Carried through untouched</dt><dd>8</dd>
 </dl>
-<p class="gap"><span class="gap-label">Not recorded</span>Which rule accounted for each note the estimate lost — absorbed as an ornament, claimed by a neighbouring syllable, or pulled back from an excursion — is decided inside the reduction and not recorded (#680).</p>
+<p class="note">The reduction below was run for this page exactly as the engraver runs it, and the part drawn on the timeline above is that run's own output. Nothing here is read back from the workspace: the reduction is a decision taken when a part is rendered rather than when a recording is analysed.</p>
+<h4>What each rule accounted for</h4>
+<dl class="facts">
+<dt>Notes a syllable claimed</dt><dd>5</dd>
+<dt>Notes no syllable claimed</dt><dd>3</dd>
+<dt>Notes a syllable's own head absorbed</dt><dd>0</dd>
+<dt>Notes absorbed as an ornament</dt><dd>0</dd>
+<dt>Syllables that print a head</dt><dd>5, 1 of them marked a melisma</dd>
+<dt>Heads that took the aligner's syllable start</dt><dd>0</dd>
+<dt>Heads whose pitch the chart chose</dt><dd>0</dd>
+<dt>Heads printed at the pitch the line returned to</dt><dd>0</dd>
+</dl>
+<p class="note">A syllable carries one note, so the notes it claims print as one head and the rest of them are absorbed into it — unless some stage marked it a melisma, which says the melody moves under it and its run is to be printed. Where there are no words the only grouping evidence left is that a note too short to be worth a note-head belongs to the note it leads into.</p>
+<figure class="reduction-roll">
+<div class="legend"><span class="legend-lead">Notes of the estimate:</span><span class="chip"><span class="swatch printed"></span>its pitch is the head's</span>
+<span class="chip"><span class="swatch absorbed"></span>absorbed into its syllable's head</span>
+<span class="chip"><span class="swatch ornament"></span>absorbed as an ornament</span>
+</div>
+<div class="roll-scroll">
+<svg class="mw-reduction" viewBox="0 0 720 218" width="720" height="218" xmlns="http://www.w3.org/2000/svg" role="img">
+<g class="roll estimate"><g class="span"><title>1  C5  0:02.00  →  head 1</title><rect class="note printed" x="180" y="66.86" width="45" height="11.57"></rect></g>
+<g class="span"><title>2  D5  0:02.50  →  head 2</title><rect class="note printed" x="225" y="41.71" width="45" height="11.57"></rect></g>
+<g class="span"><title>3  E5  0:03.00  →  head 3</title><rect class="note printed" x="270" y="16.57" width="11.25" height="11.57"></rect></g>
+<g class="span"><title>4  F5  0:03.50  →  head 4</title><rect class="note printed" x="315" y="4" width="45" height="11.57"></rect></g>
+<g class="span"><title>5  E5  0:04.00  →  head 5</title><rect class="note printed" x="360" y="16.57" width="45" height="11.57"></rect></g>
+<g class="span"><title>6  D5  0:04.50  →  head 6</title><rect class="note printed" x="405" y="41.71" width="11.25" height="11.57"></rect></g>
+<g class="span"><title>7  C5  0:05.00  →  head 7</title><rect class="note printed" x="450" y="66.86" width="45" height="11.57"></rect></g>
+<g class="span"><title>8  B4  0:05.50  →  head 8</title><rect class="note printed" x="495" y="79.43" width="45" height="11.57"></rect></g>
+</g>
+<g class="ties"></g>
+<g class="roll heads"><g class="span"><title>head 1  C5  0:02.00  from note 1</title><rect class="note" x="180" y="188.86" width="45" height="11.57"></rect></g>
+<g class="span"><title>head 2  D5  0:02.50  from note 2</title><rect class="note" x="225" y="163.71" width="45" height="11.57"></rect></g>
+<g class="span"><title>head 3  E5  0:03.00  from note 3</title><rect class="note" x="270" y="138.57" width="11.25" height="11.57"></rect></g>
+<g class="span"><title>head 4  F5  0:03.50  from note 4</title><rect class="note" x="315" y="126" width="45" height="11.57"></rect></g>
+<g class="span"><title>head 5  E5  0:04.00  from note 5</title><rect class="note" x="360" y="138.57" width="45" height="11.57"></rect></g>
+<g class="span"><title>head 6  D5  0:04.50  from note 6</title><rect class="note" x="405" y="163.71" width="11.25" height="11.57"></rect></g>
+<g class="span"><title>head 7  C5  0:05.00  from note 7</title><rect class="note" x="450" y="188.86" width="45" height="11.57"></rect></g>
+<g class="span"><title>head 8  B4  0:05.50  from note 8</title><rect class="note" x="495" y="201.43" width="45" height="11.57"></rect></g>
+</g>
+</svg>
+</div>
+<figcaption>The estimate above, the part below, on the recording's own clock. A line joins every note the estimate lost to the head that absorbed it. A head drawn as an outline is one the pass between the heads printed at another pitch.</figcaption></figure>
+<details class="table">
+<summary>Every printed head, and where it came from</summary><table><thead><tr><th>#</th><th>From</th><th>To</th><th>Pitch</th><th>Sung on</th><th>Cut from</th><th>Pitch chosen as</th><th>Onset from</th><th>Between the heads</th></tr></thead><tbody>
+<tr><td>1</td><td>0:02.00</td><td>0:02.50</td><td>C5</td><td class="words">Ev</td><td class="words">note 1</td><td class="words">the note's own</td><td class="words">the melody; the syllable starts no later</td><td class="words">the harmony admits its pitch</td></tr>
+<tr><td>2</td><td>0:02.50</td><td>0:03.00</td><td>D5</td><td class="words">ery</td><td class="words">note 2</td><td class="words">the note's own</td><td class="words">the melody; the syllable starts no later</td><td class="words">the harmony admits its pitch</td></tr>
+<tr><td>3</td><td>0:03.00</td><td>0:03.12</td><td>E5</td><td class="words">thing, a melisma</td><td class="words">note 3</td><td class="words">the note's own</td><td class="words">the melody; the syllable starts no later</td><td class="words">the harmony admits its pitch</td></tr>
+<tr><td>4</td><td>0:03.50</td><td>0:04.00</td><td>F5</td><td class="words">—</td><td class="words">note 4</td><td class="words">the note's own</td><td class="words">the melody, this head opening no syllable</td><td class="words">the harmony admits its pitch</td></tr>
+<tr><td>5</td><td>0:04.00</td><td>0:04.50</td><td>E5</td><td class="words">it</td><td class="words">note 5</td><td class="words">the note's own</td><td class="words">the melody; the syllable starts no later</td><td class="words">the harmony admits its pitch</td></tr>
+<tr><td>6</td><td>0:04.50</td><td>0:04.62</td><td>D5</td><td class="words">did</td><td class="words">note 6</td><td class="words">the note's own</td><td class="words">the melody; the syllable starts no later</td><td class="words">the harmony admits its pitch</td></tr>
+<tr><td>7</td><td>0:05.00</td><td>0:05.50</td><td>C5</td><td class="words">—</td><td class="words">note 7</td><td class="words">the note's own</td><td class="words">the melody, this head opening no syllable</td><td class="words">the harmony admits its pitch</td></tr>
+<tr><td>8</td><td>0:05.50</td><td>0:06.00</td><td>B4</td><td class="words">—</td><td class="words">note 8</td><td class="words">the note's own</td><td class="words">the melody, this head opening no syllable</td><td class="words">the harmony admits its pitch</td></tr>
+</tbody></table>
+</details>
+<p class="note">A head runs from the first onset of the notes it covers to their furthest release, so what it welds together includes any silence between them. Its pitch is the one the group settles on rather than the one it sounds longest: over a scoop those differ, and it is the arrival that was sung.</p>
+<details class="table">
+<summary>Every note of the estimate, and what became of it</summary><table><thead><tr><th>#</th><th>From</th><th>To</th><th>Pitch</th><th>Claimed by</th><th>Silence</th><th>Grouped by</th><th>Head</th><th>What became of it</th></tr></thead><tbody>
+<tr><td>1</td><td>0:02.00</td><td>0:02.50</td><td>C5</td><td class="words">Ev</td><td class="words">0 beats, against the 2 a claim is allowed</td><td class="words">nothing; it is a head on its own</td><td>1</td><td class="words">its pitch is the one printed</td></tr>
+<tr><td>2</td><td>0:02.50</td><td>0:03.00</td><td>D5</td><td class="words">ery</td><td class="words">0 beats, against the 2 a claim is allowed</td><td class="words">nothing; it is a head on its own</td><td>2</td><td class="words">its pitch is the one printed</td></tr>
+<tr><td>3</td><td>0:03.00</td><td>0:03.12</td><td>E5</td><td class="words">thing</td><td class="words">0 beats, against the 2 a claim is allowed</td><td class="words">nothing; it is a head on its own</td><td>3</td><td class="words">its pitch is the one printed</td></tr>
+<tr><td>4</td><td>0:03.50</td><td>0:04.00</td><td>F5</td><td class="words">—</td><td class="words">no line of the lyrics reaches over it</td><td class="words">nothing; it is a head on its own</td><td>4</td><td class="words">its pitch is the one printed</td></tr>
+<tr><td>5</td><td>0:04.00</td><td>0:04.50</td><td>E5</td><td class="words">it</td><td class="words">0 beats, against the 2 a claim is allowed</td><td class="words">nothing; it is a head on its own</td><td>5</td><td class="words">its pitch is the one printed</td></tr>
+<tr><td>6</td><td>0:04.50</td><td>0:04.62</td><td>D5</td><td class="words">did</td><td class="words">0 beats, against the 2 a claim is allowed</td><td class="words">nothing; it is a head on its own</td><td>6</td><td class="words">its pitch is the one printed</td></tr>
+<tr><td>7</td><td>0:05.00</td><td>0:05.50</td><td>C5</td><td class="words">—</td><td class="words">no line of the lyrics reaches over it</td><td class="words">nothing; it is a head on its own</td><td>7</td><td class="words">its pitch is the one printed</td></tr>
+<tr><td>8</td><td>0:05.50</td><td>0:06.00</td><td>B4</td><td class="words">—</td><td class="words">no line of the lyrics reaches over it</td><td class="words">nothing; it is a head on its own</td><td>8</td><td class="words">its pitch is the one printed</td></tr>
+</tbody></table>
+</details>
+<p class="note">A note is claimed by the syllable the least silence separates it from, and only where that silence is inside the bound: a line's words reach over whatever instrumental gap sits inside the line, so without the bound a note played in such a gap would be welded to whatever was sung around it.</p>
 </article>
 </section>
 <footer>

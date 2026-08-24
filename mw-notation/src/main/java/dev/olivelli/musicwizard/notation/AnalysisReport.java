@@ -19,6 +19,7 @@ package dev.olivelli.musicwizard.notation;
 import dev.olivelli.musicwizard.arrange.PlayableMelody;
 import dev.olivelli.musicwizard.arrange.QuantizedScore;
 import dev.olivelli.musicwizard.arrange.Quantizer;
+import dev.olivelli.musicwizard.arrange.ReductionTrace;
 import dev.olivelli.musicwizard.core.model.Key;
 import dev.olivelli.musicwizard.core.model.NoteTrack;
 import dev.olivelli.musicwizard.core.model.PartRole;
@@ -95,8 +96,12 @@ public final class AnalysisReport {
         Objects.requireNonNull(recording, "recording");
 
         NoteTrack melody = score.track(PartRole.LEAD_VOCAL).orElse(null);
-        NoteTrack playable = melody == null || melody.isEmpty()
-                ? null : PlayableMelody.reduce(score);
+        // The reduction runs here rather than being read back: it is a render-time
+        // decision in a module this one already depends on, so the page explains
+        // the run that produced the part it draws (#680).
+        ReductionTrace reduction = melody == null || melody.isEmpty()
+                ? null : PlayableMelody.explain(score);
+        NoteTrack playable = reduction == null ? null : reduction.part();
         QuantizedScore quantized = Quantizer.quantize(score);
         ReportTimeline timeline = new ReportTimeline(score, playable);
 
@@ -133,7 +138,7 @@ public final class AnalysisReport {
                                 : " What each stage did in the last analysis is above and"
                                         + " repeated under the stage it belongs to."))
                 .line("</p>");
-        out.raw(new ReportPhases(score, melody, playable, quantized, manifest, traces)
+        out.raw(new ReportPhases(score, melody, reduction, quantized, manifest, traces)
                 .render());
         out.line("</section>");
         footer(out, manifest);

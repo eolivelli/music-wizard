@@ -726,6 +726,44 @@ final class ReportFixtures {
     }
 
     /**
+     * A melody each rule of the reduction acts on: a head the harmony refuses
+     * and the line returns from, an ornament where there are no words, and a
+     * syllable whose two notes print as one head at the start the aligner
+     * measured.
+     *
+     * <p>{@link #melody()} exercises none of them — it is one legible note per
+     * beat — and a fixture that reduced to itself would leave the page's rules
+     * stated and undrawn.
+     */
+    static Score reduced() {
+        List<Note> notes = new ArrayList<>();
+        // The line leaves A and comes straight back, on a pitch neither the Am
+        // under it nor the key signature admits.
+        notes.add(sungNote(4, 1, 69));
+        notes.add(sungNote(5, 0.5, 70));
+        notes.add(sungNote(5.5, 1, 69));
+        // Too short to be worth a note-head, and glued to the note it leads
+        // into. No word reaches over either.
+        notes.add(sungNote(8, 0.25, 76));
+        notes.add(sungNote(8.25, 1, 77));
+        // Two notes one syllable claims, which print as one head.
+        notes.add(sungNote(10, 1, 72));
+        notes.add(sungNote(11, 1, 74));
+        return withHarmony()
+                .withTrack(new NoteTrack(PartRole.LEAD_VOCAL, "Voice", notes,
+                        Confidence.of(0.66)))
+                .withLyrics(new Lyrics(List.of(new LyricLine(List.of(
+                        LyricWord.ofSeconds("held", 10.4 * SECONDS_PER_BEAT,
+                                11.4 * SECONDS_PER_BEAT, Confidence.of(0.9))),
+                        Confidence.of(0.9))), "en", Confidence.of(0.85)));
+    }
+
+    private static Note sungNote(double beat, double beats, int midiPitch) {
+        return Note.ofSeconds(beat * SECONDS_PER_BEAT, beats * SECONDS_PER_BEAT, midiPitch,
+                Confidence.of(0.7));
+    }
+
+    /**
      * The same score, with a syllable that starts after another and finishes
      * before it -- which is what recognition spans on sung speech do.
      */
