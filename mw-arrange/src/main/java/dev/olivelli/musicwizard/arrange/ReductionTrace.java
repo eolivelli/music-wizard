@@ -177,9 +177,8 @@ public record ReductionTrace(NoteTrack part, List<Source> notes, List<Head> head
      * @param dominantBeats  how long that one sounds
      * @param requiredBeats  what the arrival had to reach to settle unaided
      * @param chord          the span the chart was asked about, whatever became
-     *                       of it, or null where it was not asked
-     * @param chordConfidence how far that span was trusted, under the same
-     *                       condition
+     *                       of it
+     * @param chordConfidence how far that span was trusted
      * @param requiredConfidence how far it had to be trusted to break a tie
      * @param read           one of the constants below
      */

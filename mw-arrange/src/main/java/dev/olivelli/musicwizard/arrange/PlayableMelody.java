@@ -781,11 +781,6 @@ public final class PlayableMelody {
      * Why the group's arrival stands, where the chart did not put the pitch it
      * holds longest in place of it.
      *
-     * <p>Four readings rather than one, because a chart that was never asked,
-     * one that was not trusted, one that admits both pitches or neither and one
-     * that admits the arrival are four different facts about the recording, and
-     * only the third is the chart failing to separate them.
-     *
      * @param over  the span covering most of the group, refused or not
      * @param chord the same span where it is one the tie-break may read
      */
