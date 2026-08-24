@@ -36,6 +36,7 @@ import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.model.TempoMap;
 import dev.olivelli.musicwizard.core.model.TimeSignature;
 import dev.olivelli.musicwizard.core.workspace.BeatTrace;
+import dev.olivelli.musicwizard.core.workspace.ChordTrace;
 import dev.olivelli.musicwizard.core.workspace.ChromaTrace;
 import dev.olivelli.musicwizard.core.workspace.RunManifest;
 import dev.olivelli.musicwizard.core.workspace.RunTraceJson;
@@ -121,23 +122,34 @@ final class ReportFixtures {
      * What that run's stages weighed: a tracker whose two windows disagreed
      * about the octave, with the bass register halving the pulse they settled
      * on, a chroma front end that read a tuning and summarised the same spans
-     * the chords name, and one stage this build's page has no phase for.
+     * the chords name, a decoder that wrote down why each of them carries its
+     * label, and one stage this build's page has no phase for.
      */
     static RunTraces weighed() {
-        return weighed(new BeatTrace.Octave(true, 6.5, 0.04, 0.82, 2, 1, true), chroma());
+        return weighed(defaultOctave(), chroma(), chordDecisions());
     }
 
     /** The same, with a register reading of the caller's choosing. */
     static RunTraces weighed(BeatTrace.Octave octave) {
-        return weighed(octave, chroma());
+        return weighed(octave, chroma(), chordDecisions());
     }
 
     /** The same, with a chroma trace of the caller's choosing. */
     static RunTraces weighed(ChromaTrace chroma) {
-        return weighed(new BeatTrace.Octave(true, 6.5, 0.04, 0.82, 2, 1, true), chroma);
+        return weighed(defaultOctave(), chroma, chordDecisions());
     }
 
-    private static RunTraces weighed(BeatTrace.Octave octave, ChromaTrace chroma) {
+    /** The same, with a decoder trace of the caller's choosing. */
+    static RunTraces weighed(ChordTrace chords) {
+        return weighed(defaultOctave(), chroma(), chords);
+    }
+
+    private static BeatTrace.Octave defaultOctave() {
+        return new BeatTrace.Octave(true, 6.5, 0.04, 0.82, 2, 1, true);
+    }
+
+    private static RunTraces weighed(BeatTrace.Octave octave, ChromaTrace chroma,
+                                     ChordTrace chords) {
         BeatTrace beats = new BeatTrace(240.5, 120.25, octave,
                 List.of(
                         new BeatTrace.Window(0, 25, true, 240.5, 0.61, 0.88, 120.25,
@@ -150,9 +162,181 @@ final class ReportFixtures {
         Map<String, Object> collected = new LinkedHashMap<>();
         collected.put(BeatTrace.STAGE, beats);
         collected.put(ChromaTrace.STAGE, chroma);
+        collected.put(ChordTrace.STAGE, chords);
         collected.put("hummed-bass", Map.of("hummed", true));
         return RunTraceJson.of(collected);
     }
+
+    /**
+     * Why each of {@link #chords()}'s spans carries its label: one the run's own
+     * chroma renamed, one whose runner-up outscored the state the decoder held —
+     * which is the transition prior keeping a chord, and the one case where the
+     * margin is negative.
+     *
+     * <p>No count rewrites anything here, and none could: every root of that
+     * progression carries one run, so a count over it is all of its beats or
+     * none of them. {@link #chordsSettledAcrossTheRoot()} is the recurring root.
+     */
+    static ChordTrace chordDecisions() {
+        return new ChordTrace(
+                List.of(
+                        new ChordTrace.Span(0, 1, 0, 2, "N.C.", "N.C.", "decoder",
+                                new ChordTrace.Candidate("N.C.", -25.54),
+                                new ChordTrace.Candidate("C", -31.08),
+                                null, 0, null, List.of()),
+                        new ChordTrace.Span(1, 2, 2, 4, "C", "C", "decoder",
+                                new ChordTrace.Candidate("C", -9.42),
+                                new ChordTrace.Candidate("Am", -11.27),
+                                "C", 0, 0,
+                                gatesOn(0, RESIDUALS[1])),
+                        new ChordTrace.Span(2, 4, 4, 8, "Am", "Am", "run",
+                                new ChordTrace.Candidate("A", -8.83),
+                                new ChordTrace.Candidate("C", -9.91),
+                                "A", -1.62, 0,
+                                gatesOn(9, RESIDUALS[2])),
+                        new ChordTrace.Span(4, 6, 8, 12, "Fmaj7", "Fmaj7", "decoder",
+                                new ChordTrace.Candidate("Fmaj7", -7.94),
+                                new ChordTrace.Candidate("F", -8.61),
+                                "F", 0, 4,
+                                gatesOn(5, RESIDUALS[3])),
+                        new ChordTrace.Span(6, 8, 12, 16, "G7", "G7", "run",
+                                new ChordTrace.Candidate("G", -10.55),
+                                new ChordTrace.Candidate("G7", -10.21),
+                                "G", 0, 0,
+                                gatesOn(7, RESIDUALS[4]))),
+                List.of(
+                        new ChordTrace.Root("C",
+                                new ChordTrace.Count(0, 2, "minority", 0),
+                                new ChordTrace.Count(0, 2, "minority", 0)),
+                        new ChordTrace.Root("F",
+                                new ChordTrace.Count(0, 4, "minority", 0),
+                                new ChordTrace.Count(0, 4, "minority", 0)),
+                        new ChordTrace.Root("G",
+                                new ChordTrace.Count(0, 4, "minority", 0),
+                                new ChordTrace.Count(0, 4, "minority", 0)),
+                        new ChordTrace.Root("A",
+                                new ChordTrace.Count(4, 4, "majority", 0),
+                                new ChordTrace.Count(0, 4, "minority", 0))));
+    }
+
+    /**
+     * What the fit needed each pitch class for over
+     * {@link #chordsSettledAcrossTheRoot()}'s three runs: an A the recording
+     * states a major third on, a D between them, and an A whose own residual
+     * holds the minor third the root's count then withdraws.
+     */
+    private static final String[] RECURRING_RESIDUALS = {
+            ".01 .31 0 0 .04 0 0 .02 0 1.05 0 0",
+            ".01 0 .92 0 0 .01 .28 0 .05 .03 0 0",
+            ".34 .02 0 0 .06 0 0 .02 0 1.1 0 0"};
+
+    /**
+     * A root the recording puts three runs on, whose last run both per-root
+     * counts rewrote — the shape {@code ChordEstimationTest.ThirdPerRoot} shows
+     * the estimator producing, and the only one in which a count can act at all.
+     */
+    static ChordTrace chordsSettledAcrossTheRoot() {
+        return new ChordTrace(
+                List.of(
+                        new ChordTrace.Span(0, 4, 0, 8, "A", "A", "decoder",
+                                new ChordTrace.Candidate("A", -7.61),
+                                new ChordTrace.Candidate("F#m", -9.02),
+                                "A", 0, 0,
+                                gatesOn(9, RECURRING_RESIDUALS[0])),
+                        new ChordTrace.Span(4, 6, 8, 12, "D", "D", "decoder",
+                                new ChordTrace.Candidate("D", -8.14),
+                                new ChordTrace.Candidate("A", -9.30),
+                                "D", 0, 0,
+                                gatesOn(2, RECURRING_RESIDUALS[1])),
+                        new ChordTrace.Span(6, 8, 12, 16, "A7", "Am7", "thirds",
+                                new ChordTrace.Candidate("Am", -8.77),
+                                new ChordTrace.Candidate("A", -8.95),
+                                "A", 0, 0,
+                                gatesOn(9, RECURRING_RESIDUALS[2]))),
+                List.of(
+                        new ChordTrace.Root("D",
+                                new ChordTrace.Count(0, 4, "minority", 0),
+                                new ChordTrace.Count(0, 4, "minority", 0)),
+                        new ChordTrace.Root("A",
+                                new ChordTrace.Count(4, 12, "minority", 1),
+                                new ChordTrace.Count(4, 12, "minority", 1))));
+    }
+
+    /** A decoder that named the spans and left no reasoning behind it. */
+    static ChordTrace chordsWithoutDecisions() {
+        return new ChordTrace(List.of(), List.of());
+    }
+
+    /**
+     * The shares the quality gates ask of a degree, in the order the rows below
+     * read them. Written here so that a bar this fixture prints is the bar a run
+     * would have printed for the same residual; the estimator owns the values
+     * and this is a page, not a check on them.
+     */
+    private static final double PHANTOM_THIRD_SHARE = 0.20;
+    private static final double MINOR_THIRD_SHARE = 0.0075;
+    private static final double ADDED_NOTE_SHARE = 0.20;
+    private static final double MAJOR_SEVENTH_SHARE = 0.50;
+
+    /**
+     * The six comparisons the quality gates make on one root, read off that
+     * span's own residual so the two traces cannot say different things about
+     * one measurement.
+     *
+     * <p>The major third has a row for each of its two comparisons and one
+     * outcome between them, which is the shape the estimator records.
+     */
+    private static List<ChordTrace.Gate> gatesOn(int root, String residual) {
+        List<Double> read = reading(residual);
+        double rootReading = read.get(root);
+        double majorThird = degree(read, root, 4);
+        double minorThird = degree(read, root, 3);
+        boolean thirdCounted = !(majorThird < minorThird
+                && majorThird < PHANTOM_THIRD_SHARE * rootReading);
+        List<ChordTrace.Gate> gates = new ArrayList<>();
+        gates.add(new ChordTrace.Gate("major third", "share of the root", majorThird,
+                rounded(PHANTOM_THIRD_SHARE * rootReading), thirdCounted));
+        gates.add(new ChordTrace.Gate("major third", "the minor third", majorThird,
+                minorThird, thirdCounted));
+        gates.add(shareGate("minor third", minorThird, MINOR_THIRD_SHARE * rootReading));
+        gates.add(shareGate("diminished fifth", degree(read, root, 6),
+                ADDED_NOTE_SHARE * rootReading));
+        gates.add(shareGate("sixth", degree(read, root, 9),
+                ADDED_NOTE_SHARE * rootReading));
+        gates.add(shareGate("major seventh", degree(read, root, 11),
+                MAJOR_SEVENTH_SHARE * rootReading));
+        return gates;
+    }
+
+    private static ChordTrace.Gate shareGate(String degree, double read, double needed) {
+        return new ChordTrace.Gate(degree, "share of the root", read, rounded(needed),
+                read >= needed);
+    }
+
+    /** What the fit needed the pitch class {@code semitones} above {@code root} for. */
+    private static double degree(List<Double> residual, int root, int semitones) {
+        return residual.get((root + semitones) % 12);
+    }
+
+    /** Rounded as the estimator rounds a recorded reading. */
+    private static double rounded(double value) {
+        return Math.round(value * 1e4) / 1e4;
+    }
+
+    /**
+     * What the fit needed each pitch class for, per span of {@link #chords()}.
+     *
+     * <p>Named because two traces read them: the front end records them as they
+     * are, and the decoder's gates compare degrees of each span's root against
+     * them. A page whose two tables disagreed about one measurement would be
+     * showing two measurements.
+     */
+    private static final String[] RESIDUALS = {
+            ".01 0 .01 0 .02 0 0 .01 0 0 0 .01",
+            "1.04 0 .02 0 .31 .01 0 .28 0 .01 0 .02",
+            ".21 0 .01 0 .74 0 0 .02 0 1.12 0 .35",
+            ".58 0 0 0 2.1 1.31 0 .03 0 .12 0 .29",
+            ".05 0 .71 0 .02 .34 0 1.18 0 .03 0 .4"};
 
     /** What the front end read, over the same spans {@link #chords()} names. */
     static ChromaTrace chroma() {
@@ -162,27 +346,27 @@ final class ReportFixtures {
                                 reading(".08 .08 .09 .08 .1 .08 .08 .09 .08 .08 .08 .08"),
                                 reading(".08 .08 .08 .08 .1 .08 .08 .08 .08 .08 .09 .09"),
                                 reading(".1 .08 .08 .08 .08 .08 .08 .08 .08 .08 .09 .09"),
-                                reading(".01 0 .01 0 .02 0 0 .01 0 0 0 .01")),
+                                reading(RESIDUALS[0])),
                         chromaSpan(1, 2, 2, 4, "C",
                                 reading(".37 .01 .06 .02 .2 .04 .02 .19 .02 .03 .01 .03"),
                                 reading(".31 .01 .05 .01 .25 .04 .02 .25 .01 .02 .01 .02"),
                                 reading(".52 .03 .07 .04 .06 .04 .01 .12 .03 .04 .02 .02"),
-                                reading("1.04 0 .02 0 .31 .01 0 .28 0 .01 0 .02")),
+                                reading(RESIDUALS[1])),
                         chromaSpan(2, 4, 4, 8, "Am",
                                 reading(".17 .01 .03 .01 .23 .02 .01 .02 .01 .33 .01 .15"),
                                 reading(".12 .01 .02 .01 .26 .02 .01 .02 .01 .35 .01 .16"),
                                 reading(".09 .02 .04 .02 .12 .03 .02 .03 .02 .48 .03 .1"),
-                                reading(".21 0 .01 0 .74 0 0 .02 0 1.12 0 .35")),
+                                reading(RESIDUALS[2])),
                         chromaSpan(4, 6, 8, 12, "Fmaj7",
                                 reading(".22 .01 .02 .01 .17 .29 .01 .03 .01 .1 .01 .12"),
                                 reading(".24 .01 .02 .01 .19 .26 .01 .03 .01 .09 .01 .12"),
                                 reading(".12 .02 .03 .02 .09 .44 .02 .04 .02 .08 .02 .1"),
-                                reading(".58 0 0 0 .44 1.31 0 .03 0 .12 0 .29")),
+                                reading(RESIDUALS[3])),
                         chromaSpan(6, 8, 12, 16, "G7",
                                 reading(".04 .01 .26 .01 .03 .15 .01 .28 .01 .04 .01 .15"),
                                 reading(".03 .01 .29 .01 .03 .13 .01 .31 .01 .03 .01 .13"),
                                 reading(".06 .02 .18 .02 .04 .09 .02 .45 .02 .05 .02 .03"),
-                                reading(".05 0 .71 0 .02 .34 0 1.18 0 .03 0 .4"))));
+                                reading(RESIDUALS[4]))));
     }
 
     /** A front end that ran and folded nothing onto spans. */

@@ -29,6 +29,7 @@ import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.model.TempoMap;
 import dev.olivelli.musicwizard.core.model.TimeSignature;
 import dev.olivelli.musicwizard.core.workspace.BeatTrace;
+import dev.olivelli.musicwizard.core.workspace.ChordTrace;
 import dev.olivelli.musicwizard.core.workspace.ChromaTrace;
 import dev.olivelli.musicwizard.core.workspace.RunLog;
 import dev.olivelli.musicwizard.dsp.BeatTracker;
@@ -406,10 +407,11 @@ public final class AudioTranscriber {
         recordBeats(beats);
 
         progress.accept("estimating chords");
-        ChordProgression chords =
-                ChordEstimator.estimate(chroma, treble, bass, ablation, beatTimes);
+        ChordEstimator.Decoded decoded =
+                ChordEstimator.explain(chroma, treble, bass, ablation, beatTimes);
+        ChordProgression chords = decoded.chords();
         progress.accept(String.format(Locale.ROOT, "found %d chord spans", chords.size()));
-        runLog.stage("chords").computed();
+        recordChords(decoded.trace());
         // The front end's line again, now that there are spans to summarise it
         // over. The chord spans are the granularity the quality gates decide at
         // and the ones a reader is looking at when a chord is wrong.
@@ -500,6 +502,24 @@ public final class AudioTranscriber {
             stage.computed("the spectrum held no peaks to measure a tuning from, so concert"
                     + " pitch was assumed");
         }
+    }
+
+    /**
+     * Why each span carries its label, for the run's record (#677).
+     *
+     * <p>The line carries the one thing a reader cannot work out from the
+     * chart: how many spans were named by a count taken over other spans on the
+     * same root rather than by their own evidence.
+     */
+    private void recordChords(ChordTrace trace) {
+        long settledAcrossTheRoot = trace.spans().stream()
+                .filter(span -> span.settledBy().equals("thirds")
+                        || span.settledBy().equals("sevenths"))
+                .count();
+        runLog.stage(ChordTrace.STAGE).trace(trace)
+                .fact("spans settled across the root",
+                        settledAcrossTheRoot == 0 ? null : settledAcrossTheRoot)
+                .computed();
     }
 
     private static String tuningRead(ChromaTrace trace) {

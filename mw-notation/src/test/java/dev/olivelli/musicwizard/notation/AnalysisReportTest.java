@@ -21,6 +21,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.model.TempoMap;
 import dev.olivelli.musicwizard.core.workspace.BeatTrace;
+import dev.olivelli.musicwizard.core.workspace.ChordTrace;
 import dev.olivelli.musicwizard.core.workspace.ChromaTrace;
 import dev.olivelli.musicwizard.core.workspace.RunManifest;
 import dev.olivelli.musicwizard.core.workspace.RunTraceJson;
@@ -122,8 +123,9 @@ class AnalysisReportTest {
                 // it, and the page says so rather than naming one edge.
                 "everything from A3 to C6, fading out again to nothing at C7",
                 "Every chord span, and what it was read from",
-                // The chord span the fit needed F most to explain.
-                "<td class=\"symbol\">Fmaj7</td>", "F 1.31, C 0.58, E 0.44");
+                // The chord span whose major seventh the fit needs most, which
+                // is why that span is named with one.
+                "<td class=\"symbol\">Fmaj7</td>", "E 2.1, F 1.31, C 0.58");
         assertThat(weighed).doesNotContain("This workspace does not hold what the front end");
 
         assertThat(blank).contains("This workspace does not hold what the front end read",
@@ -144,6 +146,134 @@ class AnalysisReportTest {
         assertThat(page).contains("No chord span was summarised.",
                 "the spectrum held no peaks to read one from");
         assertThat(page).doesNotContain("Every chord span, and what it was read from");
+    }
+
+    @Test
+    @DisplayName("why each chord carries its label is drawn, or its absence stated")
+    void theDecoderTraceIsDrawnOrItsAbsenceStated() {
+        String weighed = AnalysisReport.toHtml(ReportFixtures.everything(), RECORDING,
+                ReportFixtures.run(), ReportFixtures.weighed());
+        String blank = AnalysisReport.toHtml(
+                ReportFixtures.everything(), RECORDING, ReportFixtures.run());
+
+        assertThat(weighed).contains("What the decoder chose between",
+                "Every chord span, and what it beat",
+                // The span the run's own chroma renamed, which is a fact the
+                // chart cannot show.
+                "the run weighed against its own chroma",
+                "How each root's third and seventh were settled",
+                // The readings a gate compared, and the degree it withheld.
+                "What the residual said about each span's root", "<td>withheld</td>");
+        assertThat(weighed).doesNotContain("Which candidate roots lost");
+
+        assertThat(blank).contains("Which candidate roots lost", "(#677)");
+        assertThat(blank).doesNotContain("What the decoder chose between");
+    }
+
+    @Test
+    @DisplayName("a span named by a count over its root says so, and the count says what it read")
+    void aSpanNamedAcrossItsRootIsDrawn() {
+        // The fact a reader of the chart cannot guess: this span reads as it
+        // does because of the other spans on its root.
+        String page = AnalysisReport.toHtml(ReportFixtures.everything(), RECORDING,
+                ReportFixtures.run(), ReportFixtures.weighed(
+                        ReportFixtures.chordsSettledAcrossTheRoot()));
+
+        assertThat(page).contains("the root's third count",
+                "<td>a minority of this root's beats hold a minor third</td>",
+                "<td>a minority of this root's beats state this seventh</td>",
+                // And what each count actually rewrote, which the reading alone
+                // does not say.
+                "<td>4 of 12 beats</td>");
+    }
+
+    @Test
+    @DisplayName("the two traces on one span describe one measurement, not two")
+    void theTwoTracesAgreeOnTheResidual() {
+        // A reader following a span from the front end's table into the gate
+        // table reads the same quantity twice, so a fixture whose two halves
+        // disagreed would be documenting a page no run could produce.
+        List<ChromaTrace.Span> read = ReportFixtures.chroma().spans();
+        List<ChordTrace.Span> decided = ReportFixtures.chordDecisions().spans();
+        assertThat(decided).hasSameSizeAs(read);
+        for (int i = 0; i < decided.size(); i++) {
+            int root = rootOf(decided.get(i).chord());
+            for (ChordTrace.Gate gate : decided.get(i).gates()) {
+                assertThat(gate.reading())
+                        .as("span %d, the %s of %s", i + 1, gate.degree(),
+                                decided.get(i).chord())
+                        .isEqualTo(read.get(i).significance()
+                                .get((root + SEMITONES.get(gate.degree())) % 12));
+            }
+        }
+    }
+
+    private static final Map<String, Integer> SEMITONES = Map.of(
+            "minor third", 3, "major third", 4, "diminished fifth", 6,
+            "sixth", 9, "major seventh", 11);
+
+    /** The pitch class a fixture chord symbol is built on, sharps only. */
+    private static int rootOf(String chord) {
+        List<String> names = List.of("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A",
+                "A#", "B");
+        String root = chord.length() > 1 && chord.charAt(1) == '#'
+                ? chord.substring(0, 2) : chord.substring(0, 1);
+        return names.indexOf(root);
+    }
+
+    @Test
+    @DisplayName("a count that read no beat is not reported as an even split")
+    void aCountOverNoBeatIsNotAnEvenSplit() {
+        // A rule that excluded every beat on a root -- a sixth is no evidence
+        // about a seventh -- reads zero of zero, and a rule comparing that
+        // against half of zero would announce a tie it never saw.
+        ChordTrace uncounted = new ChordTrace(List.of(),
+                List.of(new ChordTrace.Root("F",
+                        new ChordTrace.Count(1, 1, "majority", 0),
+                        new ChordTrace.Count(0, 0, "none", 0))));
+
+        String page = AnalysisReport.toHtml(ReportFixtures.everything(), RECORDING,
+                ReportFixtures.run(), ReportFixtures.weighed(uncounted));
+
+        assertThat(page).contains("<td>this rule counted no beat on this root</td>");
+        assertThat(page).doesNotContain("exactly half of them state this seventh");
+    }
+
+    @Test
+    @DisplayName("a decoder that recorded no decision says so and draws nothing")
+    void aDecoderTraceWithNoSpansIsStated() {
+        String page = AnalysisReport.toHtml(ReportFixtures.everything(), RECORDING,
+                ReportFixtures.run(), ReportFixtures.weighed(
+                        ReportFixtures.chordsWithoutDecisions()));
+
+        assertThat(page).contains("The decoder recorded no span and no root");
+        assertThat(page).doesNotContain("Every chord span, and what it beat",
+                "Which candidate roots lost");
+    }
+
+    @Test
+    @DisplayName("a residual nothing was read from is not drawn as six readings of nothing")
+    void gatesOverAnUnreadResidualAreNotDrawn() {
+        // A run the fit needed nothing on clears every share with every value,
+        // so rows of zero against zero would read as the fit admitting each
+        // degree when it measured none of them.
+        ChordTrace ungated = new ChordTrace(
+                ReportFixtures.chordDecisions().spans().stream()
+                        .map(AnalysisReportTest::withoutGates).toList(),
+                ReportFixtures.chordDecisions().roots());
+
+        String page = AnalysisReport.toHtml(ReportFixtures.everything(), RECORDING,
+                ReportFixtures.run(), ReportFixtures.weighed(ungated));
+
+        assertThat(page).contains("No span carries a gate reading");
+        assertThat(page).doesNotContain("What the residual said about each span's root");
+    }
+
+    private static ChordTrace.Span withoutGates(ChordTrace.Span span) {
+        return new ChordTrace.Span(span.fromSeconds(), span.toSeconds(), span.fromBeat(),
+                span.toBeat(), span.chord(), span.fromRun(), span.settledBy(), span.decoded(),
+                span.runnerUp(), span.bassRoot(), span.bassOnDecoded(),
+                span.majorSeventhBeats(), List.of());
     }
 
     @Test

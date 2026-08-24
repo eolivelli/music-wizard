@@ -22,6 +22,7 @@ import dev.olivelli.musicwizard.core.model.ChordProgression;
 import dev.olivelli.musicwizard.core.model.ChordQuality;
 import dev.olivelli.musicwizard.core.model.NoteLetter;
 import dev.olivelli.musicwizard.core.model.PitchSpelling;
+import dev.olivelli.musicwizard.core.workspace.ChordTrace;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -335,6 +336,40 @@ public final class ChordEstimator {
     private record Template(int rootPitchClass, ChordQuality quality, double[] profile) {
     }
 
+    /** The beats {@code [from, to)} one chord span covers. */
+    private record Range(int from, int to) {
+    }
+
+    /**
+     * What the quality decision settled, and the answers it passed through on
+     * the way.
+     *
+     * <p>The two per-root rules count over the labels standing when each of them
+     * runs, so neither count can be read off {@code chosen}; the snapshots are
+     * kept rather than recomputed for that reason.
+     *
+     * @param chosen        the state per beat the chart is written from
+     * @param fromRuns      the same after each run was weighed against its own
+     *                      chroma, before either per-root rule
+     * @param fromSevenths  and after the seventh count
+     * @param significance  the run's leave-one-out residual, held per beat of
+     *                      the run, or null per beat where none was measured
+     */
+    private record Qualities(int[] chosen, int[] fromRuns, int[] fromSevenths,
+                             RootCounts thirds, RootCounts sevenths, double[][] significance) {
+    }
+
+    /** What one per-root rule counted, per root: the degree, and the beats it read. */
+    private record RootCounts(int[] stated, int[] beats) {
+    }
+
+    /**
+     * What the decoder scored, and which roots the fit's residual let a major
+     * seventh be considered on, per beat.
+     */
+    private record Emissions(double[][] scores, boolean[][] majorSeventhAdmitted) {
+    }
+
     /**
      * Estimates chords over beat-synchronous chroma, deciding quality from the
      * same chroma as the root.
@@ -379,7 +414,7 @@ public final class ChordEstimator {
      */
     public static ChordProgression estimate(Chroma chroma, Chroma qualityChroma,
                                             List<Double> beatTimes) {
-        return decode(chroma, qualityChroma, null, null, beatTimes);
+        return decode(chroma, qualityChroma, null, null, beatTimes).chords();
     }
 
     /**
@@ -403,7 +438,7 @@ public final class ChordEstimator {
     public static ChordProgression estimate(Chroma chroma, Chroma qualityChroma,
                                             Chroma bassChroma, List<Double> beatTimes) {
         return decode(chroma, qualityChroma,
-                Objects.requireNonNull(bassChroma, "bassChroma"), null, beatTimes);
+                Objects.requireNonNull(bassChroma, "bassChroma"), null, beatTimes).chords();
     }
 
     /**
@@ -434,18 +469,36 @@ public final class ChordEstimator {
     public static ChordProgression estimate(Chroma chroma, Chroma qualityChroma,
                                             Chroma bassChroma, PitchClassAblation ablation,
                                             List<Double> beatTimes) {
+        return explain(chroma, qualityChroma, bassChroma, ablation, beatTimes).chords();
+    }
+
+    /** The chords, and why each span carries the label it does. */
+    public record Decoded(ChordProgression chords, ChordTrace trace) {
+    }
+
+    /**
+     * The same estimate as
+     * {@link #estimate(Chroma, Chroma, Chroma, PitchClassAblation, List)}, with
+     * the competition behind it written down (#677).
+     *
+     * <p>The trace is a summary of the pass that ran, never a second decode: it
+     * carries what this one computed and nothing that would have to be computed
+     * to record it.
+     */
+    public static Decoded explain(Chroma chroma, Chroma qualityChroma, Chroma bassChroma,
+                                  PitchClassAblation ablation, List<Double> beatTimes) {
         return decode(chroma, qualityChroma, Objects.requireNonNull(bassChroma, "bassChroma"),
                 Objects.requireNonNull(ablation, "ablation"), beatTimes);
     }
 
     /**
-     * The body of all three, with {@code bassChroma} null where there is no bass
+     * The body of all four, with {@code bassChroma} null where there is no bass
      * register and {@code ablation} null where the fit's residual is not
      * available.
      */
-    private static ChordProgression decode(Chroma chroma, Chroma qualityChroma,
-                                           Chroma bassChroma, PitchClassAblation ablation,
-                                           List<Double> beatTimes) {
+    private static Decoded decode(Chroma chroma, Chroma qualityChroma,
+                                  Chroma bassChroma, PitchClassAblation ablation,
+                                  List<Double> beatTimes) {
         Objects.requireNonNull(chroma, "chroma");
         Objects.requireNonNull(qualityChroma, "qualityChroma");
         Objects.requireNonNull(beatTimes, "beatTimes");
@@ -465,19 +518,19 @@ public final class ChordEstimator {
                     + " spans; the two describe the same beats");
         }
         if (chroma.frameCount() == 0 || beatTimes.size() < 2) {
-            return ChordProgression.empty();
+            return new Decoded(ChordProgression.empty(), new ChordTrace(List.of(), List.of()));
         }
 
         List<Template> templates = buildTemplates();
         double[][] similarity = similarities(chroma, templates);
-        double[][] emission = emissions(chroma, templates, similarity, ablation);
+        Emissions emission = emissions(chroma, templates, similarity, ablation);
         double[][] prior = bassRootPrior(bassChroma, similarity.length);
         double[][] logLikelihood = new double[similarity.length][templates.size()];
         for (int frame = 0; frame < similarity.length; frame++) {
             for (int t = 0; t < templates.size(); t++) {
                 Template template = templates.get(t);
                 logLikelihood[frame][t] = EMISSION_SHARPNESS
-                        * Math.log(Math.max(1e-9, emission[frame][t]));
+                        * Math.log(Math.max(1e-9, emission.scores()[frame][t]));
                 // No-chord carries no root and so takes no term. That is why the
                 // term below is at most zero: see bassRootPrior.
                 if (prior != null && template.quality() != ChordQuality.NONE) {
@@ -487,12 +540,16 @@ public final class ChordEstimator {
             }
         }
         int[] path = viterbi(logLikelihood, DECODED_STATES);
-        int[] chosen = chooseQualities(path, templates, qualityChroma, ablation);
+        Qualities qualities = chooseQualities(path, templates, qualityChroma, ablation);
 
+        List<Range> ranges = spanRanges(qualities.chosen(), beatTimes);
         // Confidence is reported from the raw similarity, not the sharpened
         // score: the exponent exists to make the decoder behave, and letting it
         // leak into a number a user reads would make every chord look shaky.
-        return toProgression(chosen, templates, beatTimes, similarity);
+        return new Decoded(
+                toProgression(qualities.chosen(), templates, beatTimes, similarity, ranges),
+                trace(ranges, beatTimes, templates, path, qualities,
+                        logLikelihood, prior, emission.majorSeventhAdmitted()));
     }
 
     /**
@@ -516,8 +573,8 @@ public final class ChordEstimator {
      * <p>Returns a new state path — same root and no-chord decisions, quality
      * replaced — so everything downstream keeps reading one array.
      */
-    private static int[] chooseQualities(int[] path, List<Template> templates,
-                                         Chroma qualityChroma, PitchClassAblation ablation) {
+    private static Qualities chooseQualities(int[] path, List<Template> templates,
+                                             Chroma qualityChroma, PitchClassAblation ablation) {
         int[] out = path.clone();
         // The run's residual test, held per beat of the run: the ablation is
         // asked once per run and read again by decideSeventhsPerRoot, which
@@ -548,9 +605,13 @@ public final class ChordEstimator {
             }
             i = j;
         }
-        decideSeventhsPerRoot(path, out, templates, qualityChroma, significance);
-        decideThirdsPerRoot(path, out, templates, qualityChroma, significance);
-        return out;
+        int[] fromRuns = out.clone();
+        RootCounts sevenths =
+                decideSeventhsPerRoot(path, out, templates, qualityChroma, significance);
+        int[] fromSevenths = out.clone();
+        RootCounts thirds =
+                decideThirdsPerRoot(path, out, templates, qualityChroma, significance);
+        return new Qualities(out, fromRuns, fromSevenths, thirds, sevenths, significance);
     }
 
     /**
@@ -602,8 +663,10 @@ public final class ChordEstimator {
      * guards tried for it do not separate that run from the false minors the
      * corpus holds.
      */
-    private static void decideThirdsPerRoot(int[] path, int[] out, List<Template> templates,
-                                            Chroma qualityChroma, double[][] significance) {
+    private static RootCounts decideThirdsPerRoot(int[] path, int[] out,
+                                                  List<Template> templates,
+                                                  Chroma qualityChroma,
+                                                  double[][] significance) {
         int[] minorThirds = new int[12];
         int[] beats = new int[12];
         for (int state : out) {
@@ -637,6 +700,7 @@ public final class ChordEstimator {
             }
             i = j;
         }
+        return new RootCounts(minorThirds, beats);
     }
 
     /**
@@ -694,10 +758,10 @@ public final class ChordEstimator {
      * <p>Grouping either array gives the same runs, since {@link #sameChord}
      * reads only the root and nothing here changes one.
      */
-    private static void decideSeventhsPerRoot(int[] path, int[] out,
-                                              List<Template> templates,
-                                              Chroma qualityChroma,
-                                              double[][] significance) {
+    private static RootCounts decideSeventhsPerRoot(int[] path, int[] out,
+                                                    List<Template> templates,
+                                                    Chroma qualityChroma,
+                                                    double[][] significance) {
         int[] sevenths = new int[12];
         int[] beats = new int[12];
         for (int state : out) {
@@ -740,6 +804,7 @@ public final class ChordEstimator {
             }
             i = j;
         }
+        return new RootCounts(sevenths, beats);
     }
 
     /**
@@ -804,7 +869,33 @@ public final class ChordEstimator {
     private static boolean majorSeventhSounds(double[] significance, int root, double share) {
         return significance != null
                 && significance[root] > 0
-                && significance[Math.floorMod(root + 11, 12)] >= share * significance[root];
+                && fitNeeds(significance, root, Math.floorMod(root + 11, 12), share);
+    }
+
+    /**
+     * Whether the fit needs a pitch class enough for the rule asking about it:
+     * what deleting it from the dictionary costs, against the share of the
+     * root's own cost that rule asks for. Every residual gate below reaches for
+     * it, and the trace records the two numbers each of them read (#677) — over
+     * a root the fit needs something on, which is the only case any of them
+     * says anything about ({@link #majorSeventhSounds}).
+     */
+    private static boolean fitNeeds(double[] significance, int root, int pitchClass,
+                                    double share) {
+        return significance[pitchClass] >= share * significance[root];
+    }
+
+    /**
+     * Whether a run's major third is the root's own fifth partial rather than a
+     * third the music holds: quieter in the fit than the minor third, and too
+     * quiet for the fit to need it either. Both, because the ranking alone also
+     * fires on a blues third over a dominant — see {@link #qualityScore}, which
+     * is the one decision it makes.
+     */
+    private static boolean phantomThird(double[] significance, int root) {
+        int majorThird = Math.floorMod(root + 4, 12);
+        return significance[majorThird] < significance[Math.floorMod(root + 3, 12)]
+                && !fitNeeds(significance, root, majorThird, PHANTOM_THIRD_SHARE_OF_ROOT);
     }
 
     /** The template for {@code quality} on {@code root}. */
@@ -908,10 +999,7 @@ public final class ChordEstimator {
         int root = template.rootPitchClass();
         int majorThird = Math.floorMod(root + 4, 12);
         double majorThirdMass = chroma[majorThird];
-        if (significance != null
-                && significance[majorThird] < significance[Math.floorMod(root + 3, 12)]
-                && significance[majorThird]
-                        < PHANTOM_THIRD_SHARE_OF_ROOT * significance[root]) {
+        if (significance != null && phantomThird(significance, root)) {
             majorThirdMass = 0;
         }
         // Nine semitones above the root is a sixth here and a diminished
@@ -931,13 +1019,13 @@ public final class ChordEstimator {
                 double value = pitchClass == majorThird ? majorThirdMass : chroma[pitchClass];
                 if (significance != null
                         && (pitchClass == sixth || pitchClass == diminishedFifth)
-                        && significance[pitchClass]
-                                < ADDED_NOTE_SHARE_OF_ROOT * significance[root]) {
+                        && !fitNeeds(significance, root, pitchClass,
+                                ADDED_NOTE_SHARE_OF_ROOT)) {
                     value = 0;
                 }
                 if (significance != null && pitchClass == minorThird
-                        && significance[minorThird]
-                                < MINOR_THIRD_SHARE_OF_ROOT * significance[root]) {
+                        && !fitNeeds(significance, root, minorThird,
+                                MINOR_THIRD_SHARE_OF_ROOT)) {
                     value = 0;
                 }
                 if (significance != null && pitchClass == majorSeventh
@@ -1167,9 +1255,10 @@ public final class ChordEstimator {
      * {@code ChordEstimationTest#theAblationIsAskedOncePerRunAndOncePerBeat}
      * pins what is asked.
      */
-    private static double[][] emissions(Chroma chroma, List<Template> templates,
-                                        double[][] similarity, PitchClassAblation ablation) {
+    private static Emissions emissions(Chroma chroma, List<Template> templates,
+                                       double[][] similarity, PitchClassAblation ablation) {
         double[][] out = new double[similarity.length][];
+        boolean[][] admitted = new boolean[similarity.length][12];
         for (int frame = 0; frame < similarity.length; frame++) {
             out[frame] = similarity[frame].clone();
             double[] vector = chroma.vectors()[frame];
@@ -1185,17 +1274,20 @@ public final class ChordEstimator {
             }
             double[] significance =
                     ablation == null ? null : ablation.significanceOver(frame, frame + 1);
+            for (int root = 0; root < 12; root++) {
+                admitted[frame][root] = majorSeventhSounds(significance, root,
+                        DECODED_MAJOR_SEVENTH_SHARE_OF_ROOT);
+            }
             for (int t = 0; t < templates.size(); t++) {
                 Template template = templates.get(t);
                 if (statesAMajorSeventh(template.quality())
-                        && !majorSeventhSounds(significance, template.rootPitchClass(),
-                                DECODED_MAJOR_SEVENTH_SHARE_OF_ROOT)) {
+                        && !admitted[frame][template.rootPitchClass()]) {
                     out[frame][t] = cosineWithout(vector, template.profile(),
                             Math.floorMod(template.rootPitchClass() + 11, 12));
                 }
             }
         }
-        return out;
+        return new Emissions(out, admitted);
     }
 
     /**
@@ -1256,25 +1348,41 @@ public final class ChordEstimator {
         return path;
     }
 
-    /** Merges runs of identical states into chord spans. */
-    private static ChordProgression toProgression(int[] path, List<Template> templates,
-                                                  List<Double> beatTimes,
-                                                  double[][] similarity) {
-        List<Chord> chords = new ArrayList<>();
+    /**
+     * The beats each chord span covers: runs of identical states, less any that
+     * would carry no time at all.
+     *
+     * <p>Taken once and read by both the progression and the trace, so a span
+     * index means the same beats in each (#677).
+     */
+    private static List<Range> spanRanges(int[] path, List<Double> beatTimes) {
+        List<Range> ranges = new ArrayList<>();
         int spanStart = 0;
-
         for (int i = 1; i <= path.length; i++) {
             boolean boundary = i == path.length || path[i] != path[spanStart];
             if (!boundary) {
                 continue;
             }
+            if (beatTimes.get(Math.min(i, beatTimes.size() - 1)) > beatTimes.get(spanStart)) {
+                ranges.add(new Range(spanStart, i));
+            }
+            spanStart = i;
+        }
+        return ranges;
+    }
+
+    /** Names each span the decoder settled on. */
+    private static ChordProgression toProgression(int[] path, List<Template> templates,
+                                                  List<Double> beatTimes,
+                                                  double[][] similarity, List<Range> ranges) {
+        List<Chord> chords = new ArrayList<>();
+
+        for (Range range : ranges) {
+            int spanStart = range.from();
+            int i = range.to();
             Template template = templates.get(path[spanStart]);
             double startSeconds = beatTimes.get(spanStart);
             double endSeconds = beatTimes.get(Math.min(i, beatTimes.size() - 1));
-            if (endSeconds <= startSeconds) {
-                spanStart = i;
-                continue;
-            }
 
             // Confidence is the raw similarity of the reported template,
             // averaged over the span, against the chroma the root was decoded
@@ -1301,7 +1409,6 @@ public final class ChordEstimator {
                     : Chord.ofSeconds(spell(template.rootPitchClass()), template.quality(),
                             startSeconds, endSeconds,
                             dev.olivelli.musicwizard.core.model.Confidence.clamped(confidence)));
-            spanStart = i;
         }
 
         double mean = chords.stream()
@@ -1309,6 +1416,319 @@ public final class ChordEstimator {
                 .average().orElse(0);
         return new ChordProgression(chords,
                 dev.olivelli.musicwizard.core.model.Confidence.clamped(mean));
+    }
+
+    /** Recorded readings are rounded to this before they are written down. */
+    private static final double TRACE_PRECISION = 1e4;
+
+    /**
+     * The competition behind each span, and the two counts that were settled
+     * across every run on a root (#677).
+     *
+     * <p>A summary of the arrays this decode already built. Nothing here is
+     * decoded a second time, so what it says about a span is what happened to
+     * that span and not what would happen to it.
+     */
+    private static ChordTrace trace(List<Range> ranges, List<Double> beatTimes,
+                                    List<Template> templates, int[] path, Qualities qualities,
+                                    double[][] logLikelihood, double[][] prior,
+                                    boolean[][] majorSeventhAdmitted) {
+        List<ChordTrace.Span> spans = new ArrayList<>(ranges.size());
+        for (Range range : ranges) {
+            Template named = templates.get(qualities.chosen()[range.from()]);
+            int held = stateHeldLongest(path, range, templates.size());
+            Template decoded = templates.get(held);
+            String chord = symbolOf(named);
+            String fromRun = symbolOf(templates.get(qualities.fromRuns()[range.from()]));
+            spans.add(new ChordTrace.Span(
+                    beatTimes.get(range.from()),
+                    beatTimes.get(Math.min(range.to(), beatTimes.size() - 1)),
+                    range.from(), range.to(), chord, fromRun,
+                    settledBy(qualities, range.from(), chord, fromRun, symbolOf(decoded)),
+                    candidate(templates, logLikelihood, range, held),
+                    runnerUp(templates, logLikelihood, range, held),
+                    bassNamed(prior, range, decoded), bassOn(prior, range, decoded),
+                    majorSeventhBeats(majorSeventhAdmitted, range, decoded),
+                    gates(qualities.significance()[range.from()], decoded)));
+        }
+        return new ChordTrace(spans, rootSummary(path, templates, qualities));
+    }
+
+    /**
+     * The state the decoder held over most of the span's beats.
+     *
+     * <p>Not always one state: a run whose quality was re-decided carries one
+     * label over beats the decoder may have named two ways, the root being all
+     * the grouping asks for. Ties keep the earliest, so the answer does not
+     * depend on the template order.
+     */
+    private static int stateHeldLongest(int[] path, Range range, int states) {
+        int[] beats = new int[states];
+        for (int frame = range.from(); frame < range.to(); frame++) {
+            beats[path[frame]]++;
+        }
+        int held = path[range.from()];
+        for (int frame = range.from(); frame < range.to(); frame++) {
+            if (beats[path[frame]] > beats[held]) {
+                held = path[frame];
+            }
+        }
+        return held;
+    }
+
+    /**
+     * Which of the labels a span carries last set the printed one.
+     *
+     * <p>Read off the labels rather than off the state indices, so a row cannot
+     * name a decision its own columns deny: where two decisions reached the same
+     * symbol the earlier one is credited, because that is what a reader
+     * comparing the columns can see.
+     */
+    private static String settledBy(Qualities qualities, int beat, String chord,
+                                    String fromRun, String decoded) {
+        if (!chord.equals(fromRun)) {
+            return qualities.chosen()[beat] != qualities.fromSevenths()[beat]
+                    ? "thirds" : "sevenths";
+        }
+        return fromRun.equals(decoded) ? "decoder" : "run";
+    }
+
+    /** A state and what it scored per beat of the span, in the decoder's units. */
+    private static ChordTrace.Candidate candidate(List<Template> templates,
+                                                  double[][] logLikelihood, Range range,
+                                                  int state) {
+        return new ChordTrace.Candidate(symbolOf(templates.get(state)),
+                rounded(meanScore(logLikelihood, range, state)));
+    }
+
+    /**
+     * The best-scoring state the decoder did not hold. Over the states the
+     * decoder chooses between and no others, so it names a rival the path could
+     * have taken rather than a label only the quality decision may report.
+     */
+    private static ChordTrace.Candidate runnerUp(List<Template> templates,
+                                                 double[][] logLikelihood, Range range,
+                                                 int held) {
+        int best = -1;
+        double bestScore = 0;
+        for (int state = 0; state < DECODED_STATES; state++) {
+            if (state == held) {
+                continue;
+            }
+            double score = meanScore(logLikelihood, range, state);
+            if (best < 0 || score > bestScore) {
+                best = state;
+                bestScore = score;
+            }
+        }
+        return best < 0 ? null : candidate(templates, logLikelihood, range, best);
+    }
+
+    private static double meanScore(double[][] logLikelihood, Range range, int state) {
+        double total = 0;
+        for (int frame = range.from(); frame < range.to(); frame++) {
+            total += logLikelihood[frame][state];
+        }
+        return total / (range.to() - range.from());
+    }
+
+    /** Each root's mean term over the span, which is at most zero. */
+    private static double[] bassTerms(double[][] prior, Range range) {
+        double[] mean = new double[12];
+        for (int frame = range.from(); frame < range.to(); frame++) {
+            for (int pitchClass = 0; pitchClass < 12; pitchClass++) {
+                mean[pitchClass] += prior[frame][pitchClass] / (range.to() - range.from());
+            }
+        }
+        return mean;
+    }
+
+    /**
+     * The root the bass register argued for over the span, or null where it
+     * argued for none: no bass register, a bass that dropped out — neither
+     * ranks one root over another — or a no-chord state, which takes no root
+     * prior at all.
+     */
+    private static String bassNamed(double[][] prior, Range range, Template decoded) {
+        if (prior == null || decoded.quality() == ChordQuality.NONE) {
+            return null;
+        }
+        double[] terms = bassTerms(prior, range);
+        int named = 0;
+        boolean argued = false;
+        for (int pitchClass = 1; pitchClass < 12; pitchClass++) {
+            if (terms[pitchClass] != terms[0]) {
+                argued = true;
+            }
+            if (terms[pitchClass] > terms[named]) {
+                named = pitchClass;
+            }
+        }
+        return argued ? rootName(named) : null;
+    }
+
+    /** What the prior added to the decoded state, on the scale its score is on. */
+    private static double bassOn(double[][] prior, Range range, Template decoded) {
+        if (prior == null || decoded.quality() == ChordQuality.NONE) {
+            return 0;
+        }
+        return rounded(BASS_ROOT_WEIGHT
+                * bassTerms(prior, range)[decoded.rootPitchClass()]);
+    }
+
+    /** Null rather than zero where the span has no root, so an absence is not a count. */
+    private static Integer majorSeventhBeats(boolean[][] admitted, Range range,
+                                             Template decoded) {
+        if (decoded.quality() == ChordQuality.NONE) {
+            return null;
+        }
+        int beats = 0;
+        for (int frame = range.from(); frame < range.to(); frame++) {
+            if (admitted[frame][decoded.rootPitchClass()]) {
+                beats++;
+            }
+        }
+        return beats;
+    }
+
+    /**
+     * What the run's residual said about each degree a gate reads, on the
+     * decoded root.
+     *
+     * <p>Every degree, not only the ones the printed chord states: the
+     * candidates that were refused are as much of the answer as the one that
+     * won.
+     *
+     * <p><b>Empty where there was nothing to read</b>, and a root the fit needs
+     * nothing on is one of those cases: every share of zero is cleared by every
+     * value, so the rows would say the residual admitted each degree when it
+     * measured none of them. It is the same reading {@link #majorSeventhSounds}
+     * closes its own gate on.
+     */
+    private static List<ChordTrace.Gate> gates(double[] significance, Template decoded) {
+        if (significance == null || decoded.quality() == ChordQuality.NONE
+                || significance[decoded.rootPitchClass()] <= 0) {
+            return List.of();
+        }
+        int root = decoded.rootPitchClass();
+        boolean thirdCounted = !phantomThird(significance, root);
+        return List.of(
+                gate("major third", significance, root, 4, "share of the root",
+                        PHANTOM_THIRD_SHARE_OF_ROOT * significance[root], thirdCounted),
+                gate("major third", significance, root, 4, "the minor third",
+                        significance[Math.floorMod(root + 3, 12)], thirdCounted),
+                shareGate("minor third", significance, root, 3, MINOR_THIRD_SHARE_OF_ROOT),
+                shareGate("diminished fifth", significance, root, 6, ADDED_NOTE_SHARE_OF_ROOT),
+                shareGate("sixth", significance, root, 9, ADDED_NOTE_SHARE_OF_ROOT),
+                gate("major seventh", significance, root, 11, "share of the root",
+                        MAJOR_SEVENTH_SHARE_OF_ROOT * significance[root],
+                        majorSeventhSounds(significance, root, MAJOR_SEVENTH_SHARE_OF_ROOT)));
+    }
+
+    /** A degree the quality decision counts only where the fit needs its share of the root. */
+    private static ChordTrace.Gate shareGate(String degree, double[] significance, int root,
+                                             int semitones, double share) {
+        return gate(degree, significance, root, semitones, "share of the root",
+                share * significance[root],
+                fitNeeds(significance, root, Math.floorMod(root + semitones, 12), share));
+    }
+
+    private static ChordTrace.Gate gate(String degree, double[] significance, int root,
+                                        int semitones, String rule, double required,
+                                        boolean counted) {
+        return new ChordTrace.Gate(degree, rule,
+                rounded(significance[Math.floorMod(root + semitones, 12)]), rounded(required),
+                counted);
+    }
+
+    /**
+     * What each root's two cross-run counts came to, and how many runs each rule
+     * rewrote. A root with no beat under either rule is left out rather than
+     * printed as an empty count.
+     */
+    private static List<ChordTrace.Root> rootSummary(int[] path, List<Template> templates,
+                                                     Qualities qualities) {
+        int[] thirdsChanged = new int[12];
+        int[] seventhsChanged = new int[12];
+        countRewrites(path, templates, qualities, thirdsChanged, seventhsChanged);
+        List<ChordTrace.Root> roots = new ArrayList<>();
+        RootCounts thirds = qualities.thirds();
+        RootCounts sevenths = qualities.sevenths();
+        for (int root = 0; root < 12; root++) {
+            if (thirds.beats()[root] == 0 && sevenths.beats()[root] == 0) {
+                continue;
+            }
+            roots.add(new ChordTrace.Root(rootName(root),
+                    new ChordTrace.Count(thirds.stated()[root], thirds.beats()[root],
+                            countRead(thirds.stated()[root], thirds.beats()[root],
+                                    THIRD_MUST_HOLD_FOR), thirdsChanged[root]),
+                    new ChordTrace.Count(sevenths.stated()[root], sevenths.beats()[root],
+                            countRead(sevenths.stated()[root], sevenths.beats()[root],
+                                    SEVENTH_MUST_HOLD_FOR), seventhsChanged[root])));
+        }
+        return roots;
+    }
+
+    /**
+     * Where the count fell against the share that decides it — the reading, not
+     * the verdict, which each rule draws from it differently.
+     */
+    private static String countRead(int stated, int beats, double mustHoldFor) {
+        if (beats == 0) {
+            return "none";
+        }
+        if (stated < mustHoldFor * beats) {
+            return "minority";
+        }
+        return stated > mustHoldFor * beats ? "majority" : "even";
+    }
+
+    /**
+     * How many runs on each root each per-root rule rewrote, over the runs those
+     * rules act on.
+     *
+     * <p>Read from the snapshots rather than from a span's {@code settledBy}: a
+     * run the seventh count rewrote and the third count rewrote again is one
+     * rewrite each, and a label credits only the decision that set it last.
+     */
+    private static void countRewrites(int[] path, List<Template> templates,
+                                      Qualities qualities, int[] thirdsChanged,
+                                      int[] seventhsChanged) {
+        int i = 0;
+        while (i < path.length) {
+            Template start = templates.get(path[i]);
+            int j = i;
+            while (j < path.length && sameChord(templates.get(path[j]), start)) {
+                j++;
+            }
+            Template named = templates.get(qualities.chosen()[i]);
+            if (named.quality() != ChordQuality.NONE) {
+                if (qualities.fromSevenths()[i] != qualities.fromRuns()[i]) {
+                    seventhsChanged[named.rootPitchClass()]++;
+                }
+                if (qualities.chosen()[i] != qualities.fromSevenths()[i]) {
+                    thirdsChanged[named.rootPitchClass()]++;
+                }
+            }
+            i = j;
+        }
+    }
+
+    /** A template's chart symbol, spelled as {@link #spell} spells a root. */
+    private static String symbolOf(Template template) {
+        return template.quality() == ChordQuality.NONE
+                ? ChordQuality.NONE.symbol()
+                : rootName(template.rootPitchClass()) + template.quality().symbol();
+    }
+
+    private static String rootName(int pitchClass) {
+        PitchSpelling root = spell(pitchClass);
+        return root.letter().name() + root.accidental().displaySuffix();
+    }
+
+    private static double rounded(double value) {
+        return Double.isFinite(value) ? Math.round(value * TRACE_PRECISION) / TRACE_PRECISION
+                : value;
     }
 
     /**
