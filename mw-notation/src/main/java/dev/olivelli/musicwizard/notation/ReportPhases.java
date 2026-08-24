@@ -750,8 +750,10 @@ final class ReportPhases {
         if (pair.isEmpty()) {
             return;
         }
-        out.line("<table><thead><tr><th>Key</th><th>Score</th><th>Its own tonic chord</th>"
-                + "<th>Its raised seventh</th></tr></thead><tbody>");
+        // Not behind a disclosure: this is the comparison the phase is about.
+        out.line("<table class=\"shown\"><thead><tr><th>Key</th><th>Score</th>"
+                + "<th>Its own tonic chord</th><th>Its raised seventh</th>"
+                + "</tr></thead><tbody>");
         for (KeyTrace.Candidate candidate : pair) {
             out.open("tr");
             out.element("td", candidate.key(), "class", "symbol");
