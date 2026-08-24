@@ -38,6 +38,7 @@ h2 { font-size: 1.35rem; margin: 0 0 .35rem; }
 h3 { font-size: 1.05rem; margin: 0 0 .4rem; display: flex; align-items: baseline; gap: .5rem; }
 h4 { font-size: .8rem; text-transform: uppercase; letter-spacing: .05em; color: var(--faint);
      margin: 1.1rem 0 .3rem; }
+h5 { font-size: .8rem; color: var(--muted); margin: .9rem 0 .2rem; }
 .artist { margin: .2rem 0 0; color: var(--muted); font-size: 1.1rem; }
 .lede { color: var(--muted); margin: .35rem 0 1rem; max-width: 46rem; }
 

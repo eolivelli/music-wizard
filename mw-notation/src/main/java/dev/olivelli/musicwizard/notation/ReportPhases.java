@@ -35,10 +35,12 @@ import dev.olivelli.musicwizard.core.model.TempoMap;
 import dev.olivelli.musicwizard.core.workspace.BeatTrace;
 import dev.olivelli.musicwizard.core.workspace.ChordTrace;
 import dev.olivelli.musicwizard.core.workspace.ChromaTrace;
+import dev.olivelli.musicwizard.core.workspace.KeyTrace;
 import dev.olivelli.musicwizard.core.workspace.RunManifest;
 import dev.olivelli.musicwizard.core.workspace.RunTraces;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -661,10 +663,144 @@ final class ReportPhases {
         }
         facts(table.toArray(new Fact[0]));
         confidences(readings);
-        gap("The chord evidence each of the two decisions weighed is not recorded, so the"
-                + " page can show that they disagree but not why (#678).");
+        Optional<KeyTrace> trace = traces == null
+                ? Optional.empty() : traces.trace(KeyTrace.STAGE, KeyTrace.class);
+        trace.ifPresentOrElse(this::whatTheKeyWasWeighedFrom,
+                () -> gap("The chord evidence each of the two decisions weighed is not"
+                        + " recorded, so the page can show that they disagree but not why"
+                        + " (#678). A recording analysed again records it."));
         close();
     }
+
+    /** What each of the key's two decisions was weighed from (#678). */
+    private void whatTheKeyWasWeighedFrom(KeyTrace trace) {
+        if (KeyTrace.DECLARED.equals(trace.source())) {
+            note("The file declares its key signature and whether it is major or minor, so"
+                    + " nothing here was weighed and both confidences are certain. Everything"
+                    + " below describes the other path, where the key is read off estimated"
+                    + " chords.");
+            return;
+        }
+        if (trace.signature() == null || trace.tonic() == null) {
+            note("This run recorded no comparison, which is what a key taken without scoring"
+                    + " a candidate leaves.");
+            return;
+        }
+        out.element("h4", "What the two decisions were weighed from").line("");
+        facts(fact("Chords sounded for",
+                        HtmlWriter.number(trace.soundingSeconds(), 2) + "s of "
+                                + HtmlWriter.number(trace.spanSeconds(), 2) + "s"),
+                fact("Both confidences scaled by", Math.round(100 * trace.weighed()) + "%"));
+        note("A margin says which key won and nothing about how much was weighed, and the two"
+                + " come apart: half a second of one chord inside four minutes of silence wins"
+                + " by as wide a margin as a whole recording. So both confidences are scaled"
+                + " by the share above.");
+        signatureDecision(trace.signature());
+        tonicDecision(trace.tonic(), trace.candidates());
+        candidateTable(trace.candidates());
+    }
+
+    /** Which key signature won, and the best key outside the winning relative pair. */
+    private void signatureDecision(KeyTrace.Decision signature) {
+        out.element("h5", "The key signature").line("");
+        facts(fact("Named", signature.winner()),
+                fact("Best key in another signature", signature.runnerUp()),
+                fact("Margin", HtmlWriter.number(signature.margin(), 3)));
+        note("separated".equals(signature.read())
+                ? "The two scores lie apart, so the harmony chose the signature."
+                : "The two scores are one score, so nothing in the harmony chose between"
+                        + " these signatures and a stated editorial preference did — the"
+                        + " simpler key signature. The confidence beside it is at the floor"
+                        + " that leaves.");
+    }
+
+    /**
+     * Which of the relative pair is home, and the only two things able to say
+     * so — a relative pair shares every scale note.
+     */
+    private void tonicDecision(KeyTrace.Decision tonic, List<KeyTrace.Candidate> candidates) {
+        out.element("h5", "Which of the relative pair is home").line("");
+        facts(fact("Named", tonic.winner()),
+                fact("Its relative", tonic.runnerUp()),
+                fact("Margin", HtmlWriter.number(tonic.margin(), 3)));
+        relativePairTable(tonic, candidates);
+        note("A key and its relative minor share every note of the scale, so the scale cannot"
+                + " separate them. Two things can: a chord on the fifth degree of the minor"
+                + " key whose third is that key's raised seventh, which the relative major"
+                + " does not hold, and the key's own tonic chord, which is worth half again"
+                + " beyond fitting the scale. Where a chord opens or closes the recording is"
+                + " read for nothing at all — on a recording those two spans are a fade-in"
+                + " and a tail decoded from almost no signal.");
+        if (!"separated".equals(tonic.read())) {
+            note("Here the two scored the same, so neither of those said anything and the"
+                    + " estimator did not guess. It wrote the major, which is the more often"
+                    + " right of the two in this repertoire, and reported the coin flip that"
+                    + " a stated preference is worth. A loop built from the shared seven"
+                    + " notes with no dominant in it and equal time on both tonics reaches"
+                    + " here by design, and a listener may well hear the minor.");
+        }
+    }
+
+    /** The two members of the pair side by side, with what each was weighed on. */
+    private void relativePairTable(KeyTrace.Decision tonic, List<KeyTrace.Candidate> candidates) {
+        List<KeyTrace.Candidate> pair = candidates.stream()
+                .filter(candidate -> candidate.key().equals(tonic.winner())
+                        || candidate.key().equals(tonic.runnerUp()))
+                .toList();
+        if (pair.isEmpty()) {
+            return;
+        }
+        out.line("<table><thead><tr><th>Key</th><th>Score</th><th>Its own tonic chord</th>"
+                + "<th>Its raised seventh</th></tr></thead><tbody>");
+        for (KeyTrace.Candidate candidate : pair) {
+            out.open("tr");
+            out.element("td", candidate.key(), "class", "symbol");
+            out.element("td", HtmlWriter.number(candidate.score(), 3));
+            out.element("td", sounded(candidate.tonicChordSpans(),
+                    candidate.tonicChordSeconds()));
+            out.element("td", sounded(candidate.raisedSeventhSpans(),
+                    candidate.raisedSeventhSeconds()));
+            out.line("</tr>");
+        }
+        out.line("</tbody></table>");
+    }
+
+    /** Every key that was scored, so the winner can be read against the field. */
+    private void candidateTable(List<KeyTrace.Candidate> candidates) {
+        if (candidates.isEmpty()) {
+            note("No candidate key was scored.");
+            return;
+        }
+        out.line("<details class=\"table\">");
+        out.element("summary", "Every key that was scored");
+        out.line("<table><thead><tr><th>Key</th><th>Score</th><th>Its own tonic chord</th>"
+                + "<th>Its raised seventh</th></tr></thead><tbody>");
+        for (KeyTrace.Candidate candidate : candidates.stream()
+                .sorted(Comparator.comparingDouble(KeyTrace.Candidate::score).reversed())
+                .toList()) {
+            out.open("tr");
+            out.element("td", candidate.key(), "class", "symbol");
+            out.element("td", HtmlWriter.number(candidate.score(), 3));
+            out.element("td", sounded(candidate.tonicChordSpans(),
+                    candidate.tonicChordSeconds()));
+            out.element("td", sounded(candidate.raisedSeventhSpans(),
+                    candidate.raisedSeventhSeconds()));
+            out.line("</tr>");
+        }
+        out.line("</tbody></table>");
+        out.line("</details>");
+        note("The score is a duration-weighted average over each chord's triad: how much of"
+                + " it lies in the key's scale, and half again where the chord is the key's"
+                + " own tonic chord. A seventh or a sixth is read for nothing, since a colour"
+                + " tone routinely leaves the key.");
+    }
+
+    private static String sounded(int spans, double seconds) {
+        return spans == 0 ? "nothing"
+                : spans + (spans == 1 ? " chord, " : " chords, ")
+                        + HtmlWriter.number(seconds, 2) + "s";
+    }
+
 
     private void melodyNotes() {
         boolean any = melody != null && !melody.isEmpty();

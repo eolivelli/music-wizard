@@ -18,10 +18,13 @@ package dev.olivelli.musicwizard.cli;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import dev.olivelli.musicwizard.core.model.Confidence;
+import dev.olivelli.musicwizard.core.model.Key;
 import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.workspace.BeatTrace;
 import dev.olivelli.musicwizard.core.workspace.ChordTrace;
 import dev.olivelli.musicwizard.core.workspace.ChromaTrace;
+import dev.olivelli.musicwizard.core.workspace.KeyTrace;
 import dev.olivelli.musicwizard.core.workspace.RunManifest;
 import dev.olivelli.musicwizard.core.workspace.RunManifest.Outcome;
 import dev.olivelli.musicwizard.core.workspace.Workspace;
@@ -105,6 +108,12 @@ class RunManifestCliTest {
         return Workspace.open(workspaceDirectory).readRunTraces().orElseThrow()
                 .trace(ChordTrace.STAGE, ChordTrace.class)
                 .orElseThrow(() -> new AssertionError("this run recorded no chord trace"));
+    }
+
+    private KeyTrace keyTrace() {
+        return Workspace.open(workspaceDirectory).readRunTraces().orElseThrow()
+                .trace(KeyTrace.STAGE, KeyTrace.class)
+                .orElseThrow(() -> new AssertionError("this run recorded no key trace"));
     }
 
     private BeatTrace beatTrace() {
@@ -282,12 +291,27 @@ class RunManifestCliTest {
     }
 
     @Test
+    @DisplayName("the key estimator writes down what each of its two decisions weighed")
+    void theKeyTraceIsWritten() {
+        analyze();
+
+        KeyTrace trace = keyTrace();
+        assertThat(trace.source()).isEqualTo(KeyTrace.FROM_CHORDS);
+        assertThat(trace.candidates()).hasSize(24);
+        assertThat(trace.tonic().winner())
+                .isEqualTo(score().primaryKey().orElseThrow().displayName());
+        assertThat(trace.signature().runnerUp()).isNotEqualTo(trace.tonic().winner());
+        assertThat(trace.soundingSeconds()).isPositive();
+    }
+
+    @Test
     @DisplayName("what the stages weighed travels with the cached answer")
     void theTraceIsServedWithTheCachedAnalysis() {
         analyze();
         BeatTrace computed = beatTrace();
         ChromaTrace weighed = chromaTrace();
         ChordTrace decided = chordTrace();
+        KeyTrace named = keyTrace();
 
         // A trace is a function of the cache key exactly as the score is, so a
         // run served the score has to be served the trace: without that, the
@@ -298,6 +322,7 @@ class RunManifestCliTest {
         assertThat(beatTrace()).isEqualTo(computed);
         assertThat(chromaTrace()).isEqualTo(weighed);
         assertThat(chordTrace()).isEqualTo(decided);
+        assertThat(keyTrace()).isEqualTo(named);
     }
 
     @Test
@@ -391,5 +416,14 @@ class RunManifestCliTest {
                 .as("a MIDI file is read symbolically and decodes nothing")
                 .isEmpty();
         assertThat(manifest().settings()).containsEntry("source", "Standard MIDI File");
+        // The file states the accidentals and the mode, so both halves of the
+        // key are read rather than weighed (#554), and the trace says which of
+        // the two paths named the key rather than leaving the page the same
+        // absence a workspace analysed before #678 leaves.
+        assertThat(keyTrace().source()).isEqualTo(KeyTrace.DECLARED);
+        assertThat(keyTrace().candidates()).isEmpty();
+        Key key = score().primaryKey().orElseThrow();
+        assertThat(key.signatureConfidence()).contains(Confidence.CERTAIN);
+        assertThat(key.tonicConfidence()).contains(Confidence.CERTAIN);
     }
 }

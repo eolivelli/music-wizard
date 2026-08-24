@@ -23,6 +23,7 @@ import dev.olivelli.musicwizard.core.model.ChordProgression;
 import dev.olivelli.musicwizard.core.model.ChordQuality;
 import dev.olivelli.musicwizard.core.model.Confidence;
 import dev.olivelli.musicwizard.core.model.PitchSpelling;
+import dev.olivelli.musicwizard.core.workspace.KeyTrace;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -315,6 +316,96 @@ class KeyEstimationTest {
                     .isCloseTo(estimate.signatureConfidence().value()
                                     * estimate.tonicConfidence().value(),
                             org.assertj.core.data.Offset.offset(1e-9));
+        }
+    }
+
+    @Nested
+    @DisplayName("what it writes down about the two decisions (#678)")
+    class WhatItWeighed {
+
+        @Test
+        @DisplayName("every key it scored is recorded, with the key it named among them")
+        void everyCandidateIsRecorded() {
+            KeyTrace trace = estimate(bars("Am", "E7", "Dm", "Am")).trace();
+
+            assertThat(trace.source()).isEqualTo(KeyTrace.FROM_CHORDS);
+            // Twelve tonics in two modes: a shorter list is a candidate that
+            // went unrecorded rather than one that went unscored.
+            assertThat(trace.candidates()).hasSize(24);
+            assertThat(trace.tonic().winner()).isEqualTo("A minor");
+            assertThat(trace.tonic().runnerUp()).isEqualTo("C major");
+            assertThat(trace.signature().winner()).isEqualTo(trace.tonic().winner());
+        }
+
+        @Test
+        @DisplayName("the two things that can separate a relative pair are the two recorded")
+        void theEvidenceThatSeparatedThePairIsRecorded() {
+            KeyTrace trace = estimate(bars("Am", "E7", "Am", "E7")).trace();
+
+            KeyTrace.Candidate home = candidate(trace, "A minor");
+            KeyTrace.Candidate relative = candidate(trace, "C major");
+            // The E7 is the chord on A minor's fifth degree whose third is that
+            // key's raised seventh, and it is what makes this loop minor.
+            assertThat(home.raisedSeventhSeconds()).isEqualTo(2 * BAR);
+            assertThat(home.raisedSeventhSpans()).isEqualTo(2);
+            assertThat(relative.raisedSeventhSpans()).isZero();
+            assertThat(home.tonicChordSeconds()).isEqualTo(2 * BAR);
+            assertThat(relative.tonicChordSpans()).isZero();
+        }
+
+        @Test
+        @DisplayName("a pair nothing separated is recorded as a tie, not as a narrow win")
+        void theFloorIsRecordedAsAState() {
+            // The failure mode the class is designed around: neither of the two
+            // rules says anything, the stated preference for the major decides,
+            // and the tonic confidence comes back at its floor. A reader has to
+            // be able to tell that from a margin that was merely small.
+            KeyTrace trace = estimate(bars("C", "G", "Am", "F")).trace();
+
+            assertThat(trace.tonic().read()).isEqualTo("tied");
+            assertThat(trace.tonic().margin()).isZero();
+            assertThat(candidate(trace, "C major").raisedSeventhSpans()).isZero();
+            assertThat(candidate(trace, "A minor").raisedSeventhSpans()).isZero();
+            assertThat(candidate(trace, "C major").tonicChordSeconds())
+                    .isEqualTo(candidate(trace, "A minor").tonicChordSeconds());
+            assertThat(trace.signature().read())
+                    .as("and the other decision was not at its floor")
+                    .isEqualTo("separated");
+        }
+
+        @Test
+        @DisplayName("the margins are the differences between the scores that are recorded")
+        void theMarginsAreTheRecordedScores() {
+            // Two numbers a reader will subtract for themselves, so a page that
+            // showed a margin the candidate table denies would be showing two
+            // measurements.
+            KeyTrace trace = estimate(bars("Am", "E7", "Dm", "Am")).trace();
+
+            assertThat(candidate(trace, trace.tonic().winner()).score()
+                    - candidate(trace, trace.tonic().runnerUp()).score())
+                    .isEqualTo(trace.tonic().margin());
+            assertThat(candidate(trace, trace.signature().winner()).score()
+                    - candidate(trace, trace.signature().runnerUp()).score())
+                    .isEqualTo(trace.signature().margin());
+        }
+
+        @Test
+        @DisplayName("how much of the span carried a chord is recorded, silence and all")
+        void whatWasWeighedIsRecorded() {
+            // The factor both confidences are scaled by, which a margin says
+            // nothing about: these four bars sound inside a minute.
+            KeyTrace trace = KeyEstimator.estimate(bars("Am", "E7", "Dm", "Am"), 0, 60)
+                    .orElseThrow().trace();
+
+            assertThat(trace.soundingSeconds()).isEqualTo(4 * BAR);
+            assertThat(trace.spanSeconds()).isEqualTo(60);
+            assertThat(trace.weighed()).isEqualTo(4 * BAR / 60);
+        }
+
+        private KeyTrace.Candidate candidate(KeyTrace trace, String key) {
+            return trace.candidates().stream()
+                    .filter(entry -> entry.key().equals(key))
+                    .findFirst().orElseThrow();
         }
     }
 
