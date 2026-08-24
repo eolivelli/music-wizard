@@ -79,20 +79,20 @@ public record KeyTrace(
     /**
      * One of the keys that were scored, and the evidence that got it there.
      *
-     * <p>The two tallies are the only things that separate a relative pair,
-     * which share every scale note: a chord on the fifth degree of a minor key
-     * whose third is that key's raised seventh, and the key's own tonic chord.
-     * Where both come back empty for both members of a pair, nothing in the
-     * harmony chose between them.
+     * <p>A relative pair shares every scale note, so the two tallies below are
+     * the only things that can separate one: a chord on the fifth degree of a
+     * minor key whose third is that key's raised seventh, and the key's own
+     * tonic chord. Where they come out the same for both members of a pair,
+     * nothing in the harmony chose between them.
      *
-     * @param key                    the key's name
-     * @param score                  what the progression was worth to it,
-     *                               averaged over the sounding time
-     * @param tonicChordSpans        chords that were this key's own tonic chord
-     * @param tonicChordSeconds      how long they sounded for
-     * @param raisedSeventhSpans     chords scored as this key's harmonic-minor
-     *                               dominant, which a major key never has
-     * @param raisedSeventhSeconds   how long they sounded for
+     * @param key                  the key's name
+     * @param score                what the progression was worth to it,
+     *                             averaged over the sounding time
+     * @param tonicChordSpans      chords that were this key's own tonic chord
+     * @param tonicChordSeconds    how long they sounded for
+     * @param raisedSeventhSpans   chords scored as this key's harmonic-minor
+     *                             dominant, which a major key never has
+     * @param raisedSeventhSeconds how long they sounded for
      */
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record Candidate(
