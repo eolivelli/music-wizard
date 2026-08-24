@@ -825,9 +825,9 @@ class AnalysisReportTest {
     @Test
     @DisplayName("an offset nothing measured is drawn as no measurement, row and reason alike")
     void anUnmeasuredOffsetIsNotDrawnAsZeroCents() {
-        // Zero is the tuning estimator's answer for no evidence, and the chroma
-        // phase already says so on this page. The melody phase reads that fact
-        // in one place, so the row and the sentence under it cannot disagree.
+        // Zero is the tuning estimator's answer for no evidence. The melody
+        // phase reads that fact in one place, so the row and the sentence
+        // under it cannot disagree.
         String page = AnalysisReport.toHtml(ReportFixtures.everything(), RECORDING,
                 ReportFixtures.run(), ReportFixtures.weighed(
                         ReportFixtures.melodyRoundedOn(new MelodyTrace.Tuning(

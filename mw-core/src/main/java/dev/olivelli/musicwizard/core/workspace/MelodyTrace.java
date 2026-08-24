@@ -150,9 +150,7 @@ public record MelodyTrace(
 
         /**
          * Whether the front end measured a tuning to offer at all — zero being
-         * the estimator's answer for no evidence. {@link #read} says what
-         * became of an offset there was, and answers nothing where there was
-         * none.
+         * the estimator's answer for no evidence.
          */
         public boolean measured() {
             return offsetSemitones != 0;
