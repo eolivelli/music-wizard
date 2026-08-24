@@ -828,19 +828,33 @@ class AnalysisReportTest {
         // Exactly zero is the tuning estimator's "no evidence" answer, and the
         // chroma phase already says so on this page. The melody phase reads
         // the same fact through the same words rather than a second copy.
-        MelodyTrace unmeasured = new MelodyTrace(MelodyTrace.FULL_MIX,
-                new MelodyTrace.Track(22050, 2048, 256, 86.1328125, 689, 285, 8),
-                new MelodyTrace.Tuning(0, null, 0.2, 0, MelodyTrace.Tuning.NOT_MEASURED),
-                new MelodyTrace.Fold(74, 14, MelodyTrace.Fold.APPLIED),
-                List.of(), List.of(), List.of());
-
         String page = AnalysisReport.toHtml(ReportFixtures.everything(), RECORDING,
-                ReportFixtures.run(), ReportFixtures.weighed(unmeasured));
+                ReportFixtures.run(), ReportFixtures.weighed(
+                        ReportFixtures.melodyRoundedOn(new MelodyTrace.Tuning(
+                                0, null, 0.2, 0, MelodyTrace.Tuning.NOT_MEASURED))));
 
         assertThat(page).contains("<dt>Tuning of the mix</dt><dd>not measured — the spectrum"
                         + " held no peaks to read one from, so concert pitch was assumed</dd>",
                 "The front end measured no tuning on the mix");
-        assertThat(page).doesNotContain("0.0 cents sharp", "0.0 cents flat");
+        assertThat(page).doesNotContain("<dd>0 cents sharp of A440</dd>",
+                "<dd>0 cents flat of A440</dd>");
+    }
+
+    @Test
+    @DisplayName("a record from before the two were told apart is still drawn honestly")
+    void anEarlierRecordOfAnUnmeasuredOffsetIsNotDrawnAsZeroCents() {
+        // A workspace analysed by a build whose only reading for a zero offset
+        // was concert-pitch. Traces survive across builds and no cache key is
+        // computed from one, so this file is re-drawn rather than re-analysed.
+        String page = AnalysisReport.toHtml(ReportFixtures.everything(), RECORDING,
+                ReportFixtures.run(), ReportFixtures.weighed(
+                        ReportFixtures.melodyRoundedOn(new MelodyTrace.Tuning(
+                                0, null, 0.2, 0, MelodyTrace.Tuning.CONCERT_PITCH))));
+
+        assertThat(page).contains("<dt>Tuning of the mix</dt><dd>not measured — the spectrum"
+                + " held no peaks to read one from, so concert pitch was assumed</dd>");
+        assertThat(page).doesNotContain("<dd>0 cents sharp of A440</dd>",
+                "<dd>0 cents flat of A440</dd>");
     }
 
     @Test

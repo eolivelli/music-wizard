@@ -679,6 +679,16 @@ final class ReportFixtures {
     }
 
     /**
+     * The same pass, rounded on a tuning of the caller's choosing — the one
+     * thing about it a page draws without any of the cutting changing.
+     */
+    static MelodyTrace melodyRoundedOn(MelodyTrace.Tuning tuning) {
+        MelodyTrace cuts = melodyCuts();
+        return new MelodyTrace(cuts.signal(), cuts.track(), tuning, cuts.fold(),
+                cuts.runs(), cuts.gestures(), cuts.notes());
+    }
+
+    /**
      * A melody holding one pitch struck twice, which {@link #melody()} cannot
      * show: two notes of one pitch with no gap are what the onset envelope is
      * read for, and every step of that melody changes pitch.

@@ -901,9 +901,8 @@ final class ReportPhases {
         }
         out.element("h5", "The grid the notes were rounded on").line("");
         List<Fact> table = new ArrayList<>();
-        table.add(fact("Tuning of the mix", tuningRead(
-                !MelodyTrace.Tuning.NOT_MEASURED.equals(tuning.read()),
-                tuning.offsetSemitones())));
+        table.add(fact("Tuning of the mix",
+                tuningRead(tuning.measured(), tuning.offsetSemitones())));
         if (tuning.agreement() != null) {
             table.add(fact("This signal's own pitches sit on that grid at",
                     HtmlWriter.number(tuning.agreement(), 3) + ", against the "

@@ -662,9 +662,9 @@ public final class MelodyEstimator {
      * corroborated either, because there is nothing to corroborate.
      */
     private static MelodyTrace.Tuning tuning(PitchTrack pitches, double tuningOffsetSemitones) {
-        // The three ways an offset can fail to reach the rounding are kept
-        // apart, because a track with nothing voiced in it disagrees with
-        // nothing and a page that read them as one would say it did.
+        // A track with nothing voiced in it disagrees with nothing, so the
+        // readings below are kept apart rather than collapsed into whether the
+        // rounding took the offer.
         if (!Chroma.measuredATuning(tuningOffsetSemitones)) {
             return refused(tuningOffsetSemitones, MelodyTrace.Tuning.NOT_MEASURED);
         }
@@ -682,7 +682,6 @@ public final class MelodyEstimator {
                         : MelodyTrace.Tuning.UNCORROBORATED);
     }
 
-    /** An offer the rounding did not take, on a reading nothing measured. */
     private static MelodyTrace.Tuning refused(double tuningOffsetSemitones, String read) {
         return new MelodyTrace.Tuning(tuningOffsetSemitones, null,
                 TUNING_CORROBORATION_FLOOR, 0, read);

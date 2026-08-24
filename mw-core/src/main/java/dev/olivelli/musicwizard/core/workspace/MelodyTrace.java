@@ -116,11 +116,8 @@ public record MelodyTrace(
      *                          never made — which {@code read} distinguishes
      * @param required          what the agreement had to reach
      * @param appliedSemitones  the grid the notes were rounded on
-     * @param read              which of the four things happened: no tuning was
-     *                          measured on the mix at all, one was and reads as
-     *                          concert pitch, one was and this signal offered
-     *                          nothing to weigh it against, or it was weighed —
-     *                          {@code corroborated} or not
+     * @param read              why the offer did or did not reach the rounding,
+     *                          as one of the constants below
      */
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record Tuning(
@@ -155,6 +152,19 @@ public record MelodyTrace(
 
         public Tuning {
             Objects.requireNonNull(read, "read");
+        }
+
+        /**
+         * Whether the front end measured a tuning to offer at all.
+         *
+         * <p>Read off the offset rather than off {@link #read}, so that a
+         * record written before this build distinguished the two is still
+         * drawn honestly: exactly zero is the tuning estimator's "no evidence"
+         * answer, since every offset it measures is a histogram slot's centre
+         * and no centre is zero.
+         */
+        public boolean measured() {
+            return offsetSemitones != 0;
         }
     }
 
