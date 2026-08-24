@@ -21,6 +21,7 @@ import dev.olivelli.musicwizard.arrange.PlayableMelody;
 import dev.olivelli.musicwizard.arrange.QuantizationSettings;
 import dev.olivelli.musicwizard.arrange.QuantizedScore;
 import dev.olivelli.musicwizard.arrange.Quantizer;
+import dev.olivelli.musicwizard.arrange.ReductionTrace;
 import dev.olivelli.musicwizard.core.model.Chord;
 import dev.olivelli.musicwizard.core.model.Key;
 import dev.olivelli.musicwizard.core.model.LyricLine;
@@ -171,10 +172,12 @@ public final class PlayablePartCheck {
         NoteTrack estimate = score.track(PartRole.LEAD_VOCAL).orElseThrow(
                 () -> new IllegalStateException("no melody in " + scoreFile
                         + "; analyse with --melody"));
-        NoteTrack reduced = PlayableMelody.reduce(score);
+        ReductionTrace explained = PlayableMelody.explain(score);
+        NoteTrack reduced = explained.part();
 
         System.out.printf(Locale.ROOT, "notes: estimate %d  reduced %d%n",
                 estimate.size(), reduced.size());
+        rules(explained.counts());
         System.out.printf(Locale.ROOT,
                 "syllables: %d over %d lyric lines, %d of them marked as melismas%n",
                 score.lyrics().lines().stream().mapToInt(l -> l.words().size()).sum(),
@@ -240,6 +243,26 @@ public final class PlayablePartCheck {
             }
             System.out.println();
         }
+    }
+
+    /**
+     * What each rule of the reduction accounted for, at the shipped bounds
+     * (#680).
+     *
+     * <p>Read off the reduction's own records rather than counted here, so a
+     * sweep below and this row cannot state two things about one rule.
+     */
+    private static void rules(ReductionTrace.Counts counts) {
+        System.out.printf(Locale.ROOT,
+                "rules: %d notes no syllable claimed, %d absorbed into a syllable's head,"
+                        + " %d absorbed as an ornament%n",
+                counts.unclaimed(), counts.collapsed(), counts.ornaments());
+        System.out.printf(Locale.ROOT,
+                "heads: %d over %d claimed syllables (%d melismas), %d took the aligner's"
+                        + " start, %d took a chart tone, %d were returned (%d onto another"
+                        + " pitch)%n",
+                counts.heads(), counts.syllables(), counts.melismas(), counts.fromAligner(),
+                counts.chartTies(), counts.returned(), counts.moved());
     }
 
     /**

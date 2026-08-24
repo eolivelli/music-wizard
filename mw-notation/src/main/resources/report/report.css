@@ -206,6 +206,22 @@ dl.facts dd { margin: 0; font-variant-numeric: tabular-nums; }
                   color: var(--faint); font-variant-numeric: tabular-nums; }
 .run-lane figcaption { font-size: .78rem; color: var(--muted); margin-top: .25rem; }
 
+.reduction-roll { margin: .3rem 0 .9rem; }
+.roll-scroll { overflow-x: auto; overflow-y: hidden; border: 1px solid var(--rule);
+               border-radius: .4rem; background: var(--panel); }
+.roll-scroll svg { display: block; }
+.mw-reduction .estimate .note.chosen { fill: #2f6feb; }
+.mw-reduction .estimate .note.absorbed { fill: #8ea9e0; }
+.mw-reduction .estimate .note.ornament { fill: #d8a33a; }
+.mw-reduction .heads .note { fill: #17916b; }
+.mw-reduction .heads .note.returned { fill: none; stroke: #17916b; stroke-width: 1.2; }
+.mw-reduction .tie { stroke: #8ea9e0; stroke-width: .6; }
+.mw-reduction .tie.ornament { stroke: #d8a33a; }
+.swatch.chosen { background: #2f6feb; }
+.swatch.absorbed { background: #8ea9e0; }
+.swatch.ornament { background: #d8a33a; }
+.reduction-roll figcaption { font-size: .78rem; color: var(--muted); margin-top: .25rem; }
+
 details.table { margin: .3rem 0 .9rem; font-size: .85rem; }
 details.table summary { cursor: pointer; color: var(--accent); }
 .phase table { border-collapse: collapse; width: 100%; margin-top: .5rem;

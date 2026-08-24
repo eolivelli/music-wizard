@@ -217,6 +217,25 @@ public final class PlayableMelody {
      */
     public static NoteTrack reduce(Score score, double claimBeats, double ornamentBeats,
                                    Excursion excursion) {
+        return explain(score, claimBeats, ornamentBeats, excursion).part();
+    }
+
+    /**
+     * The same reduction, with a record of what became of every note of the
+     * estimate and where each printed head came from (#680).
+     *
+     * <p>The one reduction there is: {@link #reduce(Score)} returns this
+     * result's part, so a page reading these records is reading the run that
+     * produced the part beside them rather than a second one.
+     *
+     * @throws IllegalArgumentException if the score holds no melody part
+     */
+    public static ReductionTrace explain(Score score) {
+        return explain(score, CLAIM_BEATS, ORNAMENT_BEATS, EXCURSION);
+    }
+
+    private static ReductionTrace explain(Score score, double claimBeats, double ornamentBeats,
+                                          Excursion excursion) {
         Objects.requireNonNull(score, "score");
         Objects.requireNonNull(excursion, "excursion");
         if (!Double.isFinite(claimBeats) || !Double.isFinite(ornamentBeats)) {
@@ -230,16 +249,68 @@ public final class PlayableMelody {
         for (Note note : melody.notes()) {
             pieces.add(Piece.of(note, map));
         }
-        List<Note> reduced = new ArrayList<>(pieces.size());
+        Claim[] claims = claimsOf(pieces, score.lyrics(), map, claimBeats);
+        List<Sung> groups = groups(pieces, claims, score.lyrics(), ornamentBeats);
+        List<Note> reduced = new ArrayList<>(groups.size());
+        List<Chosen> chosen = new ArrayList<>(groups.size());
         Set<Long> opened = new HashSet<>();
-        for (Sung group : groups(pieces, score.lyrics(), map, claimBeats, ornamentBeats)) {
+        for (Sung group : groups) {
             boolean opens = group.syllable() != UNSUNG && opened.add(group.syllable());
-            reduced.add(printed(group.pieces(),
+            Chosen head = chosen(group.pieces(),
                     opens ? wordOf(score.lyrics(), group.syllable()) : null,
-                    score.chords(), map));
+                    score.chords(), map);
+            chosen.add(head);
+            reduced.add(head.note());
         }
-        return new NoteTrack(PartRole.LEAD_VOCAL, TRACK_NAME,
-                returned(reduced, score, excursion), melody.confidence());
+        Returned returned = returned(reduced, score, excursion);
+        return new ReductionTrace(
+                new NoteTrack(PartRole.LEAD_VOCAL, TRACK_NAME, returned.heads(),
+                        melody.confidence()),
+                sources(claims, groups, chosen, claimBeats),
+                heads(score.lyrics(), groups, chosen, returned));
+    }
+
+    /** One entry per note of the estimate, in the estimate's own order. */
+    private static List<ReductionTrace.Source> sources(Claim[] claims, List<Sung> groups,
+                                                       List<Chosen> chosen, double claimBeats) {
+        List<ReductionTrace.Source> sources = new ArrayList<>(claims.length);
+        for (int head = 0; head < groups.size(); head++) {
+            Sung group = groups.get(head);
+            int settled = chosen.get(head).pitchPiece();
+            for (int i = 0; i < group.pieces().size(); i++) {
+                Piece piece = group.pieces().get(i);
+                Claim claim = claims[group.from() + i];
+                sources.add(new ReductionTrace.Source(
+                        piece.note().onsetSeconds(), piece.note().offsetSeconds(), piece.pitch(),
+                        claim.syllable() == UNSUNG ? null : (int) (claim.syllable() >> 32),
+                        claim.syllable() == UNSUNG ? null : (int) claim.syllable(),
+                        claim.silenceBeats(), claimBeats, head, group.groupedBy(),
+                        i == settled ? ReductionTrace.Source.CHOSEN
+                                : ReductionTrace.Source.ABSORBED));
+            }
+        }
+        return sources;
+    }
+
+    /** One entry per printed head, in the order the part prints them. */
+    private static List<ReductionTrace.Head> heads(Lyrics lyrics, List<Sung> groups,
+                                                   List<Chosen> chosen, Returned returned) {
+        List<ReductionTrace.Head> heads = new ArrayList<>(groups.size());
+        for (int i = 0; i < groups.size(); i++) {
+            Sung group = groups.get(i);
+            Chosen head = chosen.get(i);
+            Note printed = returned.heads().get(i);
+            long syllable = group.syllable();
+            heads.add(new ReductionTrace.Head(
+                    printed.onsetSeconds(), printed.offsetSeconds(), printed.midiPitch(),
+                    syllable == UNSUNG ? null : (int) (syllable >> 32),
+                    syllable == UNSUNG ? null : (int) syllable,
+                    syllable != UNSUNG && isMelisma(lyrics, syllable),
+                    group.from(), group.pieces().size(),
+                    group.from() + head.pitchPiece(), group.from() + head.releasePiece(),
+                    head.pitch(), head.onset(), returned.reads().get(i)));
+        }
+        return heads;
     }
 
     /** One syllable of the lyrics and the note-heads it prints when it is a melisma. */
@@ -267,22 +338,23 @@ public final class PlayableMelody {
         for (Note note : melody.get().notes()) {
             pieces.add(Piece.of(note, map));
         }
-        long[] claimed = syllableOf(pieces, score.lyrics(), map, CLAIM_BEATS);
+        Claim[] claims = claimsOf(pieces, score.lyrics(), map, CLAIM_BEATS);
         Map<Long, List<Note>> bySyllable = new LinkedHashMap<>();
         int from = 0;
         while (from < pieces.size()) {
             int to = from;
-            while (to + 1 < pieces.size() && claimed[to + 1] == claimed[from]) {
+            while (to + 1 < pieces.size()
+                    && claims[to + 1].syllable() == claims[from].syllable()) {
                 to++;
             }
-            if (claimed[from] != UNSUNG) {
-                List<Note> heads = bySyllable.computeIfAbsent(claimed[from],
+            if (claims[from].syllable() != UNSUNG) {
+                List<Note> heads = bySyllable.computeIfAbsent(claims[from].syllable(),
                         key -> new ArrayList<>());
                 for (List<Piece> group : ornamentGroups(pieces.subList(from, to + 1),
                         ORNAMENT_BEATS)) {
-                    heads.add(printed(group, heads.isEmpty()
-                                    ? wordOf(score.lyrics(), claimed[from]) : null,
-                            score.chords(), map));
+                    heads.add(chosen(group, heads.isEmpty()
+                                    ? wordOf(score.lyrics(), claims[from].syllable()) : null,
+                            score.chords(), map).note());
                 }
             }
             from = to + 1;
@@ -320,31 +392,46 @@ public final class PlayableMelody {
         }
     }
 
-    /** One group of pieces and the syllable that claims it, {@link #UNSUNG} for none. */
-    private record Sung(List<Piece> pieces, long syllable) {
+    /**
+     * One group of pieces and the syllable that claims it, {@link #UNSUNG} for
+     * none.
+     *
+     * @param from      where the group's first piece sits in the estimate
+     * @param groupedBy which rule holds the group together
+     */
+    private record Sung(List<Piece> pieces, long syllable, int from, String groupedBy) {
     }
 
-    private static List<Sung> groups(List<Piece> pieces, Lyrics lyrics, TempoMap map,
-                                     double claimBeats, double ornamentBeats) {
-        long[] syllable = syllableOf(pieces, lyrics, map, claimBeats);
+    private static List<Sung> groups(List<Piece> pieces, Claim[] claims, Lyrics lyrics,
+                                     double ornamentBeats) {
         List<Sung> groups = new ArrayList<>();
         int from = 0;
         while (from < pieces.size()) {
+            long syllable = claims[from].syllable();
             int to = from;
-            while (to + 1 < pieces.size() && syllable[to + 1] == syllable[from]) {
+            while (to + 1 < pieces.size() && claims[to + 1].syllable() == syllable) {
                 to++;
             }
             List<Piece> run = pieces.subList(from, to + 1);
-            if (syllable[from] != UNSUNG && !isMelisma(lyrics, syllable[from])) {
-                groups.add(new Sung(run, syllable[from]));
+            if (syllable != UNSUNG && !isMelisma(lyrics, syllable)) {
+                groups.add(new Sung(run, syllable, from, joinedBy(run.size(),
+                        ReductionTrace.Source.SYLLABLE)));
             } else {
+                int at = from;
                 for (List<Piece> group : ornamentGroups(run, ornamentBeats)) {
-                    groups.add(new Sung(group, syllable[from]));
+                    groups.add(new Sung(group, syllable, at, joinedBy(group.size(),
+                            ReductionTrace.Source.ORNAMENT)));
+                    at += group.size();
                 }
             }
             from = to + 1;
         }
         return groups;
+    }
+
+    /** A group of one was joined to nothing, whichever rule cut it out. */
+    private static String joinedBy(int size, String rule) {
+        return size > 1 ? rule : ReductionTrace.Source.ALONE;
     }
 
     /**
@@ -384,11 +471,13 @@ public final class PlayableMelody {
      * melisma, notes no syllable claims — keep the melody's own onsets, and
      * {@link #feltInside} bounds when an opening group's is taken.
      */
-    private static Note printed(List<Piece> group, LyricWord sungOn,
-                                ChordProgression chords, TempoMap map) {
-        Note note = collapse(group, chords, map);
+    private static Chosen chosen(List<Piece> group, LyricWord sungOn,
+                                 ChordProgression chords, TempoMap map) {
+        Collapsed collapsed = collapse(group, chords, map);
+        Note note = collapsed.note();
         if (sungOn == null) {
-            return note;
+            return collapsed.openedOn(note, new ReductionTrace.Onset(note.onsetSeconds(), null,
+                    null, ORNAMENT_BEATS, ReductionTrace.Onset.MELODY));
         }
         double startSeconds = sungOn.startSeconds();
         // Both ends of the moved head go through the one sanctioned
@@ -397,20 +486,23 @@ public final class PlayableMelody {
         // give a head, or a stub guard, whose two axes name different spans.
         double startBeat = map.secondsToBeats(startSeconds);
         double endBeat = map.secondsToBeats(note.offsetSeconds());
-        if (!feltInside(group, note, startSeconds, startBeat, endBeat)) {
-            return note;
+        String read = feltInside(group, note, startSeconds, startBeat, endBeat);
+        ReductionTrace.Onset onset = new ReductionTrace.Onset(note.onsetSeconds(), startSeconds,
+                endBeat - startBeat, ORNAMENT_BEATS, read);
+        if (!ReductionTrace.Onset.SYLLABLE.equals(read)) {
+            return collapsed.openedOn(note, onset);
         }
         Note moved = new Note(startSeconds, note.offsetSeconds() - startSeconds,
                 note.midiPitch(), note.velocity(), note.spelling(),
                 Optional.empty(), Optional.empty(), note.confidence());
-        return note.isQuantized()
+        return collapsed.openedOn(note.isQuantized()
                 ? moved.quantizedTo(startBeat, endBeat - startBeat)
-                : moved;
+                : moved, onset);
     }
 
     /**
      * Whether the syllable's measured start is a moment the printed head can
-     * open on.
+     * open on, and which refusal took it where it is not.
      *
      * <p>Three refusals, each a way the two measurements can disagree rather
      * than re-measure one event. A start at or before the group's onset has
@@ -428,21 +520,21 @@ public final class PlayableMelody {
      * measured one here. What these bounds leave it able to do is shift a
      * head within the notes its own syllable sounds.
      */
-    private static boolean feltInside(List<Piece> group, Note printed,
-                                      double startSeconds, double startBeat, double endBeat) {
+    private static String feltInside(List<Piece> group, Note printed,
+                                     double startSeconds, double startBeat, double endBeat) {
         if (startSeconds <= printed.onsetSeconds() + EPSILON) {
-            return false;
+            return ReductionTrace.Onset.EARLY;
         }
         if (endBeat - startBeat <= ORNAMENT_BEATS) {
-            return false;
+            return ReductionTrace.Onset.STUB;
         }
         for (Piece piece : group) {
             if (startSeconds >= piece.note().onsetSeconds() - EPSILON
                     && startSeconds < piece.note().offsetSeconds() - EPSILON) {
-                return true;
+                return ReductionTrace.Onset.SYLLABLE;
             }
         }
-        return false;
+        return ReductionTrace.Onset.SILENT;
     }
 
     /**
@@ -487,10 +579,10 @@ public final class PlayableMelody {
      * changes is that {@link #groups} then splits its run by the ornament rule
      * instead of collapsing it.
      */
-    private static long[] syllableOf(List<Piece> pieces, Lyrics lyrics, TempoMap map,
-                                     double claimBeats) {
-        long[] claimed = new long[pieces.size()];
-        Arrays.fill(claimed, UNSUNG);
+    private static Claim[] claimsOf(List<Piece> pieces, Lyrics lyrics, TempoMap map,
+                                    double claimBeats) {
+        Claim[] claimed = new Claim[pieces.size()];
+        Arrays.fill(claimed, Claim.NOTHING);
         List<LyricLine> lines = lyrics.lines();
         if (lines.isEmpty()) {
             return claimed;
@@ -541,18 +633,59 @@ public final class PlayableMelody {
                     }
                 }
             }
-            if (line >= 0 && leastSilence <= claimBeats) {
-                claimed[i] = ((long) line << 32) | word;
+            if (line >= 0) {
+                claimed[i] = new Claim(leastSilence <= claimBeats
+                        ? ((long) line << 32) | word : UNSUNG, leastSilence);
             }
         }
         return claimed;
     }
 
-    /** The group as the one note it prints, running from its first onset to its last release. */
-    private static Note collapse(List<Piece> group, ChordProgression chords, TempoMap map) {
+    /**
+     * What one note of the estimate was offered, whether or not the bound let
+     * it be taken.
+     *
+     * @param syllable     the syllable that claims the note, {@link #UNSUNG} for
+     *                     none
+     * @param silenceBeats how much silence separates the note from the nearest
+     *                     syllable by that measure, null where no line's hull
+     *                     covers the note at all
+     */
+    private record Claim(long syllable, Double silenceBeats) {
+
+        /** No line of the lyrics reaches over the note. */
+        static final Claim NOTHING = new Claim(UNSUNG, null);
+    }
+
+    /**
+     * The group as the one note it prints, running from its first onset to its
+     * last release, and where each of those came from.
+     *
+     * @param pitchPiece   which of the group's pieces the printed pitch is
+     * @param releasePiece which piece's release the printed note ends on
+     */
+    private record Collapsed(Note note, ReductionTrace.Pitch pitch,
+                             int pitchPiece, int releasePiece) {
+
+        Chosen openedOn(Note head, ReductionTrace.Onset read) {
+            return new Chosen(head, pitch, read, pitchPiece, releasePiece);
+        }
+    }
+
+    /** The same, once the syllable it opens has been offered its start. */
+    private record Chosen(Note note, ReductionTrace.Pitch pitch, ReductionTrace.Onset onset,
+                          int pitchPiece, int releasePiece) {
+    }
+
+    private static Collapsed collapse(List<Piece> group, ChordProgression chords, TempoMap map) {
         Piece first = group.get(0);
         if (group.size() == 1) {
-            return first.note();
+            double beats = first.durationBeats();
+            return new Collapsed(first.note(),
+                    new ReductionTrace.Pitch(first.pitch(), beats, first.pitch(), beats,
+                            SETTLED_SHARE * beats, null, null, CHART_CONFIDENCE_FLOOR,
+                            ReductionTrace.Pitch.SETTLED),
+                    0, 0);
         }
         // The furthest release rather than the last note's, since nothing
         // promises a note track is monophonic and the group has to cover what
@@ -560,22 +693,32 @@ public final class PlayableMelody {
         double endSeconds = first.note().offsetSeconds();
         double endBeat = first.endBeat();
         boolean quantized = first.note().isQuantized();
-        for (Piece piece : group) {
-            endSeconds = Math.max(endSeconds, piece.note().offsetSeconds());
+        int releasePiece = 0;
+        for (int i = 0; i < group.size(); i++) {
+            Piece piece = group.get(i);
+            if (piece.note().offsetSeconds() > endSeconds) {
+                endSeconds = piece.note().offsetSeconds();
+                releasePiece = i;
+            }
             endBeat = Math.max(endBeat, piece.endBeat());
             quantized &= piece.note().isQuantized();
         }
-        Note settled = settledOn(group, chords, map).note();
+        Settled settled = settledOn(group, chords, map);
+        Note pitch = group.get(settled.piece()).note();
         Note printed = new Note(first.note().onsetSeconds(),
                 endSeconds - first.note().onsetSeconds(),
-                settled.midiPitch(), settled.velocity(), settled.spelling(),
-                Optional.empty(), Optional.empty(), settled.confidence());
+                pitch.midiPitch(), pitch.velocity(), pitch.spelling(),
+                Optional.empty(), Optional.empty(), pitch.confidence());
         // A group whose notes were all quantized has a quantized span too, and
         // dropping it would make a reduced part of a quantized score look
         // un-analysed to everything downstream.
-        return quantized
+        return new Collapsed(quantized
                 ? printed.quantizedTo(first.startBeat(), endBeat - first.startBeat())
-                : printed;
+                : printed, settled.read(), settled.piece(), releasePiece);
+    }
+
+    /** Which piece of the group carries the printed pitch, and what chose it. */
+    private record Settled(int piece, ReductionTrace.Pitch read) {
     }
 
     /**
@@ -589,12 +732,13 @@ public final class PlayableMelody {
      * a say — a chord tone in place of a passing tone, and only under a span
      * more likely right than wrong.
      */
-    private static Piece settledOn(List<Piece> group, ChordProgression chords, TempoMap map) {
+    private static Settled settledOn(List<Piece> group, ChordProgression chords, TempoMap map) {
         Map<Integer, Double> sounding = new HashMap<>();
         for (Piece piece : group) {
             sounding.merge(piece.pitch(), piece.durationBeats(), Double::sum);
         }
-        int settled = group.get(group.size() - 1).pitch();
+        int arrival = group.get(group.size() - 1).pitch();
+        int settled = arrival;
         int dominant = settled;
         double dominantBeats = -1;
         // Backwards, so that among equal totals the later pitch is the dominant
@@ -606,20 +750,50 @@ public final class PlayableMelody {
                 dominant = group.get(i).pitch();
             }
         }
+        String read = ReductionTrace.Pitch.SETTLED;
+        Optional<Chord> over = Optional.empty();
         if (dominant != settled && sounding.get(settled) < SETTLED_SHARE * dominantBeats) {
-            Optional<Chord> chord = chordOver(group, chords, map)
+            over = chordOver(group, chords, map);
+            Optional<Chord> chord = over
                     .filter(c -> !c.isNoChord())
                     .filter(c -> c.confidence().isAtLeast(CHART_CONFIDENCE_FLOOR));
             if (chord.isPresent() && sounds(chord.get(), dominant) && !sounds(chord.get(), settled)) {
                 settled = dominant;
+                read = ReductionTrace.Pitch.CHART;
+            } else {
+                read = whatTheChartSaid(over, chord, settled, dominant);
             }
         }
+        ReductionTrace.Pitch reading = new ReductionTrace.Pitch(arrival,
+                sounding.get(arrival), dominant, dominantBeats,
+                SETTLED_SHARE * dominantBeats, over.map(Chord::symbol).orElse(null),
+                over.map(c -> c.confidence().value()).orElse(null),
+                CHART_CONFIDENCE_FLOOR, read);
         for (int i = group.size() - 1; i >= 0; i--) {
             if (group.get(i).pitch() == settled) {
-                return group.get(i);
+                return new Settled(i, reading);
             }
         }
         throw new IllegalStateException("the settled pitch is not in the group it came from");
+    }
+
+    /**
+     * Why the group's arrival stands, where the chart did not put the pitch it
+     * holds longest in place of it.
+     *
+     * @param over  the span covering most of the group, refused or not
+     * @param chord the same span where it is one the tie-break may read
+     */
+    private static String whatTheChartSaid(Optional<Chord> over, Optional<Chord> chord,
+                                           int arrival, int dominant) {
+        if (over.filter(c -> !c.isNoChord()).isEmpty()) {
+            return ReductionTrace.Pitch.NO_CHORD;
+        }
+        if (chord.isEmpty()) {
+            return ReductionTrace.Pitch.UNTRUSTED;
+        }
+        return sounds(chord.get(), arrival) && !sounds(chord.get(), dominant)
+                ? ReductionTrace.Pitch.CONFIRMED : ReductionTrace.Pitch.UNAIDED;
     }
 
     private static boolean sounds(Chord chord, int midiPitch) {
@@ -630,6 +804,10 @@ public final class PlayableMelody {
             }
         }
         return false;
+    }
+
+    /** The heads as the part prints them, and what this pass made of each. */
+    private record Returned(List<Note> heads, List<ReductionTrace.Return> reads) {
     }
 
     /**
@@ -653,18 +831,25 @@ public final class PlayableMelody {
      * printed or when: a syllable keeps the head it was given, at its own onset
      * and length.
      */
-    private static List<Note> returned(List<Note> heads, Score score, Excursion excursion) {
+    private static Returned returned(List<Note> heads, Score score, Excursion excursion) {
         TempoMap map = score.tempoMap();
+        String[] admits = new String[heads.size()];
         boolean[] supported = new boolean[heads.size()];
         boolean[] alone = new boolean[heads.size()];
         for (int i = 0; i < heads.size(); i++) {
-            supported[i] = accountedFor(score, heads.get(i));
+            admits[i] = admits(score, heads.get(i));
+            supported[i] = !REFUSED.equals(admits[i]);
             alone[i] = alone(heads, i);
         }
         List<Note> out = new ArrayList<>(heads);
+        List<ReductionTrace.Return> reads = new ArrayList<>(heads.size());
         for (int i = 0; i < heads.size(); i++) {
             Note head = heads.get(i);
-            if (supported[i] || !alone[i] || beatsOf(head, map) > excursion.beats()) {
+            double beats = beatsOf(head, map);
+            if (supported[i] || !alone[i] || beats > excursion.beats()) {
+                reads.add(read(head, null, null, null, beats, supported[i] ? admits[i]
+                        : !alone[i] ? ReductionTrace.Return.OVERLAPPED
+                                : ReductionTrace.Return.HELD));
                 continue;
             }
             int before = i - 1;
@@ -676,6 +861,9 @@ public final class PlayableMelody {
                 after++;
             }
             if (before < 0 || after >= heads.size()) {
+                reads.add(read(head, before < 0 ? null : heads.get(before).midiPitch(),
+                        after >= heads.size() ? null : heads.get(after).midiPitch(),
+                        null, beats, ReductionTrace.Return.UNBOUNDED));
                 continue;
             }
             int left = heads.get(before).midiPitch();
@@ -683,18 +871,31 @@ public final class PlayableMelody {
             if (Math.abs(left - right) > excursion.returnSemitones()
                     || (head.midiPitch() > Math.min(left, right)
                         && head.midiPitch() < Math.max(left, right))) {
+                reads.add(read(head, left, right, null, beats,
+                        Math.abs(left - right) > excursion.returnSemitones()
+                                ? ReductionTrace.Return.NO_RETURN
+                                : ReductionTrace.Return.PASSING));
                 continue;
             }
             Note home = Math.abs(left - head.midiPitch()) <= Math.abs(right - head.midiPitch())
                     ? heads.get(before) : heads.get(after);
             if (Math.abs(home.midiPitch() - head.midiPitch()) > excursion.departureSemitones()) {
+                reads.add(read(head, left, right, null, beats,
+                        ReductionTrace.Return.DEPARTED));
                 continue;
             }
             out.set(i, new Note(head.onsetSeconds(), head.durationSeconds(), home.midiPitch(),
                     head.velocity(), home.spelling(), head.onsetBeat(), head.durationBeats(),
                     head.confidence()));
+            reads.add(read(head, left, right, home.midiPitch(), beats,
+                    ReductionTrace.Return.RETURNED));
         }
-        return out;
+        return new Returned(out, reads);
+    }
+
+    private static ReductionTrace.Return read(Note head, Integer left, Integer right,
+                                              Integer home, double beats, String read) {
+        return new ReductionTrace.Return(head.midiPitch(), left, right, home, beats, read);
     }
 
     /** Whether no other head sounds while this one does. */
@@ -722,16 +923,31 @@ public final class PlayableMelody {
      * decision the reduction makes rather than a second transcription of it.
      */
     public static boolean accountedFor(Score score, Note head) {
+        return !REFUSED.equals(admits(score, head));
+    }
+
+    /** What {@link #accountedFor} answers {@code false} on. */
+    private static final String REFUSED = "refused";
+
+    /**
+     * The same, as the reading behind it: whether the harmony admitted the
+     * pitch, or was in no position to refuse it.
+     */
+    private static String admits(Score score, Note head) {
         Objects.requireNonNull(score, "score");
         Objects.requireNonNull(head, "head");
         TempoMap map = score.tempoMap();
         Optional<Chord> chord = chordOver(startBeat(head, map), endBeat(head, map),
                 score.chords(), map).filter(c -> !c.isNoChord());
         Optional<Key> key = score.keyAt((head.onsetSeconds() + head.offsetSeconds()) / 2);
-        if (chord.isEmpty() || key.isEmpty()) {
-            return true;
+        if (chord.isEmpty()) {
+            return ReductionTrace.Return.NO_CHORD;
         }
-        return sounds(chord.get(), head.midiPitch()) || inSignature(key.get(), head.midiPitch());
+        if (key.isEmpty()) {
+            return ReductionTrace.Return.NO_KEY;
+        }
+        return sounds(chord.get(), head.midiPitch()) || inSignature(key.get(), head.midiPitch())
+                ? ReductionTrace.Return.SUPPORTED : REFUSED;
     }
 
     private static boolean inSignature(Key key, int midiPitch) {

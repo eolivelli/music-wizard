@@ -19,6 +19,7 @@ package dev.olivelli.musicwizard.notation;
 import dev.olivelli.musicwizard.arrange.BarGrid;
 import dev.olivelli.musicwizard.arrange.GridResolution;
 import dev.olivelli.musicwizard.arrange.QuantizedScore;
+import dev.olivelli.musicwizard.arrange.ReductionTrace;
 import dev.olivelli.musicwizard.core.model.BeatGrid;
 import dev.olivelli.musicwizard.core.model.Chord;
 import dev.olivelli.musicwizard.core.model.ChordQuality;
@@ -98,8 +99,15 @@ final class ReportPhases {
     /** MIDI middle C, which {@link #pitchClassName} spells a pitch class through. */
     private static final int MIDDLE_C = 60;
 
+    /** How tall each of the reduction figure's two piano rolls is, in pixels. */
+    private static final int ROLL_LANE = 96;
+
+    /** How much room the lines joining them get. */
+    private static final int TIE_BAND = 26;
+
     private final Score score;
     private final NoteTrack melody;
+    private final ReductionTrace reduction;
     private final NoteTrack playable;
     private final QuantizedScore quantized;
     private final RunManifest manifest;
@@ -108,11 +116,12 @@ final class ReportPhases {
     private int number;
     private String phase;
 
-    ReportPhases(Score score, NoteTrack melody, NoteTrack playable, QuantizedScore quantized,
-                 RunManifest manifest, RunTraces traces) {
+    ReportPhases(Score score, NoteTrack melody, ReductionTrace reduction,
+                 QuantizedScore quantized, RunManifest manifest, RunTraces traces) {
         this.score = score;
         this.melody = melody;
-        this.playable = playable;
+        this.reduction = reduction;
+        this.playable = reduction == null ? null : reduction.part();
         this.quantized = quantized;
         this.manifest = manifest;
         this.traces = traces;
@@ -1232,14 +1241,345 @@ final class ReportPhases {
             close();
             return;
         }
-        ReportFacts.Reduction reduction = ReportFacts.reduction(melody, playable);
-        facts(fact("Notes in the estimate", String.valueOf(reduction.estimateNotes())),
-                fact("Notes in the playable part", String.valueOf(reduction.playableNotes())),
-                fact("Carried through untouched", String.valueOf(reduction.carried())));
-        gap("Which rule accounted for each note the estimate lost — absorbed as an"
-                + " ornament, claimed by a neighbouring syllable, or pulled back from an"
-                + " excursion — is decided inside the reduction and not recorded (#680).");
+        ReductionTrace.Counts counts = reduction.counts();
+        facts(fact("Notes in the estimate", String.valueOf(counts.estimateNotes())),
+                fact("Notes in the playable part", String.valueOf(counts.heads())),
+                fact("Carried through untouched",
+                        String.valueOf(ReportFacts.reduction(melody, playable).carried())));
+        note("The reduction below was run for this page exactly as the engraver runs it, and"
+                + " the part drawn on the timeline above is that run's own output. Nothing"
+                + " here is read back from the workspace: the reduction is a decision taken"
+                + " when a part is rendered rather than when a recording is analysed.");
+        whatEachRuleDid(counts);
+        reductionRoll();
+        headTable();
+        sourceTable();
         close();
+    }
+
+    /** How many notes each rule accounted for, counted by the reduction itself. */
+    private void whatEachRuleDid(ReductionTrace.Counts counts) {
+        out.element("h4", "What each rule accounted for").line("");
+        facts(fact("Notes a syllable claimed",
+                        String.valueOf(counts.estimateNotes() - counts.unclaimed())),
+                fact("Notes no syllable claimed", String.valueOf(counts.unclaimed())),
+                fact("Notes a syllable's own head absorbed", String.valueOf(counts.collapsed())),
+                fact("Notes absorbed as an ornament", String.valueOf(counts.ornaments())),
+                fact("Syllables that print a head", counts.syllables()
+                        + (counts.melismas() == 0 ? ""
+                                : ", " + counts.melismas() + " of them marked a melisma")),
+                fact("Heads that took the aligner's syllable start",
+                        String.valueOf(counts.fromAligner())),
+                fact("Heads whose pitch the chart chose", String.valueOf(counts.chartTies())),
+                fact("Heads the pass between them returned", counts.returned()
+                        + (counts.returned() == counts.moved() ? ""
+                                : ", " + counts.moved() + " of them onto another pitch")));
+        note("A syllable carries one note, so the notes it claims print as one head and the"
+                + " rest of them are absorbed into it — unless some stage marked it a melisma,"
+                + " which says the melody moves under it and its run is to be printed. Where"
+                + " there are no words the only grouping evidence left is that a note too"
+                + " short to be worth a note-head belongs to the note it leads into.");
+    }
+
+    /**
+     * The estimate and the part it reduces to, on one axis, each note in the
+     * colour of the rule that accounted for it.
+     *
+     * <p>At the scrolling strip's own scale, so a head here and a head there are
+     * the same width, and so a reader can point at one.
+     */
+    private void reductionRoll() {
+        double width = ReportTimeline.detailWidth(score.durationSeconds());
+        if (!(width > 0)) {
+            return;
+        }
+        double pxPerSecond = width / score.durationSeconds();
+        int lowest = Integer.MAX_VALUE;
+        int highest = Integer.MIN_VALUE;
+        for (Note note : melody.notes()) {
+            lowest = Math.min(lowest, note.midiPitch());
+            highest = Math.max(highest, note.midiPitch());
+        }
+        for (Note note : playable.notes()) {
+            lowest = Math.min(lowest, note.midiPitch());
+            highest = Math.max(highest, note.midiPitch());
+        }
+        double rowHeight = (ROLL_LANE - 8) / (double) Math.max(1, highest - lowest + 1);
+        double height = 2 * ROLL_LANE + TIE_BAND;
+        out.line("<figure class=\"reduction-roll\">");
+        ruleLegend();
+        out.line("<div class=\"roll-scroll\">");
+        out.open("svg", "class", "mw-reduction",
+                "viewBox", "0 0 " + HtmlWriter.number(width, 1) + " "
+                        + HtmlWriter.number(height, 1),
+                "width", HtmlWriter.number(width, 1),
+                "height", HtmlWriter.number(height, 1),
+                "xmlns", "http://www.w3.org/2000/svg", "role", "img");
+        out.line("");
+        estimateRoll(pxPerSecond, highest, rowHeight);
+        ties(pxPerSecond);
+        headRoll(pxPerSecond, highest, rowHeight);
+        out.line("</svg>");
+        out.line("</div>");
+        out.element("figcaption", "The estimate above, the part below, on the recording's own"
+                + " clock. A line joins every note the estimate lost to the head that absorbed"
+                + " it. A head drawn as an outline is one the pass between the heads"
+                + " returned.");
+        out.line("</figure>");
+    }
+
+    /** What each colour on the two rolls means. */
+    private void ruleLegend() {
+        out.open("div", "class", "legend");
+        out.element("span", "Notes of the estimate:", "class", "legend-lead");
+        for (String[] rule : new String[][] {
+                {"chosen", "its head took its pitch from it"},
+                {"absorbed", "absorbed into its syllable's head"},
+                {"ornament", "absorbed as an ornament"}}) {
+            out.open("span", "class", "chip");
+            out.empty("span", "class", "swatch " + rule[0]);
+            out.text(rule[1]);
+            out.line("</span>");
+        }
+        out.line("</div>");
+    }
+
+    private void estimateRoll(double pxPerSecond, int highest, double rowHeight) {
+        out.open("g", "class", "roll estimate");
+        List<ReductionTrace.Source> sources = reduction.notes();
+        for (int i = 0; i < sources.size(); i++) {
+            ReductionTrace.Source source = sources.get(i);
+            out.open("g", "class", "span");
+            out.element("title", (i + 1) + "  " + noteName(source.midiPitch()) + "  "
+                    + ReportTimeline.moment(source.fromSeconds()) + "  →  head "
+                    + (source.head() + 1));
+            out.empty("rect", "class", "note " + rollClass(source),
+                    "x", HtmlWriter.number(source.fromSeconds() * pxPerSecond, 2),
+                    "y", HtmlWriter.number(
+                            4 + (highest - source.midiPitch()) * rowHeight, 2),
+                    "width", HtmlWriter.number(Math.max(1,
+                            (source.toSeconds() - source.fromSeconds()) * pxPerSecond), 2),
+                    "height", HtmlWriter.number(Math.max(2, rowHeight - 1), 2));
+            out.line("</g>");
+        }
+        out.line("</g>");
+    }
+
+    private void headRoll(double pxPerSecond, int highest, double rowHeight) {
+        out.open("g", "class", "roll heads");
+        List<ReductionTrace.Head> heads = reduction.heads();
+        for (int i = 0; i < heads.size(); i++) {
+            ReductionTrace.Head head = heads.get(i);
+            out.open("g", "class", "span");
+            out.element("title", "head " + (i + 1) + "  " + noteName(head.midiPitch()) + "  "
+                    + ReportTimeline.moment(head.fromSeconds()) + "  from "
+                    + (head.notes() == 1 ? "note " + (head.fromNote() + 1)
+                            : head.notes() + " notes from " + (head.fromNote() + 1)));
+            out.empty("rect", "class",
+                    ReductionTrace.Return.RETURNED.equals(head.returned().read())
+                            ? "note returned" : "note",
+                    "x", HtmlWriter.number(head.fromSeconds() * pxPerSecond, 2),
+                    "y", HtmlWriter.number(ROLL_LANE + TIE_BAND + 4
+                            + (highest - head.midiPitch()) * rowHeight, 2),
+                    "width", HtmlWriter.number(Math.max(1,
+                            (head.toSeconds() - head.fromSeconds()) * pxPerSecond), 2),
+                    "height", HtmlWriter.number(Math.max(2, rowHeight - 1), 2));
+            out.line("</g>");
+        }
+        out.line("</g>");
+    }
+
+    /** One line from each absorbed note to the head that took it. */
+    private void ties(double pxPerSecond) {
+        out.open("g", "class", "ties");
+        for (ReductionTrace.Source source : reduction.notes()) {
+            if (!ReductionTrace.Source.ABSORBED.equals(source.read())) {
+                continue;
+            }
+            ReductionTrace.Head head = reduction.heads().get(source.head());
+            out.empty("line", "class", "tie " + rollClass(source),
+                    "x1", HtmlWriter.number(source.fromSeconds() * pxPerSecond, 2),
+                    "y1", HtmlWriter.number(ROLL_LANE, 1),
+                    "x2", HtmlWriter.number(head.fromSeconds() * pxPerSecond, 2),
+                    "y2", HtmlWriter.number(ROLL_LANE + TIE_BAND, 1));
+        }
+        out.line("</g>");
+    }
+
+    private static String rollClass(ReductionTrace.Source source) {
+        if (!ReductionTrace.Source.ABSORBED.equals(source.read())) {
+            return "chosen";
+        }
+        return ReductionTrace.Source.ORNAMENT.equals(source.groupedBy())
+                ? "ornament" : "absorbed";
+    }
+
+    /** Every printed head, and where its pitch, onset and length came from. */
+    private void headTable() {
+        out.line("<details class=\"table\">");
+        out.element("summary", "Every printed head, and where it came from");
+        out.line("<table><thead><tr><th>#</th><th>From</th><th>To</th><th>Pitch</th>"
+                + "<th>Sung on</th><th>Cut from</th><th>Pitch chosen as</th><th>Onset from</th>"
+                + "<th>Between the heads</th></tr></thead><tbody>");
+        List<ReductionTrace.Head> heads = reduction.heads();
+        for (int i = 0; i < heads.size(); i++) {
+            ReductionTrace.Head head = heads.get(i);
+            out.open("tr");
+            out.element("td", String.valueOf(i + 1));
+            out.element("td", ReportTimeline.moment(head.fromSeconds()));
+            out.element("td", ReportTimeline.moment(head.toSeconds()));
+            out.element("td", noteName(head.midiPitch()));
+            out.element("td", syllable(head.line(), head.word())
+                    + (head.melisma() ? ", a melisma" : ""), "class", "words");
+            out.element("td", head.notes() == 1 ? "note " + (head.fromNote() + 1)
+                    : "notes " + (head.fromNote() + 1) + "–"
+                            + (head.fromNote() + head.notes()), "class", "words");
+            out.element("td", chosenAs(head), "class", "words");
+            out.element("td", takenFrom(head.onset()), "class", "words");
+            out.element("td", betweenHeads(head.returned()), "class", "words");
+            out.line("</tr>");
+        }
+        out.line("</tbody></table>");
+        out.line("</details>");
+        note("A head ends on the furthest release of the notes it covers, so what it welds"
+                + " together includes any silence between them. Its pitch is the one the group"
+                + " settles on rather than the one it sounds longest: over a scoop those"
+                + " differ, and it is the arrival that was sung.");
+    }
+
+    /** Every note of the estimate, and what became of it. */
+    private void sourceTable() {
+        out.line("<details class=\"table\">");
+        out.element("summary", "Every note of the estimate, and what became of it");
+        out.line("<table><thead><tr><th>#</th><th>From</th><th>To</th><th>Pitch</th>"
+                + "<th>Claimed by</th><th>Silence</th><th>Grouped by</th><th>Head</th>"
+                + "<th>What became of it</th></tr></thead><tbody>");
+        List<ReductionTrace.Source> sources = reduction.notes();
+        for (int i = 0; i < sources.size(); i++) {
+            ReductionTrace.Source source = sources.get(i);
+            out.open("tr");
+            out.element("td", String.valueOf(i + 1));
+            out.element("td", ReportTimeline.moment(source.fromSeconds()));
+            out.element("td", ReportTimeline.moment(source.toSeconds()));
+            out.element("td", noteName(source.midiPitch()));
+            out.element("td", syllable(source.line(), source.word()), "class", "words");
+            out.element("td", silence(source), "class", "words");
+            out.element("td", groupedBy(source.groupedBy()), "class", "words");
+            out.element("td", String.valueOf(source.head() + 1));
+            out.element("td", ReductionTrace.Source.CHOSEN.equals(source.read())
+                    ? "its head took its pitch from it" : "absorbed", "class", "words");
+            out.line("</tr>");
+        }
+        out.line("</tbody></table>");
+        out.line("</details>");
+        note("A note is claimed by the syllable the least silence separates it from, and only"
+                + " where that silence is inside the bound: a line's words reach over whatever"
+                + " instrumental gap sits inside the line, so without the bound a note played"
+                + " in such a gap would be welded to whatever was sung around it.");
+    }
+
+    private String syllable(Integer line, Integer word) {
+        if (line == null || word == null) {
+            return "—";
+        }
+        List<LyricLine> lines = score.lyrics().lines();
+        if (line >= lines.size() || word >= lines.get(line).words().size()) {
+            return "line " + (line + 1) + ", syllable " + (word + 1);
+        }
+        return lines.get(line).words().get(word).text();
+    }
+
+    private static String silence(ReductionTrace.Source source) {
+        if (source.silenceBeats() == null) {
+            return "no line of the lyrics reaches over it";
+        }
+        return HtmlWriter.number(source.silenceBeats(), 2) + " beats, against the "
+                + HtmlWriter.number(source.claimBeats(), 2) + " a claim is allowed";
+    }
+
+    private static String groupedBy(String groupedBy) {
+        return switch (groupedBy) {
+            case ReductionTrace.Source.ALONE -> "nothing; it is a head on its own";
+            case ReductionTrace.Source.SYLLABLE -> "one syllable claiming it and its neighbours";
+            case ReductionTrace.Source.ORNAMENT -> "the ornament rule, which joins a note to"
+                    + " the one it leads into";
+            default -> groupedBy;
+        };
+    }
+
+    private static String chosenAs(ReductionTrace.Head head) {
+        ReductionTrace.Pitch pitch = head.pitch();
+        return switch (pitch.read()) {
+            case ReductionTrace.Pitch.SETTLED -> head.notes() == 1
+                    ? "the note's own" : "the pitch the group arrives at";
+            case ReductionTrace.Pitch.NO_CHORD -> unsettled(pitch)
+                    + ", and no chord sounds under the group";
+            case ReductionTrace.Pitch.UNTRUSTED -> unsettled(pitch) + ", and " + pitch.chord()
+                    + " is read at " + HtmlWriter.number(pitch.chordConfidence(), 2)
+                    + ", under the " + HtmlWriter.number(pitch.requiredConfidence(), 2)
+                    + " a chord has to reach to break a tie";
+            case ReductionTrace.Pitch.UNAIDED -> unsettled(pitch) + ", and " + pitch.chord()
+                    + " admits both or neither";
+            case ReductionTrace.Pitch.CONFIRMED -> unsettled(pitch) + ", and " + pitch.chord()
+                    + " admits the arrival and not " + noteName(pitch.dominantMidi());
+            case ReductionTrace.Pitch.CHART -> noteName(pitch.dominantMidi()) + " in place of"
+                    + " the arrival " + noteName(pitch.arrivalMidi()) + ", the group having"
+                    + " settled on neither and " + pitch.chord() + " admitting only this one";
+            default -> pitch.read();
+        };
+    }
+
+    /** What the group holds against what it arrives at, which is what the chart is asked about. */
+    private static String unsettled(ReductionTrace.Pitch pitch) {
+        return "the arrival, though it sounds "
+                + HtmlWriter.number(pitch.arrivalBeats(), 2) + " beats against "
+                + noteName(pitch.dominantMidi()) + "'s "
+                + HtmlWriter.number(pitch.dominantBeats(), 2);
+    }
+
+    private static String takenFrom(ReductionTrace.Onset onset) {
+        return switch (onset.read()) {
+            case ReductionTrace.Onset.MELODY -> "the melody, this head opening no syllable";
+            case ReductionTrace.Onset.SYLLABLE -> "the aligner, at "
+                    + ReportTimeline.moment(onset.syllableSeconds());
+            case ReductionTrace.Onset.EARLY -> "the melody; the syllable starts no later";
+            case ReductionTrace.Onset.STUB -> "the melody; the syllable's start leaves "
+                    + HtmlWriter.number(onset.leftBeats(), 3) + " beats of the head, under the "
+                    + HtmlWriter.number(onset.requiredBeats(), 3) + " a note-head needs";
+            case ReductionTrace.Onset.SILENT -> "the melody; the syllable starts where this"
+                    + " head's own notes sound nothing";
+            default -> onset.read();
+        };
+    }
+
+    private static String betweenHeads(ReductionTrace.Return returned) {
+        return switch (returned.read()) {
+            case ReductionTrace.Return.SUPPORTED -> "the harmony admits its pitch";
+            case ReductionTrace.Return.NO_CHORD -> "nothing to refuse it: no chord sounds"
+                    + " under it";
+            case ReductionTrace.Return.NO_KEY -> "nothing to refuse it: the score carries no"
+                    + " key here, and the chord alone cannot";
+            case ReductionTrace.Return.OVERLAPPED -> "another head sounds while it does";
+            case ReductionTrace.Return.HELD -> "held " + HtmlWriter.number(returned.beats(), 2)
+                    + " beats, too long to be a wobble";
+            case ReductionTrace.Return.UNBOUNDED -> "no head the harmony admits on both sides"
+                    + " of it";
+            case ReductionTrace.Return.NO_RETURN -> "the heads either side, "
+                    + noteName(returned.leftMidi()) + " and " + noteName(returned.rightMidi())
+                    + ", are not the same place";
+            case ReductionTrace.Return.PASSING -> "between " + noteName(returned.leftMidi())
+                    + " and " + noteName(returned.rightMidi()) + ", which is what a passing"
+                    + " tone looks like";
+            case ReductionTrace.Return.DEPARTED -> "too far from "
+                    + noteName(returned.leftMidi()) + " and " + noteName(returned.rightMidi())
+                    + " to have wobbled";
+            case ReductionTrace.Return.RETURNED -> returned.homeMidi().equals(returned.fromMidi())
+                    ? "returned to " + noteName(returned.fromMidi()) + ", which is the pitch it"
+                            + " was read at"
+                    : "printed as " + noteName(returned.homeMidi()) + ", read as "
+                            + noteName(returned.fromMidi());
+            default -> returned.read();
+        };
     }
 
     // --------------------------------------------------------------- pieces

@@ -181,7 +181,17 @@ final class ReportTimeline {
     }
 
     private double detailWidth() {
-        return Math.min(DETAIL_PX_PER_SECOND * score.durationSeconds(), MAX_DETAIL_WIDTH);
+        return detailWidth(score.durationSeconds());
+    }
+
+    /**
+     * How wide a recording is drawn at the scrolling strip's scale.
+     *
+     * <p>Shared, so that a figure elsewhere on the page drawn against the same
+     * clock is drawn at the same scale rather than at one of its own.
+     */
+    static double detailWidth(double durationSeconds) {
+        return Math.min(DETAIL_PX_PER_SECOND * durationSeconds, MAX_DETAIL_WIDTH);
     }
 
     private String svg(double pxPerSecond, double width, double height, String cssClass,
