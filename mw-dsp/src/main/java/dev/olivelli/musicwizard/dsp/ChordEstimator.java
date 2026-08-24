@@ -1477,7 +1477,7 @@ public final class ChordEstimator {
     }
 
     /**
-     * Which of the three labels a span carries last set the printed one.
+     * Which of the labels a span carries last set the printed one.
      *
      * <p>Read off the labels rather than off the state indices, so a row cannot
      * name a decision its own columns deny: where two decisions reached the same

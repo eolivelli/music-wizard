@@ -93,9 +93,9 @@ class ChordTraceOnTheAudioPathTest {
             assertThat(span.runnerUp()).isNotNull();
             assertThat(span.runnerUp().chord()).isNotEqualTo(span.decoded().chord());
             assertThat(span.settledBy()).isIn("decoder", "run", "sevenths", "thirds");
-            // The pipeline measures a residual, so a span on a root has the
-            // gates that read it; an empty list here would mean the ablation
-            // never reached the record.
+            // The pipeline measures a residual and every root of this fixture
+            // is in the fit, so a span on a root with no gate reading would
+            // mean the ablation never reached the record.
             assertThat(span.gates()).hasSize(span.chord().equals("N.C.") ? 0 : 6);
         });
         assertThat(trace.roots()).isNotEmpty();

@@ -1356,11 +1356,6 @@ class ChordEstimationTest {
                 0.0359, 0.0273, 0.0000, 1.0165, 0.0007, 0.0000};
 
         /**
-         * {@code majorBeats} beats of the A run, four of the D run that separates
-         * them, then four of the run that reads minor. Every span answers with
-         * its own residual, keyed by where the span starts.
-         */
-        /**
          * The same minor run with a flat seventh voiced over it, so its own
          * chroma reads a minor seventh and both per-root rules act on that one
          * run.
@@ -1369,6 +1364,11 @@ class ChordEstimationTest {
                 0.0332, 0.0924, 0.0324, 0.0208, 0.2351, 0.0182,
                 0.0308, 0.1138, 0.0447, 0.2434, 0.0292, 0.1061};
 
+        /**
+         * {@code majorBeats} beats of the A run, four of the D run that separates
+         * them, then four of the run that reads minor. Every span answers with
+         * its own residual, keyed by where the span starts.
+         */
         private static ChordEstimator.Decoded decoded(int majorBeats) {
             return decoded(majorBeats, MINOR_TREBLE);
         }

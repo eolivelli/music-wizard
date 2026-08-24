@@ -123,8 +123,9 @@ class AnalysisReportTest {
                 // it, and the page says so rather than naming one edge.
                 "everything from A3 to C6, fading out again to nothing at C7",
                 "Every chord span, and what it was read from",
-                // The chord span the fit needed F most to explain.
-                "<td class=\"symbol\">Fmaj7</td>", "F 1.31, C 0.58, E 0.44");
+                // The chord span whose major seventh the fit needs most, which
+                // is why that span is named with one.
+                "<td class=\"symbol\">Fmaj7</td>", "E 2.1, F 1.31, C 0.58");
         assertThat(weighed).doesNotContain("This workspace does not hold what the front end");
 
         assertThat(blank).contains("This workspace does not hold what the front end read",
@@ -184,6 +185,40 @@ class AnalysisReportTest {
                 // And what each count actually rewrote, which the reading alone
                 // does not say.
                 "<td>4 of 12 beats</td>");
+    }
+
+    @Test
+    @DisplayName("the two traces on one span describe one measurement, not two")
+    void theTwoTracesAgreeOnTheResidual() {
+        // A reader following a span from the front end's table into the gate
+        // table reads the same quantity twice, so a fixture whose two halves
+        // disagreed would be documenting a page no run could produce.
+        List<ChromaTrace.Span> read = ReportFixtures.chroma().spans();
+        List<ChordTrace.Span> decided = ReportFixtures.chordDecisions().spans();
+        assertThat(decided).hasSameSizeAs(read);
+        for (int i = 0; i < decided.size(); i++) {
+            int root = rootOf(decided.get(i).chord());
+            for (ChordTrace.Gate gate : decided.get(i).gates()) {
+                assertThat(gate.reading())
+                        .as("span %d, the %s of %s", i + 1, gate.degree(),
+                                decided.get(i).chord())
+                        .isEqualTo(read.get(i).significance()
+                                .get((root + SEMITONES.get(gate.degree())) % 12));
+            }
+        }
+    }
+
+    private static final Map<String, Integer> SEMITONES = Map.of(
+            "minor third", 3, "major third", 4, "diminished fifth", 6,
+            "sixth", 9, "major seventh", 11);
+
+    /** The pitch class a fixture chord symbol is built on, sharps only. */
+    private static int rootOf(String chord) {
+        List<String> names = List.of("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A",
+                "A#", "B");
+        String root = chord.length() > 1 && chord.charAt(1) == '#'
+                ? chord.substring(0, 2) : chord.substring(0, 1);
+        return names.indexOf(root);
     }
 
     @Test

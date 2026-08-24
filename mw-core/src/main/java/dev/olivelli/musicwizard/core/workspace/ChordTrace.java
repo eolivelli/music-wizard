@@ -61,7 +61,7 @@ public record ChordTrace(List<Span> spans, List<Root> roots) {
      * @param chord             the symbol the span was named with
      * @param fromRun           the symbol the run's own chroma chose, before
      *                          either per-root count
-     * @param settledBy         which of the three last set {@code chord} —
+     * @param settledBy         which decision last set {@code chord} —
      *                          {@code decoder}, {@code run}, {@code sevenths}
      *                          or {@code thirds}, read off those labels, so no
      *                          row can name a decision its own columns deny

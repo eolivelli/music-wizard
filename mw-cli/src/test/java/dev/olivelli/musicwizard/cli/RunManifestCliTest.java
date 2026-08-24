@@ -273,8 +273,9 @@ class RunManifestCliTest {
             assertThat(span.toBeat()).isGreaterThan(span.fromBeat());
             assertThat(span.decoded()).isNotNull();
             assertThat(span.settledBy()).isNotBlank();
-            // The residual is measured on this path, so a span on a root with
-            // no gate reading would mean the ablation never reached the record.
+            // The residual is measured on this path and this fixture's roots
+            // are in the fit, so a span on a root with no gate reading would
+            // mean the ablation never reached the record.
             assertThat(span.gates()).hasSize(span.chord().equals("N.C.") ? 0 : 6);
         });
         assertThat(trace.roots()).isNotEmpty();

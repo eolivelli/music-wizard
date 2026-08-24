@@ -594,10 +594,8 @@ final class ReportPhases {
                 + " and it settles every run on it at once. A minority of minor thirds"
                 + " withdraws the minor third from every run on the root; a minority of"
                 + " sevenths withdraws the seventh and a majority adds one to the minor"
-                + " triads. Where the count found nothing to withdraw, the reading stands and"
-                + " the runs beside it are none. The two are counted over different beats: a"
-                + " run stating a sixth is no evidence about a seventh and is left out of that"
-                + " count altogether.");
+                + " triads. The two are counted over different beats: a run stating a sixth is"
+                + " no evidence about a seventh and is left out of that count altogether.");
     }
 
     private static String count(ChordTrace.Count count) {
