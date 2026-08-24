@@ -709,9 +709,9 @@ final class ReportPhases {
         note("separated".equals(signature.read())
                 ? "The two scores lie apart, so the harmony chose the signature."
                 : "The two scores are one score, so nothing in the harmony chose between"
-                        + " these signatures and a stated editorial preference did — the"
-                        + " simpler key signature. The confidence beside it is at the floor"
-                        + " that leaves.");
+                        + " these signatures and a stated preference did — the major over the"
+                        + " minor, and between two keys of one mode the simpler key"
+                        + " signature. The confidence beside it is at the floor that leaves.");
     }
 
     /**
@@ -754,16 +754,7 @@ final class ReportPhases {
         out.line("<table class=\"shown\"><thead><tr><th>Key</th><th>Score</th>"
                 + "<th>Its own tonic chord</th><th>Its raised seventh</th>"
                 + "</tr></thead><tbody>");
-        for (KeyTrace.Candidate candidate : pair) {
-            out.open("tr");
-            out.element("td", candidate.key(), "class", "symbol");
-            out.element("td", HtmlWriter.number(candidate.score(), 3));
-            out.element("td", sounded(candidate.tonicChordSpans(),
-                    candidate.tonicChordSeconds()));
-            out.element("td", sounded(candidate.raisedSeventhSpans(),
-                    candidate.raisedSeventhSeconds()));
-            out.line("</tr>");
-        }
+        pair.forEach(this::candidateRow);
         out.line("</tbody></table>");
     }
 
@@ -777,18 +768,9 @@ final class ReportPhases {
         out.element("summary", "Every key that was scored");
         out.line("<table><thead><tr><th>Key</th><th>Score</th><th>Its own tonic chord</th>"
                 + "<th>Its raised seventh</th></tr></thead><tbody>");
-        for (KeyTrace.Candidate candidate : candidates.stream()
+        candidates.stream()
                 .sorted(Comparator.comparingDouble(KeyTrace.Candidate::score).reversed())
-                .toList()) {
-            out.open("tr");
-            out.element("td", candidate.key(), "class", "symbol");
-            out.element("td", HtmlWriter.number(candidate.score(), 3));
-            out.element("td", sounded(candidate.tonicChordSpans(),
-                    candidate.tonicChordSeconds()));
-            out.element("td", sounded(candidate.raisedSeventhSpans(),
-                    candidate.raisedSeventhSeconds()));
-            out.line("</tr>");
-        }
+                .forEach(this::candidateRow);
         out.line("</tbody></table>");
         out.line("</details>");
         note("The score is a duration-weighted average over each chord's triad: how much of"
@@ -797,12 +779,22 @@ final class ReportPhases {
                 + " tone routinely leaves the key.");
     }
 
+    /** One key and the evidence it was scored on, in either of the two tables. */
+    private void candidateRow(KeyTrace.Candidate candidate) {
+        out.open("tr");
+        out.element("td", candidate.key(), "class", "symbol");
+        out.element("td", HtmlWriter.number(candidate.score(), 3));
+        out.element("td", sounded(candidate.tonicChordSpans(), candidate.tonicChordSeconds()));
+        out.element("td", sounded(candidate.raisedSeventhSpans(),
+                candidate.raisedSeventhSeconds()));
+        out.line("</tr>");
+    }
+
     private static String sounded(int spans, double seconds) {
         return spans == 0 ? "nothing"
                 : spans + (spans == 1 ? " chord, " : " chords, ")
                         + HtmlWriter.number(seconds, 2) + "s";
     }
-
 
     private void melodyNotes() {
         boolean any = melody != null && !melody.isEmpty();
