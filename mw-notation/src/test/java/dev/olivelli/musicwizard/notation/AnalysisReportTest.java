@@ -19,12 +19,15 @@ package dev.olivelli.musicwizard.notation;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import dev.olivelli.musicwizard.core.model.Chord;
+import dev.olivelli.musicwizard.core.model.Note;
+import dev.olivelli.musicwizard.core.model.PartRole;
 import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.model.TempoMap;
 import dev.olivelli.musicwizard.core.workspace.BeatTrace;
 import dev.olivelli.musicwizard.core.workspace.ChordTrace;
 import dev.olivelli.musicwizard.core.workspace.ChromaTrace;
 import dev.olivelli.musicwizard.core.workspace.KeyTrace;
+import dev.olivelli.musicwizard.core.workspace.MelodyTrace;
 import dev.olivelli.musicwizard.core.workspace.RunManifest;
 import dev.olivelli.musicwizard.core.workspace.RunTraceJson;
 import dev.olivelli.musicwizard.core.workspace.RunTraces;
@@ -720,6 +723,123 @@ class AnalysisReportTest {
         assertThat(AnalysisReport.toHtml(ReportFixtures.chordsOnly(), RECORDING))
                 .contains("This score holds no melody part; see --melody on analyze.")
                 .doesNotContain("is what writes one");
+    }
+
+    @Test
+    @DisplayName("what the segmentation cut is drawn, or its absence stated")
+    void theMelodyTraceIsDrawnOrItsAbsenceStated() {
+        String weighed = AnalysisReport.toHtml(ReportFixtures.everything(), RECORDING,
+                ReportFixtures.run(), ReportFixtures.weighed());
+        String blank = AnalysisReport.toHtml(
+                ReportFixtures.everything(), RECORDING, ReportFixtures.run());
+
+        assertThat(weighed).contains("What the segmentation cut",
+                // Which signal reached the tracker, and how much of it sang.
+                "<dt>Signal the tracker read</dt><dd>separated vocal</dd>",
+                "285 of 689",
+                // The grid the notes were rounded on, and what said so.
+                "The grid the notes were rounded on", "3.8 cents sharp of A440",
+                "Every run of voiced frames, and what it was cut into",
+                "Every gesture the fold decided over",
+                "Every note, and what began it",
+                "the pitch leaving the note before it");
+        assertThat(weighed).doesNotContain("Where this pitch track was cut into notes");
+
+        assertThat(blank).contains("Where this pitch track was cut into notes", "(#679)");
+        assertThat(blank).doesNotContain("What the segmentation cut");
+    }
+
+    @Test
+    @DisplayName("the trace and the score describe one segmentation, not two")
+    void theTraceAndTheScoreNameOneMelody() {
+        // A reader moves from the piano roll into the note table expecting the
+        // same notes, so a fixture whose two halves disagreed would document a
+        // page no run could produce.
+        List<Note> notes = ReportFixtures.everything()
+                .track(PartRole.LEAD_VOCAL).orElseThrow().notes();
+        List<MelodyTrace.Note> traced = ReportFixtures.melodyCuts().notes();
+
+        assertThat(traced).hasSameSizeAs(notes);
+        for (int i = 0; i < notes.size(); i++) {
+            assertThat(traced.get(i).midiPitch()).isEqualTo(notes.get(i).midiPitch());
+            assertThat(traced.get(i).fromSeconds()).isEqualTo(notes.get(i).onsetSeconds());
+        }
+        // And every run's own count of notes adds up to the notes there are.
+        assertThat(ReportFixtures.melodyCuts().runs().stream()
+                .mapToInt(MelodyTrace.Run::notes).sum()).isEqualTo(notes.size());
+    }
+
+    @Test
+    @DisplayName("a note the envelope struck again says so, and a run with no note is drawn")
+    void aRearticulatedNoteAndASilentRunAreDrawn() {
+        String page = AnalysisReport.toHtml(ReportFixtures.struckAgain(), RECORDING,
+                ReportFixtures.run(), ReportFixtures.weighed(
+                        ReportFixtures.melodyStruckAgain()));
+
+        assertThat(page).contains("the envelope, striking the same pitch again",
+                // The run that yielded nothing is drawn as its own kind rather
+                // than left out of the lane.
+                "class=\"run silent\"",
+                // And the offset the mix measured was not honoured here.
+                "an offset a signal does not sit on is not a tuning for it",
+                "<dt>Notes were rounded on</dt><dd>A440</dd>");
+    }
+
+    @Test
+    @DisplayName("a stage that was never asked to run is not called an unrecorded one")
+    void aMelodyNeverAskedForIsNotAGap() {
+        // Analysed without --melody: there is no decision missing from the
+        // workspace, because none was taken.
+        String page = AnalysisReport.toHtml(
+                ReportFixtures.chordsOnly(), RECORDING, ReportFixtures.run());
+
+        assertThat(page).contains("This score holds no melody part.");
+        assertThat(page).doesNotContain("Where this pitch track was cut into notes",
+                "What the segmentation cut");
+    }
+
+    @Test
+    @DisplayName("a stage that ran and found no note draws its reading rather than nothing")
+    void aMelodyStageThatFoundNothingStillDrawsWhatItRead() {
+        // A stem the separator emptied, on a recording whose mix was measured
+        // off concert pitch: nothing was weighed, and a page that read that as
+        // a disagreement would say the singing disputes the mix twelve lines
+        // under its own count of no voiced frame at all.
+        MelodyTrace nothing = new MelodyTrace(MelodyTrace.SEPARATED_VOCAL,
+                new MelodyTrace.Track(22050, 2048, 256, 86.1328125, 689, 0, 8),
+                new MelodyTrace.Tuning(0.0375, null, 0.2, 0, MelodyTrace.Tuning.NOT_WEIGHED),
+                null, List.of(), List.of(), List.of());
+
+        String page = AnalysisReport.toHtml(ReportFixtures.chordsOnly(), RECORDING,
+                ReportFixtures.run(), ReportFixtures.weighed(nothing));
+
+        assertThat(page).contains("What the segmentation cut",
+                "<dt>Frames the tracker heard a pitch in</dt><dd>0 of 689  (0%)</dd>",
+                "No run of voiced frames was recorded, so there was nothing to cut",
+                "No note reached the octave fold.",
+                "This signal carried none, so nothing was asked");
+        assertThat(page).doesNotContain("Every note, and what began it",
+                "They do not, and an offset a signal does not sit on");
+    }
+
+    @Test
+    @DisplayName("an offset nothing measured is drawn as no measurement, row and reason alike")
+    void anUnmeasuredOffsetIsNotDrawnAsZeroCents() {
+        // Zero is the tuning estimator's answer for no evidence. The melody
+        // phase reads that fact in one place, so the row and the sentence
+        // under it cannot disagree.
+        String page = AnalysisReport.toHtml(ReportFixtures.everything(), RECORDING,
+                ReportFixtures.run(), ReportFixtures.weighed(
+                        ReportFixtures.melodyRoundedOn(new MelodyTrace.Tuning(
+                                0, null, 0.2, 0, MelodyTrace.Tuning.CONCERT_PITCH))));
+
+        assertThat(page).contains("<dt>Tuning of the mix</dt><dd>not measured — the spectrum"
+                        + " held no peaks to read one from, so concert pitch was assumed</dd>",
+                "The front end measured no tuning on the mix");
+        assertThat(page).doesNotContain("<dd>0 cents sharp of A440</dd>",
+                "<dd>0 cents flat of A440</dd>",
+                // The reading that would assert the measurement the row denies.
+                "The mix's tuning reads as concert pitch");
     }
 
     @Test

@@ -36,6 +36,7 @@ import dev.olivelli.musicwizard.core.workspace.BeatTrace;
 import dev.olivelli.musicwizard.core.workspace.ChordTrace;
 import dev.olivelli.musicwizard.core.workspace.ChromaTrace;
 import dev.olivelli.musicwizard.core.workspace.KeyTrace;
+import dev.olivelli.musicwizard.core.workspace.MelodyTrace;
 import dev.olivelli.musicwizard.core.workspace.RunManifest;
 import dev.olivelli.musicwizard.core.workspace.RunTraces;
 import java.util.ArrayList;
@@ -341,7 +342,8 @@ final class ReportPhases {
     private void whatTheFitRead(ChromaTrace trace) {
         out.element("h4", "What the front end read").line("");
         List<Fact> table = new ArrayList<>();
-        table.add(fact("Tuning", tuningRead(trace)));
+        table.add(fact("Tuning", tuningRead(trace.tuningMeasured(),
+                trace.tuningOffsetSemitones())));
         ChromaTrace.Fit fit = trace.fit();
         if (fit == null) {
             table.add(fact("Model the spectrum was fitted with", "not recorded"));
@@ -397,12 +399,17 @@ final class ReportPhases {
         return sampleRate > 0 ? (double) samples / sampleRate : 0;
     }
 
-    private static String tuningRead(ChromaTrace trace) {
-        if (!trace.tuningMeasured()) {
+    /**
+     * How far the recording sits from concert pitch, worded once for the two
+     * phases that print it — the front end that measured it and the melody
+     * stage it was offered to.
+     */
+    private static String tuningRead(boolean measured, double offsetSemitones) {
+        if (!measured) {
             return "not measured — the spectrum held no peaks to read one from, so concert"
                     + " pitch was assumed";
         }
-        double cents = 100 * trace.tuningOffsetSemitones();
+        double cents = 100 * offsetSemitones;
         return HtmlWriter.number(Math.abs(cents), 1) + " cents "
                 + (cents < 0 ? "flat" : "sharp") + " of A440";
     }
@@ -801,7 +808,9 @@ final class ReportPhases {
 
     private void melodyNotes() {
         boolean any = melody != null && !melody.isEmpty();
-        open("melody", "Melody notes", any ? Status.RECORDED : Status.ABSENT,
+        Optional<MelodyTrace> trace = traces == null
+                ? Optional.empty() : traces.trace(MelodyTrace.STAGE, MelodyTrace.class);
+        open(MelodyTrace.STAGE, "Melody notes", any ? Status.RECORDED : Status.ABSENT,
                 "A monophonic pitch tracker follows the loudest periodic line in whatever"
                         + " signal it is handed, and the result is segmented into notes. On"
                         + " a full mix that line is usually not the singer, which is why the"
@@ -809,30 +818,327 @@ final class ReportPhases {
         inOut("the vocal stem where a separator could be had, and the mix otherwise",
                 "where one note ends and the next begins",
                 "a note track, in seconds");
-        if (!any) {
+        if (any) {
+            double[] durations = melody.notes().stream()
+                    .mapToDouble(Note::durationSeconds).toArray();
+            double[] sorted = durations.clone();
+            Arrays.sort(sorted);
+            facts(fact("Notes", String.valueOf(melody.size())),
+                    fact("Range", melody.pitchRange().map(Object::toString).orElse("none")),
+                    fact("Shortest note", HtmlWriter.number(sorted[0], 3) + "s"),
+                    fact("Median note", HtmlWriter.number(sorted[sorted.length / 2], 3) + "s"),
+                    fact("Longest note",
+                            HtmlWriter.number(sorted[sorted.length - 1], 3) + "s"));
+            confidences(List.of(new Reading("Confidence in the track", melody.confidence())));
+            histogram("How long the notes are, in seconds", durations);
+            if (recorded().isEmpty() && trace.map(MelodyTrace::signal).isEmpty()) {
+                gap("Nothing in this workspace says which signal these notes were read from"
+                        + " (#674).");
+            }
+        } else {
             note("This score holds no melody part"
                     + (recorded().isPresent() ? "." : "; see --melody on analyze."));
-            close();
-            return;
         }
-        double[] durations = melody.notes().stream()
-                .mapToDouble(Note::durationSeconds).toArray();
-        double[] sorted = durations.clone();
-        Arrays.sort(sorted);
-        facts(fact("Notes", String.valueOf(melody.size())),
-                fact("Range", melody.pitchRange().map(Object::toString).orElse("none")),
-                fact("Shortest note", HtmlWriter.number(sorted[0], 3) + "s"),
-                fact("Median note", HtmlWriter.number(sorted[sorted.length / 2], 3) + "s"),
-                fact("Longest note",
-                        HtmlWriter.number(sorted[sorted.length - 1], 3) + "s"));
-        confidences(List.of(new Reading("Confidence in the track", melody.confidence())));
-        histogram("How long the notes are, in seconds", durations);
-        gapUnlessRecorded("Nothing in this workspace says which signal these notes were"
-                + " read from (#674).");
-        gap("The pitch track and the voicedness the segmentation read are not recorded, so"
-                + " the page shows the notes and not the decision that cut them (#679).");
+        // Drawn whether or not the score kept a melody: a stage that found no
+        // note recorded why, and that is the reading worth having.
+        trace.ifPresentOrElse(this::howTheNotesWereCut, () -> {
+            if (any) {
+                gap("Where this pitch track was cut into notes, and by which rule, is not in"
+                        + " this workspace, so the page shows the notes and not the decisions"
+                        + " that made them (#679). A recording analysed again records them.");
+            }
+        });
         close();
     }
+
+    /**
+     * What the segmentation did between hearing a signal and printing notes
+     * (#679).
+     *
+     * <p>The per-frame pitch and voicedness are not here and not in the
+     * workspace either; the page says so rather than leaving a reader looking
+     * for them.
+     */
+    private void howTheNotesWereCut(MelodyTrace trace) {
+        out.element("h4", "What the segmentation cut").line("");
+        List<Fact> table = new ArrayList<>();
+        table.add(fact("Signal the tracker read",
+                trace.signal() == null ? "not recorded" : trace.signal()));
+        MelodyTrace.Track track = trace.track();
+        if (track == null) {
+            table.add(fact("Pitch track", "not recorded"));
+        } else {
+            table.add(fact("Analysis window", track.windowSize() + " samples  ("
+                    + HtmlWriter.number(seconds(track.windowSize(), track.sampleRate()), 3)
+                    + "s), half of which bounds how late an onset read off it can be"));
+            table.add(fact("Hop", track.hopSize() + " samples  ("
+                    + HtmlWriter.number(seconds(track.hopSize(), track.sampleRate()), 3) + "s)"));
+            table.add(fact("Frames", track.frames() + " at "
+                    + HtmlWriter.number(track.frameRate(), 1) + " a second, over "
+                    + ReportTimeline.clock(track.spanSeconds())));
+            table.add(fact("Frames the tracker heard a pitch in", track.frames() == 0
+                    ? "none, because the signal held no frame at all"
+                    : track.voicedFrames() + " of " + track.frames() + "  ("
+                            + Math.round(100.0 * track.voicedFrames() / track.frames()) + "%)"));
+        }
+        facts(table.toArray(new Fact[0]));
+        tuningHonoured(trace.tuning());
+        octaveFold(trace.fold(), trace.gestures());
+        voicedRunLane(trace);
+        runTable(trace.runs());
+        gestureTable(trace.gestures());
+        cutTable(trace.notes());
+        note("The pitch and the voicedness of every frame are not kept: they are the largest"
+                + " thing this stage holds and the least readable, and each decision taken on"
+                + " them is a note, a gesture or a run above. What is not here is the shape of"
+                + " the line between two notes.");
+    }
+
+    /** Which grid the notes were rounded on, and what that was read from (#567). */
+    private void tuningHonoured(MelodyTrace.Tuning tuning) {
+        if (tuning == null) {
+            return;
+        }
+        out.element("h5", "The grid the notes were rounded on").line("");
+        List<Fact> table = new ArrayList<>();
+        table.add(fact("Tuning of the mix",
+                tuningRead(tuning.measured(), tuning.offsetSemitones())));
+        if (tuning.agreement() != null) {
+            table.add(fact("This signal's own pitches sit on that grid at",
+                    HtmlWriter.number(tuning.agreement(), 3) + ", against the "
+                            + HtmlWriter.number(tuning.required(), 3) + " it has to reach"));
+        }
+        table.add(fact("Notes were rounded on", tuning.appliedSemitones() == 0
+                ? "A440" : tuningRead(true, tuning.appliedSemitones())));
+        facts(table.toArray(new Fact[0]));
+        note(whyTheGrid(tuning));
+    }
+
+    /**
+     * Why the notes were rounded where they were.
+     *
+     * <p>Whether a tuning existed at all is one question and what became of one
+     * is another; this and the row above it settle the first the same way.
+     */
+    private static String whyTheGrid(MelodyTrace.Tuning tuning) {
+        if (!tuning.measured()) {
+            return "The front end measured no tuning on the mix, so the melody stage was"
+                    + " offered no grid but A440.";
+        }
+        return switch (tuning.read()) {
+            case MelodyTrace.Tuning.CONCERT_PITCH -> "The mix's tuning reads as concert pitch,"
+                    + " so there was no other grid to round on. A shift that narrow moves only"
+                    + " notes already sitting on a rounding boundary, in whichever direction"
+                    + " they happened to lie.";
+            case MelodyTrace.Tuning.NOT_WEIGHED -> "The offset is measured on the mix and"
+                    + " applied to whatever the tracker read, so it is asked first whether"
+                    + " this signal's own voiced frames sit on the grid it names. This signal"
+                    + " carried none, so nothing was asked and the notes were rounded on A440."
+                    + " That says the tracker heard no pitch here, not that the singing"
+                    + " disagreed with the mix.";
+            case MelodyTrace.Tuning.CORROBORATED -> "The offset is measured on the mix and"
+                    + " applied to whatever the tracker read, so it is asked first whether"
+                    + " this signal's own voiced frames sit on the grid it names. They do.";
+            case MelodyTrace.Tuning.UNCORROBORATED -> "The offset is measured on the mix and"
+                    + " applied to whatever the tracker read, so it is asked first whether"
+                    + " this signal's own voiced frames sit on the grid it names. They do not,"
+                    + " and an offset a signal does not sit on is not a tuning for it: shifting"
+                    + " by it would move whatever share of the notes the shift is wide across a"
+                    + " boundary for nothing.";
+            default -> tuning.read();
+        };
+    }
+
+    /** What the fold judged the melody's own octave to be, and what it moved (#614). */
+    private void octaveFold(MelodyTrace.Fold fold, List<MelodyTrace.Gesture> gestures) {
+        if (fold == null) {
+            note("No note reached the octave fold.");
+            return;
+        }
+        out.element("h5", "The octave the melody is in").line("");
+        long moved = gestures.stream()
+                .filter(gesture -> gesture.shiftSemitones() != 0).count();
+        List<Fact> table = new ArrayList<>();
+        table.add(fact("The line sits around", noteName((int) Math.round(fold.centreMidi()))
+                + "  (" + HtmlWriter.number(fold.centreMidi(), 1) + ")"));
+        table.add(fact("Counted as in that octave",
+                HtmlWriter.number(fold.halfBandSemitones(), 1) + " semitones either side"));
+        if (MelodyTrace.Fold.APPLIED.equals(fold.read())) {
+            table.add(fact("Gestures the fold decided over", String.valueOf(gestures.size())));
+            table.add(fact("Gestures it moved", String.valueOf(moved)));
+        }
+        facts(table.toArray(new Fact[0]));
+        note(MelodyTrace.Fold.APPLIED.equals(fold.read())
+                ? "A monophonic tracker that locks onto a harmonic reports a multiple of the"
+                        + " true frequency, and a multiple of two or four is exactly an octave"
+                        + " or two — so the note is recovered by moving it rather than lost by"
+                        + " dropping it. The decision is taken over a gesture rather than a"
+                        + " note, because notes following one another within a whole tone are"
+                        + " one line moving and which side of the band's edge each falls on is"
+                        + " a semitone of tracker noise."
+                : "The band came out narrower than an octave, which leaves pitch classes with"
+                        + " no representative inside it at all, so every note of one would be"
+                        + " moved on no evidence. Nothing was folded.");
+    }
+
+    /**
+     * Where the tracker heard a pitch at all, over the length of the signal it
+     * read.
+     *
+     * <p>A run that yielded no note is drawn as its own kind rather than left
+     * out: the gaps are the reading here, and a stem a separator emptied is a
+     * lane with nothing on it.
+     */
+    private void voicedRunLane(MelodyTrace trace) {
+        MelodyTrace.Track track = trace.track();
+        if (track == null || !(track.spanSeconds() > 0) || trace.runs().isEmpty()) {
+            return;
+        }
+        out.line("<figure class=\"run-lane\">");
+        out.open("div", "class", "runs");
+        for (MelodyTrace.Run run : trace.runs()) {
+            double from = 100 * run.fromSeconds() / track.spanSeconds();
+            double width = 100 * (run.toSeconds() - run.fromSeconds()) / track.spanSeconds();
+            out.empty("span", "class", run.notes() == 0 ? "run silent" : "run",
+                    "style", "left:" + HtmlWriter.number(Math.clamp(from, 0, 100), 3) + "%"
+                            + ";width:" + HtmlWriter.number(Math.clamp(width, 0, 100), 3) + "%",
+                    "title", ReportTimeline.moment(run.fromSeconds()) + " to "
+                            + ReportTimeline.moment(run.toSeconds()) + ", "
+                            + run.notes() + (run.notes() == 1 ? " note" : " notes"));
+        }
+        out.line("</div>");
+        out.open("div", "class", "axis");
+        out.element("span", ReportTimeline.clock(0));
+        out.element("span", ReportTimeline.clock(track.spanSeconds()));
+        out.line("</div>");
+        out.element("figcaption", "Where the tracker heard a pitch, down the signal it read."
+                + " A gap is a stretch it heard none — silence, or a stem with nothing in it."
+                + " A marked run is one that yielded no note at all.");
+        out.line("</figure>");
+    }
+
+    /** What each voiced run was cut into, and how much of it no note covers. */
+    private void runTable(List<MelodyTrace.Run> runs) {
+        if (runs.isEmpty()) {
+            note("No run of voiced frames was recorded, so there was nothing to cut. That is"
+                    + " what a stem the separator emptied looks like from here, and equally"
+                    + " what silence looks like.");
+            return;
+        }
+        out.line("<details class=\"table\">");
+        out.element("summary", "Every run of voiced frames, and what it was cut into");
+        out.line("<table><thead><tr><th>#</th><th>From</th><th>To</th><th>Pieces</th>"
+                + "<th>Held a pitch</th><th>Joined</th><th>Struck again</th><th>Notes</th>"
+                + "<th>Left to no note</th></tr></thead><tbody>");
+        for (int i = 0; i < runs.size(); i++) {
+            MelodyTrace.Run run = runs.get(i);
+            out.open("tr");
+            out.element("td", String.valueOf(i + 1));
+            out.element("td", ReportTimeline.moment(run.fromSeconds()));
+            out.element("td", ReportTimeline.moment(run.toSeconds()));
+            out.element("td", String.valueOf(run.pieces()));
+            out.element("td", String.valueOf(run.held()));
+            out.element("td", String.valueOf(run.joined()));
+            out.element("td", String.valueOf(run.rearticulations()));
+            out.element("td", String.valueOf(run.notes()));
+            out.element("td", HtmlWriter.number(run.unassignedSeconds(), 3) + "s");
+            out.line("</tr>");
+        }
+        out.line("</tbody></table>");
+        out.line("</details>");
+        note("A run is cut wherever the pitch leaves the note it is in and stays away, and a"
+                + " piece becomes a note only where the pitch settles inside it — so a piece"
+                + " that held none is the path crossing an interval rather than a note that"
+                + " was sung. Two neighbouring pieces rounding to one semitone are joined. The"
+                + " onset envelope adds a boundary where the same pitch is struck again, which"
+                + " a pitch track cannot see. The last column is the head of the run before its"
+                + " first note: a singer arriving at a pitch from below spends it gliding, and"
+                + " those frames belong to no note.");
+    }
+
+    /** What the fold judged each gesture on, and what it moved it by. */
+    private void gestureTable(List<MelodyTrace.Gesture> gestures) {
+        if (gestures.isEmpty()) {
+            return;
+        }
+        out.line("<details class=\"table\">");
+        out.element("summary", "Every gesture the fold decided over");
+        out.line("<table><thead><tr><th>#</th><th>From</th><th>To</th><th>Notes</th>"
+                + "<th>Read at</th><th>Judged on</th><th>Moved by</th><th>Outcome</th>"
+                + "</tr></thead><tbody>");
+        for (int i = 0; i < gestures.size(); i++) {
+            MelodyTrace.Gesture gesture = gestures.get(i);
+            out.open("tr");
+            out.element("td", String.valueOf(i + 1));
+            out.element("td", ReportTimeline.moment(gesture.fromSeconds()));
+            out.element("td", ReportTimeline.moment(gesture.toSeconds()));
+            out.element("td", String.valueOf(gesture.notes()));
+            out.element("td", gesture.lowestMidi() == gesture.highestMidi()
+                    ? noteName(gesture.lowestMidi())
+                    : noteName(gesture.lowestMidi()) + " to " + noteName(gesture.highestMidi()));
+            out.element("td", gesture.heldMidi() == null
+                    ? "nothing — part of it was already in the band"
+                    : noteName(gesture.heldMidi()));
+            out.element("td", gesture.shiftSemitones() == 0 ? "—"
+                    : (gesture.shiftSemitones() > 0 ? "+" : "")
+                            + gesture.shiftSemitones() + " semitones");
+            out.element("td", foldRead(gesture.read()));
+            out.line("</tr>");
+        }
+        out.line("</tbody></table>");
+        out.line("</details>");
+    }
+
+    private static String foldRead(String read) {
+        return switch (read) {
+            case MelodyTrace.Gesture.INSIDE -> "part of it lies in the band, so it is home";
+            case MelodyTrace.Gesture.MOVED -> "moved to the octave of itself nearest the centre";
+            case MelodyTrace.Gesture.OUT_OF_REACH -> "no octave within the bound lands inside"
+                    + " the band, so it was left where it was read";
+            case MelodyTrace.Gesture.OUT_OF_RANGE -> "the move would carry a note off the pitch"
+                    + " range, so it was left where it was read";
+            default -> read;
+        };
+    }
+
+    /** Every note, and the rule that placed its start. */
+    private void cutTable(List<MelodyTrace.Note> notes) {
+        if (notes.isEmpty()) {
+            return;
+        }
+        out.line("<details class=\"table\">");
+        out.element("summary", "Every note, and what began it");
+        out.line("<table><thead><tr><th>#</th><th>From</th><th>To</th><th>Pitch</th>"
+                + "<th>Begun by</th><th>Run</th><th>Gesture</th></tr></thead><tbody>");
+        for (int i = 0; i < notes.size(); i++) {
+            MelodyTrace.Note note = notes.get(i);
+            out.open("tr");
+            out.element("td", String.valueOf(i + 1));
+            out.element("td", ReportTimeline.moment(note.fromSeconds()));
+            out.element("td", ReportTimeline.moment(note.toSeconds()));
+            out.element("td", note.shiftSemitones() == 0
+                    ? noteName(note.midiPitch())
+                    : noteName(note.midiPitch()) + ", read at "
+                            + noteName(note.midiPitch() - note.shiftSemitones()));
+            out.element("td", begunBy(note.startedBy()));
+            out.element("td", String.valueOf(note.run() + 1));
+            out.element("td", note.gesture() == null ? "—"
+                    : String.valueOf(note.gesture() + 1));
+            out.line("</tr>");
+        }
+        out.line("</tbody></table>");
+        out.line("</details>");
+    }
+
+    private static String begunBy(String startedBy) {
+        return switch (startedBy) {
+            case MelodyTrace.Note.RUN -> "the voice starting";
+            case MelodyTrace.Note.PITCH -> "the pitch leaving the note before it";
+            case MelodyTrace.Note.REARTICULATION -> "the envelope, striking the same pitch again";
+            default -> startedBy;
+        };
+    }
+
 
     private void lyrics() {
         boolean any = !score.lyrics().isEmpty();

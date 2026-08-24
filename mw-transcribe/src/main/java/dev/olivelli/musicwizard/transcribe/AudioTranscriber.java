@@ -32,6 +32,7 @@ import dev.olivelli.musicwizard.core.workspace.BeatTrace;
 import dev.olivelli.musicwizard.core.workspace.ChordTrace;
 import dev.olivelli.musicwizard.core.workspace.ChromaTrace;
 import dev.olivelli.musicwizard.core.workspace.KeyTrace;
+import dev.olivelli.musicwizard.core.workspace.MelodyTrace;
 import dev.olivelli.musicwizard.core.workspace.RunLog;
 import dev.olivelli.musicwizard.dsp.BeatTracker;
 import dev.olivelli.musicwizard.dsp.Chroma;
@@ -277,7 +278,8 @@ public final class AudioTranscriber {
         if (beats.isEmpty()) {
             progress.accept("no beats found; returning an empty score");
             runLog.stage(BeatTrace.STAGE).trace(beats.trace()).computed("no pulse was found");
-            for (String unreached : List.of("chords", "key", "melody")) {
+            for (String unreached : List.of(
+                    ChordTrace.STAGE, KeyTrace.STAGE, MelodyTrace.STAGE)) {
                 runLog.stage(unreached).skipped("no beats were tracked, so the run stopped here");
             }
             if (settings.firstDownbeatSeconds() != null) {
@@ -447,14 +449,14 @@ public final class AudioTranscriber {
         // separation in this module, so the signal is chosen by handing it in.
         // The stage is off unless asked for -- see Options.trackMelody.
         if (!settings.trackMelody()) {
-            runLog.stage("melody").skipped("not asked for; analyze --melody reads one");
+            runLog.stage(MelodyTrace.STAGE).skipped("not asked for; analyze --melody reads one");
         } else {
             AudioBuffer melodyAudio = melodySignal(audio, vocalStem);
             boolean separated = melodyAudio != audio;
             progress.accept(separated
                     ? "tracking the melody in the vocal stem"
                     : "tracking the melody in the full mix");
-            RunLog.Stage stage = runLog.stage("melody")
+            RunLog.Stage stage = runLog.stage(MelodyTrace.STAGE)
                     .fact("read from", separated ? "the separated vocal" : "the full mix");
             // The envelope of the signal being tracked, not of the mix. It
             // decides where a note is struck again at the same pitch, and
@@ -470,8 +472,11 @@ public final class AudioTranscriber {
             // rounded on different grids can name the same sounding pitch two
             // ways. The band is also the better reference of the two, having
             // more of the recording in it than one voice does (#566).
-            NoteTrack melody = MelodyEstimator.estimate(
+            MelodyEstimator.Segmented segmented = MelodyEstimator.explain(
                     PitchTracker.track(melodyAudio), melodyEnvelope, tuning);
+            NoteTrack melody = segmented.melody();
+            recordMelody(stage, segmented.trace().readFrom(
+                    separated ? MelodyTrace.SEPARATED_VOCAL : MelodyTrace.FULL_MIX));
             if (melody.isEmpty()) {
                 progress.accept("no melody was found");
                 stage.computed("no melody was found in that signal");
@@ -522,6 +527,20 @@ public final class AudioTranscriber {
                 .fact("spans settled across the root",
                         settledAcrossTheRoot == 0 ? null : settledAcrossTheRoot)
                 .computed();
+    }
+
+    /**
+     * What the segmentation cut, for the run's record (#679).
+     *
+     * <p>The line carries the one thing that separates a stage with nothing to
+     * find from a stage that found nothing: how much of the signal it handed the
+     * tracker was singing at all.
+     */
+    private void recordMelody(RunLog.Stage stage, MelodyTrace trace) {
+        MelodyTrace.Track track = trace.track();
+        stage.trace(trace).fact("voiced", track.frames() == 0 ? null
+                : String.format(Locale.ROOT, "%.0f%% of that signal",
+                        100.0 * track.voicedFrames() / track.frames()));
     }
 
     private static String tuningRead(ChromaTrace trace) {

@@ -202,6 +202,16 @@ dl.facts dd { margin: 0; font-variant-numeric: tabular-nums; }
 .strip { display: flex; flex-wrap: wrap; gap: 1px; margin: .3rem 0 .9rem; }
 .strip .cell { width: .55rem; height: .9rem; border-radius: 1px; }
 
+.run-lane { margin: .3rem 0 .9rem; }
+.run-lane .runs { position: relative; height: 14px; background: var(--panel);
+                  border: 1px solid var(--rule); border-radius: 2px; }
+.run-lane .run { position: absolute; top: 0; bottom: 0; min-width: 1px;
+                 background: var(--accent); }
+.run-lane .run.silent { background: none; border-bottom: 2px dotted var(--faint); }
+.run-lane .axis { display: flex; justify-content: space-between; font-size: .7rem;
+                  color: var(--faint); font-variant-numeric: tabular-nums; }
+.run-lane figcaption { font-size: .78rem; color: var(--muted); margin-top: .25rem; }
+
 details.table { margin: .3rem 0 .9rem; font-size: .85rem; }
 details.table summary { cursor: pointer; color: var(--accent); }
 .phase table { border-collapse: collapse; width: 100%; margin-top: .5rem;
@@ -739,7 +749,59 @@ footer { margin-top: 3rem; padding-top: 1.25rem; border-top: 1px solid var(--rul
 <div class="columns"><span class="column" style="height:20px" title="2 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:0px" title="0 of them"></span><span class="column" style="height:60px" title="6 of them"></span></div>
 <div class="axis"><span>0.125</span><span>0.5</span></div>
 <figcaption>How long the notes are, in seconds</figcaption></figure>
-<p class="gap"><span class="gap-label">Not recorded</span>The pitch track and the voicedness the segmentation read are not recorded, so the page shows the notes and not the decision that cut them (#679).</p>
+<h4>What the segmentation cut</h4>
+<dl class="facts">
+<dt>Signal the tracker read</dt><dd>separated vocal</dd>
+<dt>Analysis window</dt><dd>2048 samples  (0.093s), half of which bounds how late an onset read off it can be</dd>
+<dt>Hop</dt><dd>256 samples  (0.012s)</dd>
+<dt>Frames</dt><dd>689 at 86.1 a second, over 0:08</dd>
+<dt>Frames the tracker heard a pitch in</dt><dd>285 of 689  (41%)</dd>
+</dl>
+<h5>The grid the notes were rounded on</h5>
+<dl class="facts">
+<dt>Tuning of the mix</dt><dd>3.8 cents sharp of A440</dd>
+<dt>This signal's own pitches sit on that grid at</dt><dd>0.44, against the 0.2 it has to reach</dd>
+<dt>Notes were rounded on</dt><dd>3.8 cents sharp of A440</dd>
+</dl>
+<p class="note">The offset is measured on the mix and applied to whatever the tracker read, so it is asked first whether this signal's own voiced frames sit on the grid it names. They do.</p>
+<h5>The octave the melody is in</h5>
+<dl class="facts">
+<dt>The line sits around</dt><dd>D5  (74)</dd>
+<dt>Counted as in that octave</dt><dd>14 semitones either side</dd>
+<dt>Gestures the fold decided over</dt><dd>1</dd>
+<dt>Gestures it moved</dt><dd>0</dd>
+</dl>
+<p class="note">A monophonic tracker that locks onto a harmonic reports a multiple of the true frequency, and a multiple of two or four is exactly an octave or two — so the note is recovered by moving it rather than lost by dropping it. The decision is taken over a gesture rather than a note, because notes following one another within a whole tone are one line moving and which side of the band's edge each falls on is a semitone of tracker noise.</p>
+<figure class="run-lane">
+<div class="runs"><span class="run" style="left:24.25%;width:14.813%" title="0:01.94 to 0:03.12, 3 notes"></span><span class="run" style="left:43.75%;width:14.063%" title="0:03.50 to 0:04.62, 3 notes"></span><span class="run" style="left:62.5%;width:12.5%" title="0:05.00 to 0:06.00, 2 notes"></span></div>
+<div class="axis"><span>0:00</span><span>0:08</span></div>
+<figcaption>Where the tracker heard a pitch, down the signal it read. A gap is a stretch it heard none — silence, or a stem with nothing in it. A marked run is one that yielded no note at all.</figcaption></figure>
+<details class="table">
+<summary>Every run of voiced frames, and what it was cut into</summary><table><thead><tr><th>#</th><th>From</th><th>To</th><th>Pieces</th><th>Held a pitch</th><th>Joined</th><th>Struck again</th><th>Notes</th><th>Left to no note</th></tr></thead><tbody>
+<tr><td>1</td><td>0:01.94</td><td>0:03.12</td><td>4</td><td>3</td><td>0</td><td>0</td><td>3</td><td>0.06s</td></tr>
+<tr><td>2</td><td>0:03.50</td><td>0:04.62</td><td>3</td><td>3</td><td>0</td><td>0</td><td>3</td><td>0s</td></tr>
+<tr><td>3</td><td>0:05.00</td><td>0:06.00</td><td>2</td><td>2</td><td>0</td><td>0</td><td>2</td><td>0s</td></tr>
+</tbody></table>
+</details>
+<p class="note">A run is cut wherever the pitch leaves the note it is in and stays away, and a piece becomes a note only where the pitch settles inside it — so a piece that held none is the path crossing an interval rather than a note that was sung. Two neighbouring pieces rounding to one semitone are joined. The onset envelope adds a boundary where the same pitch is struck again, which a pitch track cannot see. The last column is the head of the run before its first note: a singer arriving at a pitch from below spends it gliding, and those frames belong to no note.</p>
+<details class="table">
+<summary>Every gesture the fold decided over</summary><table><thead><tr><th>#</th><th>From</th><th>To</th><th>Notes</th><th>Read at</th><th>Judged on</th><th>Moved by</th><th>Outcome</th></tr></thead><tbody>
+<tr><td>1</td><td>0:02.00</td><td>0:06.00</td><td>8</td><td>B4 to F5</td><td>nothing — part of it was already in the band</td><td>—</td><td>part of it lies in the band, so it is home</td></tr>
+</tbody></table>
+</details>
+<details class="table">
+<summary>Every note, and what began it</summary><table><thead><tr><th>#</th><th>From</th><th>To</th><th>Pitch</th><th>Begun by</th><th>Run</th><th>Gesture</th></tr></thead><tbody>
+<tr><td>1</td><td>0:02.00</td><td>0:02.50</td><td>C5</td><td>the voice starting</td><td>1</td><td>1</td></tr>
+<tr><td>2</td><td>0:02.50</td><td>0:03.00</td><td>D5</td><td>the pitch leaving the note before it</td><td>1</td><td>1</td></tr>
+<tr><td>3</td><td>0:03.00</td><td>0:03.12</td><td>E5</td><td>the pitch leaving the note before it</td><td>1</td><td>1</td></tr>
+<tr><td>4</td><td>0:03.50</td><td>0:04.00</td><td>F5</td><td>the voice starting</td><td>2</td><td>1</td></tr>
+<tr><td>5</td><td>0:04.00</td><td>0:04.50</td><td>E5</td><td>the pitch leaving the note before it</td><td>2</td><td>1</td></tr>
+<tr><td>6</td><td>0:04.50</td><td>0:04.62</td><td>D5</td><td>the pitch leaving the note before it</td><td>2</td><td>1</td></tr>
+<tr><td>7</td><td>0:05.00</td><td>0:05.50</td><td>C5</td><td>the voice starting</td><td>3</td><td>1</td></tr>
+<tr><td>8</td><td>0:05.50</td><td>0:06.00</td><td>B4</td><td>the pitch leaving the note before it</td><td>3</td><td>1</td></tr>
+</tbody></table>
+</details>
+<p class="note">The pitch and the voicedness of every frame are not kept: they are the largest thing this stage holds and the least readable, and each decision taken on them is a note, a gesture or a run above. What is not here is the shape of the line between two notes.</p>
 </article>
 <article class="phase recorded" id="phase-lyrics"><h3><span class="phase-number">8</span>Lyric alignment<span class="status">output on disk</span></h3>
 <p class="what">Words come either from an LRC file the user supplied or from the transcriber, are split into syllables by the hyphenation patterns for their language, and are placed against the vocal stem.</p>

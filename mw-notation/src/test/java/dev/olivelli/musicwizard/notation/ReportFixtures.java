@@ -39,6 +39,7 @@ import dev.olivelli.musicwizard.core.workspace.BeatTrace;
 import dev.olivelli.musicwizard.core.workspace.ChordTrace;
 import dev.olivelli.musicwizard.core.workspace.ChromaTrace;
 import dev.olivelli.musicwizard.core.workspace.KeyTrace;
+import dev.olivelli.musicwizard.core.workspace.MelodyTrace;
 import dev.olivelli.musicwizard.core.workspace.RunManifest;
 import dev.olivelli.musicwizard.core.workspace.RunTraceJson;
 import dev.olivelli.musicwizard.core.workspace.RunTraces;
@@ -127,27 +128,33 @@ final class ReportFixtures {
      * label, and one stage this build's page has no phase for.
      */
     static RunTraces weighed() {
-        return weighed(defaultOctave(), chroma(), chordDecisions(), keyDecisions());
+        return weighed(defaultOctave(), chroma(), chordDecisions(), keyDecisions(),
+                melodyCuts());
     }
 
     /** The same, with a register reading of the caller's choosing. */
     static RunTraces weighed(BeatTrace.Octave octave) {
-        return weighed(octave, chroma(), chordDecisions(), keyDecisions());
+        return weighed(octave, chroma(), chordDecisions(), keyDecisions(), melodyCuts());
     }
 
     /** The same, with a chroma trace of the caller's choosing. */
     static RunTraces weighed(ChromaTrace chroma) {
-        return weighed(defaultOctave(), chroma, chordDecisions(), keyDecisions());
+        return weighed(defaultOctave(), chroma, chordDecisions(), keyDecisions(), melodyCuts());
     }
 
     /** The same, with a decoder trace of the caller's choosing. */
     static RunTraces weighed(ChordTrace chords) {
-        return weighed(defaultOctave(), chroma(), chords, keyDecisions());
+        return weighed(defaultOctave(), chroma(), chords, keyDecisions(), melodyCuts());
     }
 
     /** The same, with a key trace of the caller's choosing. */
     static RunTraces weighed(KeyTrace key) {
-        return weighed(defaultOctave(), chroma(), chordDecisions(), key);
+        return weighed(defaultOctave(), chroma(), chordDecisions(), key, melodyCuts());
+    }
+
+    /** The same, with a melody trace of the caller's choosing. */
+    static RunTraces weighed(MelodyTrace melody) {
+        return weighed(defaultOctave(), chroma(), chordDecisions(), keyDecisions(), melody);
     }
 
     private static BeatTrace.Octave defaultOctave() {
@@ -155,7 +162,7 @@ final class ReportFixtures {
     }
 
     private static RunTraces weighed(BeatTrace.Octave octave, ChromaTrace chroma,
-                                     ChordTrace chords, KeyTrace key) {
+                                     ChordTrace chords, KeyTrace key, MelodyTrace melody) {
         BeatTrace beats = new BeatTrace(240.5, 120.25, octave,
                 List.of(
                         new BeatTrace.Window(0, 25, true, 240.5, 0.61, 0.88, 120.25,
@@ -170,6 +177,7 @@ final class ReportFixtures {
         collected.put(ChromaTrace.STAGE, chroma);
         collected.put(ChordTrace.STAGE, chords);
         collected.put(KeyTrace.STAGE, key);
+        collected.put(MelodyTrace.STAGE, melody);
         collected.put("hummed-bass", Map.of("hummed", true));
         return RunTraceJson.of(collected);
     }
@@ -625,6 +633,96 @@ final class ReportFixtures {
                     Confidence.of(0.6 + 0.03 * i)));
         }
         return new NoteTrack(PartRole.LEAD_VOCAL, "Voice", notes, Confidence.of(0.66));
+    }
+
+    /**
+     * How {@link #melody()}'s notes were cut, as one pass would have recorded
+     * it: three voiced runs, one of them opening on a glide no note covers, one
+     * of them holding a piece that never settled, and every note near enough to
+     * its neighbour to be one gesture the fold left where it was.
+     *
+     * <p>Its tuning is {@link #chroma()}'s, since the offset the melody rounds
+     * on is the one the front end measured on the mix.
+     */
+    static MelodyTrace melodyCuts() {
+        double glide = 0.06;
+        return new MelodyTrace(MelodyTrace.SEPARATED_VOCAL,
+                new MelodyTrace.Track(22050, 2048, 256, 86.1328125, 689, 285, DURATION),
+                new MelodyTrace.Tuning(0.0375, 0.44, 0.2, 0.0375,
+                        MelodyTrace.Tuning.CORROBORATED),
+                new MelodyTrace.Fold(74, 14, MelodyTrace.Fold.APPLIED),
+                List.of(
+                        new MelodyTrace.Run(4 * SECONDS_PER_BEAT - glide,
+                                6.25 * SECONDS_PER_BEAT, 4, 3, 0, 0, 3, glide),
+                        new MelodyTrace.Run(7 * SECONDS_PER_BEAT,
+                                9.25 * SECONDS_PER_BEAT, 3, 3, 0, 0, 3, 0),
+                        new MelodyTrace.Run(10 * SECONDS_PER_BEAT,
+                                12 * SECONDS_PER_BEAT, 2, 2, 0, 0, 2, 0)),
+                List.of(new MelodyTrace.Gesture(4 * SECONDS_PER_BEAT, 12 * SECONDS_PER_BEAT,
+                        8, 71, 77, null, 0, MelodyTrace.Gesture.INSIDE)),
+                melodyNotes());
+    }
+
+    /** One entry per note of {@link #melody()}, in the same order and at the same times. */
+    private static List<MelodyTrace.Note> melodyNotes() {
+        List<MelodyTrace.Note> notes = new ArrayList<>();
+        int[] runOf = {0, 0, 0, 1, 1, 1, 2, 2};
+        for (Note note : melody().notes()) {
+            int i = notes.size();
+            notes.add(new MelodyTrace.Note(note.onsetSeconds(), note.offsetSeconds(),
+                    note.midiPitch(),
+                    i == 0 || runOf[i] != runOf[i - 1]
+                            ? MelodyTrace.Note.RUN : MelodyTrace.Note.PITCH,
+                    runOf[i], 0, 0));
+        }
+        return notes;
+    }
+
+    /**
+     * The same pass, rounded on a tuning of the caller's choosing — the one
+     * thing about it a page draws without any of the cutting changing.
+     */
+    static MelodyTrace melodyRoundedOn(MelodyTrace.Tuning tuning) {
+        MelodyTrace cuts = melodyCuts();
+        return new MelodyTrace(cuts.signal(), cuts.track(), tuning, cuts.fold(),
+                cuts.runs(), cuts.gestures(), cuts.notes());
+    }
+
+    /**
+     * A melody holding one pitch struck twice, which {@link #melody()} cannot
+     * show: two notes of one pitch with no gap are what the onset envelope is
+     * read for, and every step of that melody changes pitch.
+     */
+    static Score struckAgain() {
+        return withHarmony().withTrack(new NoteTrack(PartRole.LEAD_VOCAL, "Voice",
+                List.of(Note.ofSeconds(4 * SECONDS_PER_BEAT, SECONDS_PER_BEAT, 72,
+                                Confidence.of(0.7)),
+                        Note.ofSeconds(5 * SECONDS_PER_BEAT, SECONDS_PER_BEAT, 72,
+                                Confidence.of(0.7))),
+                Confidence.of(0.7)));
+    }
+
+    /**
+     * The pass that produced {@link #struckAgain()}: one run the envelope cut in
+     * two, and one the tracker heard a pitch in that yielded no note at all.
+     */
+    static MelodyTrace melodyStruckAgain() {
+        return new MelodyTrace(MelodyTrace.FULL_MIX,
+                new MelodyTrace.Track(22050, 2048, 256, 86.1328125, 689, 103, DURATION),
+                new MelodyTrace.Tuning(0.0375, 0.11, 0.2, 0,
+                        MelodyTrace.Tuning.UNCORROBORATED),
+                new MelodyTrace.Fold(72, 14, MelodyTrace.Fold.APPLIED),
+                List.of(
+                        new MelodyTrace.Run(4 * SECONDS_PER_BEAT, 6 * SECONDS_PER_BEAT,
+                                1, 1, 0, 1, 2, 0),
+                        new MelodyTrace.Run(7 * SECONDS_PER_BEAT, 7.4 * SECONDS_PER_BEAT,
+                                2, 0, 0, 0, 0, 0.4 * SECONDS_PER_BEAT)),
+                List.of(new MelodyTrace.Gesture(4 * SECONDS_PER_BEAT, 6 * SECONDS_PER_BEAT,
+                        2, 72, 72, null, 0, MelodyTrace.Gesture.INSIDE)),
+                List.of(new MelodyTrace.Note(4 * SECONDS_PER_BEAT, 5 * SECONDS_PER_BEAT, 72,
+                                MelodyTrace.Note.RUN, 0, 0, 0),
+                        new MelodyTrace.Note(5 * SECONDS_PER_BEAT, 6 * SECONDS_PER_BEAT, 72,
+                                MelodyTrace.Note.REARTICULATION, 0, 0, 0)));
     }
 
     /**

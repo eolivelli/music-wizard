@@ -23,6 +23,7 @@ import static org.assertj.core.api.Assertions.within;
 import dev.olivelli.musicwizard.core.model.Note;
 import dev.olivelli.musicwizard.core.model.NoteTrack;
 import dev.olivelli.musicwizard.core.model.PartRole;
+import dev.olivelli.musicwizard.core.workspace.MelodyTrace;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -823,6 +824,206 @@ class MelodyEstimationTest {
                     .hasSizeGreaterThan(2);
             assertThatIllegalArgumentException().isThrownBy(
                     () -> MelodyEstimator.estimate(pitches, silence, 0, 0));
+        }
+    }
+
+    @Nested
+    @DisplayName("what it writes down about the pass")
+    class Tracing {
+
+        private static final double ENVELOPE_RATE = 172.0;
+
+        private static OnsetEnvelope silence() {
+            return new OnsetEnvelope(new double[600], ENVELOPE_RATE);
+        }
+
+        private static MelodyTrace trace(PitchTrack pitches) {
+            return MelodyEstimator.explain(pitches, silence(), 0).trace();
+        }
+
+        @Test
+        @DisplayName("describes the very notes the stage returned")
+        void describesTheNotesItReturned() {
+            MelodyEstimator.Segmented segmented = MelodyEstimator.explain(
+                    track(60.0, 40, 62.0, 40, null, 20, 64.0, 40), silence(), 0);
+
+            List<Note> notes = segmented.melody().notes();
+            assertThat(segmented.trace().notes()).hasSameSizeAs(notes);
+            for (int i = 0; i < notes.size(); i++) {
+                MelodyTrace.Note traced = segmented.trace().notes().get(i);
+                assertThat(traced.midiPitch()).isEqualTo(notes.get(i).midiPitch());
+                assertThat(traced.fromSeconds()).isEqualTo(notes.get(i).onsetSeconds());
+                assertThat(traced.toSeconds()).isEqualTo(notes.get(i).offsetSeconds());
+            }
+            assertThat(segmented.melody()).isEqualTo(
+                    MelodyEstimator.estimate(track(60.0, 40, 62.0, 40, null, 20, 64.0, 40),
+                            silence(), 0));
+        }
+
+        @Test
+        @DisplayName("names the rule that placed each note's start")
+        void namesWhatBeganEachNote() {
+            MelodyTrace trace = trace(track(60.0, 40, 62.0, 40, null, 20, 64.0, 40));
+
+            assertThat(trace.notes()).extracting(MelodyTrace.Note::startedBy)
+                    .containsExactly(MelodyTrace.Note.RUN, MelodyTrace.Note.PITCH,
+                            MelodyTrace.Note.RUN);
+            assertThat(trace.notes()).extracting(MelodyTrace.Note::run)
+                    .containsExactly(0, 0, 1);
+            assertThat(trace.runs()).hasSize(2);
+        }
+
+        @Test
+        @DisplayName("counts the pieces a run held a pitch in, and the ones it did not")
+        void countsThePiecesThatHeldAPitch() {
+            // A glide between two notes: its pieces are cut like any others and
+            // become no note, which is the only place the two counts differ.
+            MelodyTrace trace = trace(track(Glides.runs(
+                    60.0, 40, Glides.ramp(60.2, 67.8, 41), 68.0, 40)));
+
+            assertThat(trace.runs()).hasSize(1);
+            MelodyTrace.Run run = trace.runs().get(0);
+            assertThat(run.held()).isEqualTo(2);
+            assertThat(run.pieces()).isGreaterThan(run.held());
+            assertThat(run.notes()).isEqualTo(2);
+        }
+
+        @Test
+        @DisplayName("measures the head of a run that no note covers")
+        void measuresTheGlideNoNoteTakes() {
+            // A run that opens on a glide: the first note starts where the
+            // pitch settles, and the frames before it belong to nothing.
+            MelodyTrace trace = trace(track(Glides.runs(
+                    Glides.ramp(60.0, 67.8, 41), 68.0, 40)));
+
+            MelodyTrace.Run run = trace.runs().get(0);
+            assertThat(run.unassignedSeconds()).isGreaterThan(0);
+            assertThat(trace.notes().get(0).fromSeconds())
+                    .isEqualTo(run.fromSeconds() + run.unassignedSeconds());
+        }
+
+        @Test
+        @DisplayName("a run that yielded no note reports all of itself as unassigned")
+        void aRunWithNoNoteIsAllUnassigned() {
+            MelodyTrace trace = trace(track(Glides.runs(Glides.ramp(60.0, 79.0, 41))));
+
+            assertThat(trace.notes()).isEmpty();
+            MelodyTrace.Run run = trace.runs().get(0);
+            assertThat(run.notes()).isZero();
+            assertThat(run.unassignedSeconds())
+                    .isEqualTo(run.toSeconds() - run.fromSeconds());
+        }
+
+        @Test
+        @DisplayName("counts the boundaries the envelope added, and marks the notes")
+        void countsRearticulations() {
+            double[] strength = new double[(int) Math.ceil(1.3 * ENVELOPE_RATE)];
+            strength[(int) Math.round(0.6 * ENVELOPE_RATE)] = 5.0;
+            double[] hz = new double[100];
+            boolean[] voiced = new boolean[100];
+            double[] voicedness = new double[100];
+            for (int i = 0; i < 100; i++) {
+                hz[i] = 440;
+                voiced[i] = true;
+                voicedness[i] = i >= 44 && i <= 52 ? 0.3 : 0.9;
+            }
+            MelodyTrace trace = MelodyEstimator.explain(
+                    new PitchTrack(hz, voiced, voicedness, RATE,
+                            PitchTracker.WINDOW, PitchTracker.HOP),
+                    new OnsetEnvelope(strength, ENVELOPE_RATE), 0).trace();
+
+            assertThat(trace.runs().get(0).rearticulations()).isEqualTo(1);
+            assertThat(trace.notes()).extracting(MelodyTrace.Note::startedBy)
+                    .containsExactly(MelodyTrace.Note.RUN, MelodyTrace.Note.REARTICULATION);
+        }
+
+        @Test
+        @DisplayName("a signal with nothing in it says so rather than saying nothing")
+        void aSignalWithNothingInItIsLegible() {
+            MelodyTrace trace = trace(track(null, 200));
+
+            assertThat(trace.track().frames()).isEqualTo(200);
+            assertThat(trace.track().voicedFrames()).isZero();
+            assertThat(trace.runs()).isEmpty();
+            assertThat(trace.notes()).isEmpty();
+            assertThat(trace.fold()).as("no note reached the fold").isNull();
+        }
+
+        @Test
+        @DisplayName("a signal with nothing voiced in it disagrees with no offset")
+        void anEmptySignalWeighsNoOffset() {
+            // The emptied stem of #575: a track this long says nothing about
+            // whether the singing sits on the mix's grid, and recording that as
+            // a disagreement would put a reading where there was no comparison.
+            MelodyTrace.Tuning tuning = MelodyEstimator.explain(
+                    track(null, 200), silence(), -0.36).trace().tuning();
+
+            assertThat(tuning.read()).isEqualTo(MelodyTrace.Tuning.NOT_WEIGHED);
+            assertThat(tuning.agreement()).isNull();
+            assertThat(tuning.appliedSemitones()).isZero();
+        }
+
+        @Test
+        @DisplayName("an offset the front end never measured is recorded as no measurement")
+        void anUnmeasuredOffsetIsNotAMeasurement() {
+            MelodyTrace.Tuning tuning = trace(track(69.0, 40)).tuning();
+
+            assertThat(tuning.measured()).isFalse();
+            assertThat(tuning.agreement()).isNull();
+            assertThat(tuning.appliedSemitones()).isZero();
+        }
+
+        @Test
+        @DisplayName("records what each gesture was moved by, and which notes it carried")
+        void recordsTheOctaveFold() {
+            MelodyTrace trace = trace(track(OctaveErrors.with(
+                    OctaveErrors.singing(), null, 4, 86.0, 20)));
+
+            assertThat(trace.fold().read()).isEqualTo(MelodyTrace.Fold.APPLIED);
+            MelodyTrace.Note last = trace.notes().get(trace.notes().size() - 1);
+            assertThat(last.shiftSemitones()).isEqualTo(-24);
+            MelodyTrace.Gesture moved = trace.gestures().get(last.gesture());
+            assertThat(moved.read()).isEqualTo(MelodyTrace.Gesture.MOVED);
+            assertThat(moved.lowestMidi()).as("the pitch as the tracker read it").isEqualTo(86);
+            assertThat(moved.heldMidi()).isEqualTo(86);
+            assertThat(trace.gestures()).extracting(MelodyTrace.Gesture::read)
+                    .contains(MelodyTrace.Gesture.INSIDE);
+        }
+
+        @Test
+        @DisplayName("an offset reading as concert pitch is recorded as one nothing tested")
+        void anOffsetReadingAsConcertPitchIsNotTested() {
+            MelodyTrace.Tuning tuning = MelodyEstimator.explain(track(69.0, 40), silence(),
+                    -Chroma.TUNING_RESOLUTION_SEMITONES / 2).trace().tuning();
+
+            assertThat(tuning.read()).isEqualTo(MelodyTrace.Tuning.CONCERT_PITCH);
+            assertThat(tuning.agreement()).isNull();
+            assertThat(tuning.appliedSemitones()).isZero();
+        }
+
+        @Test
+        @DisplayName("an offset the track sits on is recorded with what it was weighed on")
+        void aCorroboratedOffsetCarriesItsReading() {
+            MelodyTrace.Tuning tuning = MelodyEstimator.explain(
+                    track(69 - 0.36 - 0.15, 40, 71 - 0.36 - 0.05, 40),
+                    silence(), -0.36).trace().tuning();
+
+            assertThat(tuning.read()).isEqualTo(MelodyTrace.Tuning.CORROBORATED);
+            assertThat(tuning.agreement()).isGreaterThanOrEqualTo(tuning.required());
+            assertThat(tuning.appliedSemitones()).isEqualTo(-0.36);
+        }
+
+        @Test
+        @DisplayName("an offset the track does not sit on is recorded as refused")
+        void anUncorroboratedOffsetCarriesItsReading() {
+            MelodyTrace.Tuning tuning = MelodyEstimator.explain(
+                    track(60.0, 40, 62.4, 40, 64.8, 40, 67.2, 40, 69.6, 40),
+                    silence(), -0.4).trace().tuning();
+
+            assertThat(tuning.read()).isEqualTo(MelodyTrace.Tuning.UNCORROBORATED);
+            assertThat(tuning.agreement()).isLessThan(tuning.required());
+            assertThat(tuning.appliedSemitones())
+                    .as("so the notes were rounded on A440 after all").isZero();
         }
     }
 }

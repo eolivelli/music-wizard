@@ -20,11 +20,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import dev.olivelli.musicwizard.core.model.Confidence;
 import dev.olivelli.musicwizard.core.model.Key;
+import dev.olivelli.musicwizard.core.model.Note;
+import dev.olivelli.musicwizard.core.model.PartRole;
 import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.workspace.BeatTrace;
 import dev.olivelli.musicwizard.core.workspace.ChordTrace;
 import dev.olivelli.musicwizard.core.workspace.ChromaTrace;
 import dev.olivelli.musicwizard.core.workspace.KeyTrace;
+import dev.olivelli.musicwizard.core.workspace.MelodyTrace;
 import dev.olivelli.musicwizard.core.workspace.RunManifest;
 import dev.olivelli.musicwizard.core.workspace.RunManifest.Outcome;
 import dev.olivelli.musicwizard.core.workspace.Workspace;
@@ -33,6 +36,7 @@ import dev.olivelli.musicwizard.testkit.SignalFactory;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -114,6 +118,12 @@ class RunManifestCliTest {
         return Workspace.open(workspaceDirectory).readRunTraces().orElseThrow()
                 .trace(KeyTrace.STAGE, KeyTrace.class)
                 .orElseThrow(() -> new AssertionError("this run recorded no key trace"));
+    }
+
+    private MelodyTrace melodyTrace() {
+        return Workspace.open(workspaceDirectory).readRunTraces().orElseThrow()
+                .trace(MelodyTrace.STAGE, MelodyTrace.class)
+                .orElseThrow(() -> new AssertionError("this run recorded no melody trace"));
     }
 
     private BeatTrace beatTrace() {
@@ -336,6 +346,38 @@ class RunManifestCliTest {
         assertThat(stage("beats").outcome()).isEqualTo(Outcome.CACHED);
         assertThat(Workspace.open(workspaceDirectory).readRunTraces().orElseThrow().traces())
                 .doesNotContainKey("beats");
+    }
+
+    @Test
+    @DisplayName("the melody stage writes down what it cut out of the signal it read")
+    void theMelodyTraceIsWritten() throws IOException {
+        configureSeparation("fake-cli-voice");
+
+        analyze("--melody");
+
+        MelodyTrace trace = melodyTrace();
+        assertThat(trace.signal()).isEqualTo(MelodyTrace.SEPARATED_VOCAL);
+        assertThat(trace.track().frames()).isPositive();
+        assertThat(trace.tuning()).isNotNull();
+        // The record describes the notes the score kept, one entry each, and
+        // the runs account for every one of them.
+        List<Note> notes = score().track(PartRole.LEAD_VOCAL).orElseThrow().notes();
+        assertThat(trace.notes()).hasSameSizeAs(notes);
+        assertThat(trace.notes()).extracting(MelodyTrace.Note::midiPitch)
+                .isEqualTo(notes.stream().map(Note::midiPitch).toList());
+        assertThat(trace.runs().stream().mapToInt(MelodyTrace.Run::notes).sum())
+                .isEqualTo(trace.notes().size());
+        assertThat(stage("melody").facts()).containsKey("voiced");
+    }
+
+    @Test
+    @DisplayName("a run that was never asked for a melody records no melody trace")
+    void aMelodyNeverAskedForRecordsNoTrace() {
+        analyze();
+
+        assertThat(stage("melody").outcome()).isEqualTo(Outcome.SKIPPED);
+        assertThat(Workspace.open(workspaceDirectory).readRunTraces().orElseThrow()
+                .trace(MelodyTrace.STAGE, MelodyTrace.class)).isEmpty();
     }
 
     @Test
