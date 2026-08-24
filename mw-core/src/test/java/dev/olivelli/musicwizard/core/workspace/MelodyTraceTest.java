@@ -52,6 +52,20 @@ class MelodyTraceTest {
     }
 
     @Test
+    @DisplayName("whether a tuning was measured is read off the offset, not stored")
+    void whetherATuningWasMeasuredIsDerived() {
+        // A record an earlier build wrote carries no such field, and a stored
+        // one would default to false and contradict its own offset. So it is
+        // derived — and must stay out of the file it is derived from.
+        String json = RunTraceJson.toJson(RunTraceJson.of(Map.of(MelodyTrace.STAGE, trace())));
+
+        assertThat(json).doesNotContain("measured");
+        assertThat(trace().tuning().measured()).isTrue();
+        assertThat(new MelodyTrace.Tuning(0, null, 0.2, 0, MelodyTrace.Tuning.CONCERT_PITCH)
+                .measured()).as("a zero offset is the estimator's no-evidence answer").isFalse();
+    }
+
+    @Test
     @DisplayName("a stage that found nothing round-trips as one that found nothing")
     void anEmptyPassSurvivesTheRoundTrip() {
         MelodyTrace empty = new MelodyTrace(MelodyTrace.FULL_MIX,
