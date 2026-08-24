@@ -801,9 +801,13 @@ class AnalysisReportTest {
     @Test
     @DisplayName("a stage that ran and found no note draws its reading rather than nothing")
     void aMelodyStageThatFoundNothingStillDrawsWhatItRead() {
+        // A stem the separator emptied, on a recording whose mix was measured
+        // off concert pitch: nothing was weighed, and a page that read that as
+        // a disagreement would say the singing disputes the mix twelve lines
+        // under its own count of no voiced frame at all.
         MelodyTrace nothing = new MelodyTrace(MelodyTrace.SEPARATED_VOCAL,
                 new MelodyTrace.Track(22050, 2048, 256, 86.1328125, 689, 0, 8),
-                new MelodyTrace.Tuning(0, null, 0.2, 0, MelodyTrace.Tuning.CONCERT_PITCH),
+                new MelodyTrace.Tuning(0.0375, null, 0.2, 0, MelodyTrace.Tuning.NOT_WEIGHED),
                 null, List.of(), List.of(), List.of());
 
         String page = AnalysisReport.toHtml(ReportFixtures.chordsOnly(), RECORDING,
@@ -812,8 +816,31 @@ class AnalysisReportTest {
         assertThat(page).contains("What the segmentation cut",
                 "<dt>Frames the tracker heard a pitch in</dt><dd>0 of 689  (0%)</dd>",
                 "No run of voiced frames was recorded, so there was nothing to cut",
-                "No note reached the octave fold.");
-        assertThat(page).doesNotContain("Every note, and what began it");
+                "No note reached the octave fold.",
+                "This signal carried none, so nothing was asked");
+        assertThat(page).doesNotContain("Every note, and what began it",
+                "They do not, and an offset a signal does not sit on");
+    }
+
+    @Test
+    @DisplayName("an offset nothing measured is not drawn as one measured at nothing")
+    void anUnmeasuredOffsetIsNotDrawnAsZeroCents() {
+        // Exactly zero is the tuning estimator's "no evidence" answer, and the
+        // chroma phase already says so on this page. The melody phase reads
+        // the same fact through the same words rather than a second copy.
+        MelodyTrace unmeasured = new MelodyTrace(MelodyTrace.FULL_MIX,
+                new MelodyTrace.Track(22050, 2048, 256, 86.1328125, 689, 285, 8),
+                new MelodyTrace.Tuning(0, null, 0.2, 0, MelodyTrace.Tuning.NOT_MEASURED),
+                new MelodyTrace.Fold(74, 14, MelodyTrace.Fold.APPLIED),
+                List.of(), List.of(), List.of());
+
+        String page = AnalysisReport.toHtml(ReportFixtures.everything(), RECORDING,
+                ReportFixtures.run(), ReportFixtures.weighed(unmeasured));
+
+        assertThat(page).contains("<dt>Tuning of the mix</dt><dd>not measured — the spectrum"
+                        + " held no peaks to read one from, so concert pitch was assumed</dd>",
+                "The front end measured no tuning on the mix");
+        assertThat(page).doesNotContain("0.0 cents sharp", "0.0 cents flat");
     }
 
     @Test

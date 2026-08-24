@@ -278,7 +278,8 @@ public final class AudioTranscriber {
         if (beats.isEmpty()) {
             progress.accept("no beats found; returning an empty score");
             runLog.stage(BeatTrace.STAGE).trace(beats.trace()).computed("no pulse was found");
-            for (String unreached : List.of("chords", "key", "melody")) {
+            for (String unreached : List.of(
+                    ChordTrace.STAGE, KeyTrace.STAGE, MelodyTrace.STAGE)) {
                 runLog.stage(unreached).skipped("no beats were tracked, so the run stopped here");
             }
             if (settings.firstDownbeatSeconds() != null) {

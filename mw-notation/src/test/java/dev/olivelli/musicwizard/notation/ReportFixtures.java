@@ -698,7 +698,7 @@ final class ReportFixtures {
      */
     static MelodyTrace melodyStruckAgain() {
         return new MelodyTrace(MelodyTrace.FULL_MIX,
-                new MelodyTrace.Track(22050, 2048, 256, 86.1328125, 689, 121, DURATION),
+                new MelodyTrace.Track(22050, 2048, 256, 86.1328125, 689, 103, DURATION),
                 new MelodyTrace.Tuning(0.0375, 0.11, 0.2, 0,
                         MelodyTrace.Tuning.UNCORROBORATED),
                 new MelodyTrace.Fold(72, 14, MelodyTrace.Fold.APPLIED),

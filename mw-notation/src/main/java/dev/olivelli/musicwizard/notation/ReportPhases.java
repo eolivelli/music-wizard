@@ -342,7 +342,8 @@ final class ReportPhases {
     private void whatTheFitRead(ChromaTrace trace) {
         out.element("h4", "What the front end read").line("");
         List<Fact> table = new ArrayList<>();
-        table.add(fact("Tuning", tuningRead(trace)));
+        table.add(fact("Tuning", tuningRead(trace.tuningMeasured(),
+                trace.tuningOffsetSemitones())));
         ChromaTrace.Fit fit = trace.fit();
         if (fit == null) {
             table.add(fact("Model the spectrum was fitted with", "not recorded"));
@@ -398,12 +399,17 @@ final class ReportPhases {
         return sampleRate > 0 ? (double) samples / sampleRate : 0;
     }
 
-    private static String tuningRead(ChromaTrace trace) {
-        if (!trace.tuningMeasured()) {
+    /**
+     * How far the recording sits from concert pitch, worded once for the two
+     * phases that print it — the front end that measured it and the melody
+     * stage it was offered to.
+     */
+    private static String tuningRead(boolean measured, double offsetSemitones) {
+        if (!measured) {
             return "not measured — the spectrum held no peaks to read one from, so concert"
                     + " pitch was assumed";
         }
-        double cents = 100 * trace.tuningOffsetSemitones();
+        double cents = 100 * offsetSemitones;
         return HtmlWriter.number(Math.abs(cents), 1) + " cents "
                 + (cents < 0 ? "flat" : "sharp") + " of A440";
     }
@@ -895,21 +901,30 @@ final class ReportPhases {
         }
         out.element("h5", "The grid the notes were rounded on").line("");
         List<Fact> table = new ArrayList<>();
-        table.add(fact("Offset the mix was measured at",
-                cents(tuning.offsetSemitones())));
+        table.add(fact("Tuning of the mix", tuningRead(
+                !MelodyTrace.Tuning.NOT_MEASURED.equals(tuning.read()),
+                tuning.offsetSemitones())));
         if (tuning.agreement() != null) {
             table.add(fact("This signal's own pitches sit on that grid at",
                     HtmlWriter.number(tuning.agreement(), 3) + ", against the "
                             + HtmlWriter.number(tuning.required(), 3) + " it has to reach"));
         }
         table.add(fact("Notes were rounded on", tuning.appliedSemitones() == 0
-                ? "A440" : cents(tuning.appliedSemitones())));
+                ? "A440" : tuningRead(true, tuning.appliedSemitones())));
         facts(table.toArray(new Fact[0]));
         note(switch (tuning.read()) {
-            case MelodyTrace.Tuning.CONCERT_PITCH -> "The mix reads as concert pitch, so there"
-                    + " was no other grid to round on. A shift that narrow moves only notes"
-                    + " already sitting on a rounding boundary, in whichever direction they"
-                    + " happened to lie.";
+            case MelodyTrace.Tuning.NOT_MEASURED -> "The front end measured no tuning on the"
+                    + " mix, so the melody stage was offered no grid but A440.";
+            case MelodyTrace.Tuning.CONCERT_PITCH -> "The mix's tuning reads as concert pitch,"
+                    + " so there was no other grid to round on. A shift that narrow moves only"
+                    + " notes already sitting on a rounding boundary, in whichever direction"
+                    + " they happened to lie.";
+            case MelodyTrace.Tuning.NOT_WEIGHED -> "The offset is measured on the mix and"
+                    + " applied to whatever the tracker read, so it is asked first whether"
+                    + " this signal's own voiced frames sit on the grid it names. This signal"
+                    + " carried none, so nothing was asked and the notes were rounded on A440."
+                    + " That says the tracker heard no pitch here, not that the singing"
+                    + " disagreed with the mix.";
             case MelodyTrace.Tuning.CORROBORATED -> "The offset is measured on the mix and"
                     + " applied to whatever the tracker read, so it is asked first whether"
                     + " this signal's own voiced frames sit on the grid it names. They do.";
@@ -1037,14 +1052,15 @@ final class ReportPhases {
         }
         out.line("<details class=\"table\">");
         out.element("summary", "Every gesture the fold decided over");
-        out.line("<table><thead><tr><th>#</th><th>From</th><th>Notes</th><th>Read at</th>"
-                + "<th>Judged on</th><th>Moved by</th><th>Outcome</th>"
+        out.line("<table><thead><tr><th>#</th><th>From</th><th>To</th><th>Notes</th>"
+                + "<th>Read at</th><th>Judged on</th><th>Moved by</th><th>Outcome</th>"
                 + "</tr></thead><tbody>");
         for (int i = 0; i < gestures.size(); i++) {
             MelodyTrace.Gesture gesture = gestures.get(i);
             out.open("tr");
             out.element("td", String.valueOf(i + 1));
             out.element("td", ReportTimeline.moment(gesture.fromSeconds()));
+            out.element("td", ReportTimeline.moment(gesture.toSeconds()));
             out.element("td", String.valueOf(gesture.notes()));
             out.element("td", gesture.lowestMidi() == gesture.highestMidi()
                     ? noteName(gesture.lowestMidi())
@@ -1112,11 +1128,6 @@ final class ReportPhases {
         };
     }
 
-    private static String cents(double semitones) {
-        double cents = 100 * semitones;
-        return HtmlWriter.number(Math.abs(cents), 1) + " cents "
-                + (cents < 0 ? "flat" : "sharp") + " of A440";
-    }
 
     private void lyrics() {
         boolean any = !score.lyrics().isEmpty();

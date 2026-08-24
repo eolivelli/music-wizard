@@ -662,16 +662,30 @@ public final class MelodyEstimator {
      * corroborated either, because there is nothing to corroborate.
      */
     private static MelodyTrace.Tuning tuning(PitchTrack pitches, double tuningOffsetSemitones) {
+        // The three ways an offset can fail to reach the rounding are kept
+        // apart, because a track with nothing voiced in it disagrees with
+        // nothing and a page that read them as one would say it did.
+        if (!Chroma.measuredATuning(tuningOffsetSemitones)) {
+            return refused(tuningOffsetSemitones, MelodyTrace.Tuning.NOT_MEASURED);
+        }
         if (Chroma.readsAsConcertPitch(tuningOffsetSemitones)) {
-            return new MelodyTrace.Tuning(tuningOffsetSemitones, null,
-                    TUNING_CORROBORATION_FLOOR, 0, MelodyTrace.Tuning.CONCERT_PITCH);
+            return refused(tuningOffsetSemitones, MelodyTrace.Tuning.CONCERT_PITCH);
         }
         Double agreement = corroboration(pitches, tuningOffsetSemitones);
-        boolean honoured = agreement != null && agreement >= TUNING_CORROBORATION_FLOOR;
+        if (agreement == null) {
+            return refused(tuningOffsetSemitones, MelodyTrace.Tuning.NOT_WEIGHED);
+        }
+        boolean honoured = agreement >= TUNING_CORROBORATION_FLOOR;
         return new MelodyTrace.Tuning(tuningOffsetSemitones, agreement,
                 TUNING_CORROBORATION_FLOOR, honoured ? tuningOffsetSemitones : 0,
                 honoured ? MelodyTrace.Tuning.CORROBORATED
                         : MelodyTrace.Tuning.UNCORROBORATED);
+    }
+
+    /** An offer the rounding did not take, on a reading nothing measured. */
+    private static MelodyTrace.Tuning refused(double tuningOffsetSemitones, String read) {
+        return new MelodyTrace.Tuning(tuningOffsetSemitones, null,
+                TUNING_CORROBORATION_FLOOR, 0, read);
     }
 
     /**

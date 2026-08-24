@@ -950,6 +950,30 @@ class MelodyEstimationTest {
         }
 
         @Test
+        @DisplayName("a signal with nothing voiced in it disagrees with no offset")
+        void anEmptySignalWeighsNoOffset() {
+            // The emptied stem of #575: a track this long says nothing about
+            // whether the singing sits on the mix's grid, and recording that as
+            // a disagreement would put a reading where there was no comparison.
+            MelodyTrace.Tuning tuning = MelodyEstimator.explain(
+                    track(null, 200), silence(), -0.36).trace().tuning();
+
+            assertThat(tuning.read()).isEqualTo(MelodyTrace.Tuning.NOT_WEIGHED);
+            assertThat(tuning.agreement()).isNull();
+            assertThat(tuning.appliedSemitones()).isZero();
+        }
+
+        @Test
+        @DisplayName("an offset the front end never measured is not one it measured at zero")
+        void anUnmeasuredOffsetIsItsOwnReading() {
+            MelodyTrace.Tuning tuning = trace(track(69.0, 40)).tuning();
+
+            assertThat(tuning.read()).isEqualTo(MelodyTrace.Tuning.NOT_MEASURED);
+            assertThat(tuning.agreement()).isNull();
+            assertThat(tuning.appliedSemitones()).isZero();
+        }
+
+        @Test
         @DisplayName("records what each gesture was moved by, and which notes it carried")
         void recordsTheOctaveFold() {
             MelodyTrace trace = trace(track(OctaveErrors.with(
@@ -969,7 +993,8 @@ class MelodyEstimationTest {
         @Test
         @DisplayName("an offset reading as concert pitch is recorded as one nothing tested")
         void anOffsetReadingAsConcertPitchIsNotTested() {
-            MelodyTrace.Tuning tuning = trace(track(69.0, 40)).tuning();
+            MelodyTrace.Tuning tuning = MelodyEstimator.explain(track(69.0, 40), silence(),
+                    -Chroma.TUNING_RESOLUTION_SEMITONES / 2).trace().tuning();
 
             assertThat(tuning.read()).isEqualTo(MelodyTrace.Tuning.CONCERT_PITCH);
             assertThat(tuning.agreement()).isNull();

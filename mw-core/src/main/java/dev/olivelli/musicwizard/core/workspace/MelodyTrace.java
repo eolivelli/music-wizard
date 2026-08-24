@@ -84,8 +84,7 @@ public record MelodyTrace(
      * only this says that none of it was singing.
      *
      * @param sampleRate   the rate the tracker ran at
-     * @param windowSize   analysis window in samples, which bounds how early an
-     *                     onset read off this track can be
+     * @param windowSize   analysis window in samples
      * @param hopSize      samples between frames
      * @param frameRate    frames a second
      * @param frames       how many the signal gave
@@ -113,14 +112,15 @@ public record MelodyTrace(
      *
      * @param offsetSemitones   how far the recording was said to sit above A440
      * @param agreement         how strongly this track's own voiced frames sit on
-     *                          that grid, or null where the offset said nothing
-     *                          the estimator can resolve and none was measured
+     *                          that grid, or null wherever the comparison was
+     *                          never made — which {@code read} distinguishes
      * @param required          what the agreement had to reach
      * @param appliedSemitones  the grid the notes were rounded on
-     * @param read              {@code concert-pitch} where the offset named no
-     *                          grid to test, {@code corroborated} where the track
-     *                          sat on the one it named, {@code uncorroborated}
-     *                          where it did not
+     * @param read              which of the four things happened: no tuning was
+     *                          measured on the mix at all, one was and reads as
+     *                          concert pitch, one was and this signal offered
+     *                          nothing to weigh it against, or it was weighed —
+     *                          {@code corroborated} or not
      */
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record Tuning(
@@ -130,8 +130,22 @@ public record MelodyTrace(
             double appliedSemitones,
             String read) {
 
+        /**
+         * The front end measured no tuning on the mix, so there was none to
+         * offer. Not the same as a recording that is in tune, which measures as
+         * one of the slots beside concert pitch.
+         */
+        public static final String NOT_MEASURED = "not-measured";
+
         /** The offset says nothing the tuning estimator can resolve. */
         public static final String CONCERT_PITCH = "concert-pitch";
+
+        /**
+         * The offset named a grid, and this signal carried no voiced frame to
+         * weigh against it — which is what an emptied stem leaves, and is not a
+         * reading about the singing.
+         */
+        public static final String NOT_WEIGHED = "not-weighed";
 
         /** The track's own pitches sit on the grid it names. */
         public static final String CORROBORATED = "corroborated";
