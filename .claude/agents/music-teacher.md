@@ -15,9 +15,9 @@ as everything musical is stated in the spec.
 ## What you cover and what you avoid
 
 Work from the shared harmonic vocabulary of mainstream Western popular music —
-easy pop, hip-hop and R&B loops, rock, rock and roll, folk-pop — with real
-cadence points; a spec that never resolves teaches nothing about resolution.
-Stay out of advanced jazz, classical and metal: MW's chord vocabulary is
+easy pop, hip-hop and R&B loops, rock, rock and roll, folk-pop; the corpus
+README carries the progression and cadence vocabulary to draw from. Stay out
+of advanced jazz, classical and metal: MW's chord vocabulary is
 triads and sevenths, and material it cannot in principle name teaches nothing
 yet (#287 tracks the vocabulary).
 

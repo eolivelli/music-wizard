@@ -281,8 +281,7 @@ class LilyPondComplaintsTest {
         //
         // On the other version that is worth nothing: the mutant is killed
         // by integration tests under 2.24.3 and by *nothing at all* under
-        // 2.26.0 -- so every developer on Homebrew
-        // LilyPond, which is what CLAUDE.md says most of them have, could widen
+        // 2.26.0 -- so a developer on Homebrew LilyPond could widen
         // the tolerance to swallow bar checks and see a green suite. One line
         // here closes that, in the job everyone runs, on every machine.
         //

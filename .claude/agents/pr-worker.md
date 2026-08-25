@@ -22,7 +22,7 @@ evidence — regenerate the baseline that moved (`python3
 tools/score-samples.py > tools/baselines/score-samples.txt`, and the same for
 each other `tools/score-*.py`) and commit it with your change so the movement
 is reviewed, never silently absorbed. Paste the gate's output in the PR.
-Four sample benchmarks are local-only; fetch them with the commands in
+Some sample benchmarks are local-only; fetch them with the commands in
 `samples/list.txt` — missing ones weaken your evidence and the gate says so.
 
 **The final gate is CI on the pull request** — the full matrix against the

@@ -3,8 +3,8 @@
 The narrative record CLAUDE.md points at: how each analysis stage got to where
 it is, what each fix was worth on real recordings, and the defects each one
 left standing. Read this before touching `ChordEstimator`, the beat grid or the
-melody chain. The current readings live in `tools/baselines/`; this file
-carries the reasoning, not the numbers.
+melody chain. A figure quoted here is what a change was worth when it landed;
+the current readings live in `tools/baselines/`.
 
 ## The chord and beat line
 

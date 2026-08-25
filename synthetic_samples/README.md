@@ -45,6 +45,17 @@ for now; the arranger refuses anything else. File names like the corpus:
 `<genre>-<slug>-<key>-<bpm>`, lowercase (`pop-doowop-eb-72`); the spec file
 is `<name>.spec.txt`.
 
+Grids draw from the shared harmonic vocabulary of mainstream Western popular
+music: I–V–vi–IV and its rotations, I–IV–V, the 50s doo-wop I–vi–IV–V, the
+12-bar blues and its quick-change variant, ii–V–I as pop uses it, the
+Andalusian i–VII–VI–V, minor loops (i–VI–III–VII), and the plain vamps
+hip-hop builds on (two- and four-chord minor loops) — with real cadence
+points, since a spec that never resolves teaches nothing about resolution:
+authentic, plagal, half and deceptive, and a deceptive cadence (V to vi) is
+worth a package of its own. Prefer triads and sevenths, and use repetition
+with a purpose (verse/chorus contrast, a bridge that leaves the loop, a
+quick-change chorus).
+
 The `melody-level` ramp: **1** a chord tone on every beat, one octave, no
 rests; **2** adds eighths and rests; **3** adds notes held across the bar
 line; **4** adds syncopation and leaps over a wider range. The ramp is what
@@ -52,9 +63,8 @@ lets a bad melody score be asked *on what* — a reading that holds at level one
 and fails at two is failing on rhythm, not on pitch. `accompaniment: none`
 leaves the melody alone, `pad` puts one sustained voicing per chord under it.
 
-Some packages are here for the melody stage rather than the harmony stages:
-their spec asks for a `melody-level` on a 1-to-4 difficulty ramp and for an
-`accompaniment` of `pad` or `none`. A monophonic pitch tracker pointed at a
+Some packages are here for the melody stage rather than the harmony stages.
+A monophonic pitch tracker pointed at a
 full mix measures the separation that did not happen in front of it, so those
 packages take the band away and let the tracker be measured on its own. The
 price is that a package with no accompaniment carries no evidence for its own

@@ -81,11 +81,11 @@ mw-it         slow integration tests
 ```
 
 **`mw-core` is the only module everything may depend on. `mw-notation` must not
-depend on `mw-ml`. `mw-cli` is the only module that wires everything together**
-— including the `mw-ml` dependency, moved there at runtime scope by #247. This
-is what lets the symbolic and audio tracks be built in parallel without
-colliding: M1a owns `mw-notation`/`mw-arrange`, M1b owns `mw-audio`/`mw-dsp`,
-and changes to `mw-core` go through a separate serialized PR.
+depend on `mw-ml`. `mw-cli` is the only module that wires everything
+together.** This is what lets the symbolic and audio tracks be built in
+parallel without colliding: M1a owns `mw-notation`/`mw-arrange`, M1b owns
+`mw-audio`/`mw-dsp`, and changes to `mw-core` go through a separate serialized
+PR.
 
 The edges between non-core modules: `mw-dsp` on `mw-audio`; `mw-transcribe` on
 both; and **`mw-notation` on `mw-arrange`**, for `QuantizedScore` and the
