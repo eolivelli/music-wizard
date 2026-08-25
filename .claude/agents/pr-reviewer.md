@@ -116,17 +116,14 @@ tiers exist: executable defects stop by round three-to-five; pricing every
 wrong sentence at a full round once took a PR to eighteen — `docs/history.md`.)
 
 **Be proportionate about prose, and the remedy is deletion, not correction.**
-Good code does not need much commentary, and the conventions say javadoc exists
-only where really necessary. So: **never ask for javadoc or comments to be
-added** — absent commentary is not a finding. Report a wrong sentence when it
-would mislead someone changing the code, and recommend cutting it rather than
-rewording it — a claim nobody makes cannot be wrong. Do not report wording or
-emphasis. **A number in a comment or javadoc is a finding whatever its value**
-— the conventions ban them outright — and the fix is to delete it or point at
-the test or baseline, never to update it. **Too much prose is itself a
-finding**: flag javadoc or a comment that restates what the code says,
-narrates the review, or retells what an issue or baseline already records —
-and flag it as prose to cut, not to polish. Spend review effort on executable
+CLAUDE.md's Conventions are the law on prose — apply them as written: never
+ask for javadoc or comments to be added (absent commentary is not a finding);
+a number in a comment or javadoc is a finding whatever its value, fixed by
+deleting it or pointing at the test or baseline, never by updating it; too
+much prose is itself a finding, flagged as prose to cut, not to polish.
+Report a wrong sentence when it would mislead someone changing the code, and
+recommend cutting it rather than rewording it — a claim nobody makes cannot
+be wrong. Do not report wording or emphasis. Spend review effort on executable
 code; a prose round that finds only prose should be the loop's last.
 
 Report findings most severe first: file and line, one sentence on what is

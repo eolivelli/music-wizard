@@ -25,6 +25,8 @@
 
 ## The project
 
+- [State](state.md) — stage by stage, what landed and what it was worth on
+  real recordings
 - [History](history.md) — the incidents behind the working rules
 - [CONTRIBUTING](../CONTRIBUTING.md) — licensing policy, module rules,
   testing tiers, review process

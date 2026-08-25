@@ -48,7 +48,7 @@ class AnalyzeCommandTest {
      * Pulses starting a little after t=0, which is where a beat tracker actually
      * puts them and what makes this fixture discriminate.
      *
-     * <p>A grid starting at exactly 0.0 is the trap CLAUDE.md records: with no
+     * <p>A grid starting at exactly 0.0 is the trap pr-reviewer.md records: with no
      * lead-in, the tempo map's average equals the grid's own rate to the bit, so
      * every source of a tempo agrees and a test cannot tell which one was read.
      * The 0.05 s here is a whole pulse crammed into a twentieth of one, which

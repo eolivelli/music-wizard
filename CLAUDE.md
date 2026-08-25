@@ -16,137 +16,27 @@ mvn verify -Pintegration   # adds the ground-truth loop and real PDF rendering
 mvn -pl mw-core test       # the module that matters most
 ```
 
-`docs/local-setup.md` is what a machine needs beyond that — the global config
-keys, the sherpa native, the alignment models — written around what each one
-degrades in silence. A stage that cannot reach its model says so in one line
-and carries on, so a harness row can measure something other than it appears
-to, in either direction.
-
-`./mw` is a developer wrapper that rebuilds when sources change; the real
-artifact is the shaded `mw-cli/target/mw.jar`. It is ~88 MB, almost entirely
-ONNX Runtime, FFmpeg natives and the Anthropic SDK.
+`docs/local-setup.md` is what a machine needs beyond that — config keys, the
+sherpa native, the models — written around what each one degrades in silence:
+a stage that cannot reach its model says so in one line and carries on, so a
+harness row can measure something other than it appears to. `./mw` is a
+developer wrapper that rebuilds when sources change; the real artifact is the
+shaded `mw-cli/target/mw.jar`.
 
 ## The primary goal
 
-**Real commercial recordings, not synthetic fixtures.** Everything is judged
-against whether it moves that. The first tier-2 run — an actual 3:43 track —
-produced seven chord spans, five of them `N.C.`, one covering 169 consecutive
-seconds (#185). Measured over every frame, the flat no-chord template scores
-0.859 against the best possible triad's 0.713; on the synthetic fixture the same
-measurement gives +0.356 the other way. **The sign flips between synthetic and
-real.**
+**Real commercial recordings, not synthetic fixtures.** Judge a change by what
+it does to a real recording, measured by the harnesses in `tools/` against
+`tools/baselines/`. If that cannot be measured, say so rather than quoting the
+synthetic figure. Work that makes real audio work outranks work that polishes
+what already works on synthetic audio.
 
-That was read as meaning no constant in `ChordEstimator` could fix it, and #3
-showed otherwise. On the G blues that was the reference recording then — a
-different recording, with exactly known changes — the estimator's three changes
-together take *plain* chroma from 0.0% to 58.9% of bars correct, before any
-front end. The flat no-chord template scores highest exactly when a frame looks
-least like music, so it wins on a real mix whatever the chroma is.
-
-No single constant does it, though, and the first draft of this paragraph
-claimed one did — three changes reach 58.9% and the largest of them alone
-reaches 17.5%. `tools/ChordSweep.java` is what re-derives the decomposition;
-do not restate it anywhere, because this figure has already gone stale in four
-separate files. The lesson is not "a constant can fix it" but "the emission
-model was wrong in a way the front end could not compensate for".
-
-So: work that makes real audio work outranks work that polishes what already
-works on synthetic audio. NNLS chroma (#3) was the top item and has landed —
-every benchmark with known ground truth went from 0% of bars correct to between
-14% and 89%, and from one `N.C.` span per recording to none. The beat drift that
-exposed is fixed too (#196): the tracker's spacing penalty was a forty-eighth of
-the published one, so it left the grid for any loud offbeat, and the benchmarks
-now score between 15% and 99% of bars correct on the tracker's own downbeats.
-
-The chart's bar *rate* is fixed too (#200): it was the median tracked interval,
-which is not a rate and is quantised to the analysis hop, and it is now the mean
-of the intervals the tracker held steadily. Each of the five benchmarks that
-existed then improved or held **on the root column**, the reference recording by
-fifteen points and one other by twelve. Not on `root+quality`, which fell a point
-or two on two of them — at the time that column was dominated by #208, whose
-small movements did not mean much either way, which is exactly why the two are
-quoted separately.
-
-The chart's bar axis no longer hangs on one downbeat and one constant rate.
-Where the grid's downbeats are every one of them a plausible bar, they *are* the
-bar lines (#187); where they are not, the chart is one bar length hung on the
-offset the downbeats agree on, keeping the first downbeat where they agree on no
-offset within the beat (#233). So what the chart's bar lines are wrong by is now
-what the grid is wrong by, and nothing else — on the benchmarks whose tracked
-downbeats sit further from the music than one constant bar length did, the chart
-sits further too, which is #424 rather than the chart's.
-`tools/baselines/score-chart.txt` carries the readings.
-
-What is now top of the bar axis is which grids to believe: the veto that decides
-it catches a tracker that lost the beat and says nothing about one that is
-merely jittery (#429).
-
-Then: the residual gate of #543 admitted the minor sixth and the
-half-diminished (#547), and the major seventh (#588) — which had to go into the
-*decoder* rather than beside them, because on the recordings whose truth holds
-one those bars were not decoded onto their own root at all, and a quality that
-cannot move a root cannot reach a bar it never got. It is the one decoded
-template admitted on the fit's residual instead of the chroma, and the price is
-the same relative-pair confusion one layer up: `Abmaj7` is `Fm7` with a G for
-its F, so a minor-seventh vamp gives up roots to it and the bass prior, measured,
-does not carry the difference. The plain sixth is still out, and for the other
-reason: it really is sounding, so it needs root evidence rather than presence
-evidence (#287, #274).
-
-**A third is settled across every run on a root, not run by run** (#558). That
-gate leaves the third weakest exactly where a run holds no third at all: the
-major one is discounted for not being in the fit and the minor one need only
-clear the noise, so the minor candidate takes the run on whatever the mix left
-on its pitch class — and once the gate fires it cannot lose. Over one run that
-is a coin toss; over a root it is a count. The recordings a musician confirms
-hold no minor chord lost most of their false minors to it and no scored
-benchmark moved a bar; `tools/baselines/score-samples.txt` carries both rows.
-Its cost is a chord where the seventh's is a colour — a minor chord stated
-once on a root otherwise played major goes with the false ones (#583) — and
-what it cannot reach is a minor label on a root the song does not have (#448).
-
-Dominant sevenths are found now (#208) — they were found on two benchmarks and
-called plain triads on three others whose roots were read nearly perfectly. The
-root is still decided from both registers and the quality now from the treble,
-once per chord rather than per beat, which is two changes rather than one
-because different benchmarks needed different halves. A large net gain that
-closed nothing and cost a couple of points on the two benchmarks whose sevenths
-were already being found: `ChordEstimator` carries the mechanism and
-`tools/baselines/score-samples.txt` the current reading.
-
-Minor sevenths are found too (#272), and it took two things. **The decoder's
-vocabulary and the quality decision's are not the same one**: a quality the
-decoder may choose competes across roots, and `Am7` is a `C` triad with an A in
-it, so in the decoder it moves roots wherever the sixth degree sounds. And
-`C7` and `Cm7` differ in nothing but the third, so a minor-third candidate is
-scored on its notes' mass less whatever major third the root's own fifth
-partial cannot account for — subtract all of the major third instead and a
-blues third or a strongly voiced root turns minor chords major, which is how a
-B minor blues came to be named B major.
-
-**The corpus has a plain-triad benchmark now**, `pop-c-g-am-f-120.mp3`, every
-root right on the uploader's stated grid. It is what decided the size of that
-correction, and before it nothing in the scored set could tell a quality that is
-found from one that is reported because nothing said not to (#273).
-
-**The decoder reads the bass register too, as a prior over roots** (#448). Both
-registers added is still a fold to pitch classes, and a fold cannot say which of
-a chord's own notes is its root — which is the whole difference between a chord
-and its relative minor, since a sixth added to the one gives exactly the other's
-four notes. So a boogie shuffle's root-and-sixth comping reads as the relative
-minor, and goes on reading that way however wide the span it is decided over;
-nothing about the window fixes it. The bass says it instead. It has to be
-read over about a bar rather than beat by beat, because a walking bass passes
-through the third and the sixth and asserting a root at every passing note
-splits a chord's run in two — and a run split in two has its quality decided
-twice from half the evidence each time, which is a different defect wearing the
-same clothes. `ChordEstimator` carries both constants, `tools/ChordSweep.java`
-re-derives the sweeps;
-`tools/baselines/` carries what it was worth, which was most of the corpus and
-not only the shuffle.
-
-Judge a change by what it does to a real recording. If that cannot be measured,
-say so rather than quoting the synthetic figure.
+How the chord, beat, key and melody stages got to where they are — what each
+fix was worth and the defects each left standing — is **`docs/state.md`**;
+read it before touching `ChordEstimator`, the beat grid or the melody chain.
+`tools/ChordSweep.java` re-derives the chord-constant decompositions; do not
+restate its figures anywhere — they have gone stale in four separate files
+before.
 
 ## Rules that are not obvious
 
@@ -191,112 +81,81 @@ mw-it         slow integration tests
 ```
 
 **`mw-core` is the only module everything may depend on. `mw-notation` must not
-depend on `mw-ml`. `mw-cli` is the only module that wires everything together.**
-(As of #247 the stronger statement is also true — `mw-cli` is the *only* module
-that depends on `mw-ml` — but that is current state, not the rule: when melody
-lands, `mw-transcribe` will need a provider SPI again. The rule above survives
-that; the fact does not.)
-This is what lets the symbolic and audio tracks be built in parallel without
-colliding — M1a owns `mw-notation`/`mw-arrange`, M1b owns `mw-audio`/`mw-dsp`,
+depend on `mw-ml`. `mw-cli` is the only module that wires everything together**
+— including the `mw-ml` dependency, moved there at runtime scope by #247. This
+is what lets the symbolic and audio tracks be built in parallel without
+colliding: M1a owns `mw-notation`/`mw-arrange`, M1b owns `mw-audio`/`mw-dsp`,
 and changes to `mw-core` go through a separate serialized PR.
 
-One edge between non-core modules is new and worth naming: **`mw-notation`
-depends on `mw-arrange`**, for `QuantizedScore` and the per-bar `BarGrid`. It
-joins the ones the pipeline already had — `mw-dsp` on `mw-audio`, and
-`mw-transcribe` on both `mw-audio` and `mw-dsp`. (`mw-transcribe` declared
-`mw-ml` too and never wrote a line against it, which put ONNX Runtime's desktop
-natives in the Android app's compile closure for nothing; #247 moved that
-declaration to `mw-cli`, at runtime scope, where the wiring belongs.) The notation
-layer needs the quantizer's tuplet decision and cannot re-derive it — three
-onsets a third of a beat apart and three a half beat apart are both legal on the
-sixth-of-a-beat grid — so the fact is carried rather than inferred (#92). Both
-modules are purely symbolic, so this pulls no audio and no models into notation.
+The edges between non-core modules: `mw-dsp` on `mw-audio`; `mw-transcribe` on
+both; and **`mw-notation` on `mw-arrange`**, for `QuantizedScore` and the
+per-bar `BarGrid` — the notation layer needs the quantizer's tuplet decision
+and cannot re-derive it, so the fact is carried rather than inferred (#92).
+Both are purely symbolic, so this pulls no audio and no models into notation.
 
 ## Licensing
 
-Apache-2.0. The `maven-enforcer-plugin` denies a list of named artifacts, and CI
-has a job for it — a list, not a licence check, so it catches what someone has
-already thought of and nothing else.
+Apache-2.0. The `maven-enforcer-plugin` denies a list of named artifacts, and
+CI has a job for it — a list, not a licence check, so it catches what someone
+has already thought of and nothing else.
 
-- **TarsosDSP cannot be used**, though it is the obvious Java DSP library for
-  this domain. GPL-3.0, *and* not actually on Maven Central — what is there are
-  stale unofficial forks. We implement the DSP on JTransforms (BSD-2).
+- **TarsosDSP cannot be used** (GPL-3.0, and not actually on Maven Central);
+  the DSP is implemented on JTransforms (BSD-2).
 - **madmom's pretrained models, Open-Unmix `umxl`, and the MedleyDB / MAESTRO /
-  MusicNet / Isophonics corpora are CC BY-NC-SA** and unusable here. madmom's
-  *code* is BSD; its weights are not. Clean alternatives: Spleeter (MIT for the
-  code *and* the pretrained models, stated in Deezer's own paper), CREPE ONNX
-  (MIT), basic-pitch (Apache-2.0), OpenScore Lieder (CC0).
-- **Code and weights carry separate licences.** Demucs is the case to remember:
-  MIT code, weights its author says are for scientific purposes only. Read a
-  weights licence from the author, per checkpoint; `CONTRIBUTING.md` has the
-  rule.
-- LilyPond is GPL-3.0 and that is fine: it is invoked as a separate process,
-  never linked or redistributed, and the tool works without it.
-- No model weights ship in the repo. Stages that need one download it on first
-  use into a local cache, checksummed, provenance beside it; `NOTICE` lists
-  what has been chosen so far.
-- The sherpa-onnx native (ASR) is built from a source submodule with TTS off,
-  because the default build statically links a GPL-3.0 espeak fork.
-  `tools/check-sherpa-native.sh` asserts the built library against that, in CI
-  too; the flags live in `tools/build-sherpa-native.sh`, nowhere else.
+  MusicNet / Isophonics corpora are CC BY-NC-SA** and unusable here. Clean:
+  Spleeter (MIT, code and models), CREPE ONNX (MIT), basic-pitch (Apache-2.0),
+  OpenScore Lieder (CC0).
+- **Code and weights carry separate licences** — Demucs is MIT code with
+  research-only weights. Read a weights licence from the author, per
+  checkpoint; `CONTRIBUTING.md` has the rule.
+- LilyPond is GPL-3.0 and that is fine: invoked as a separate process, never
+  linked or redistributed, and the tool works without it.
+- No model weights ship in the repo. Stages download on first use into a local
+  cache, checksummed, provenance beside it; `NOTICE` lists what has been chosen.
+- The sherpa-onnx native (ASR) is built from a source submodule with TTS off
+  (the default build statically links a GPL-3.0 espeak fork);
+  `tools/check-sherpa-native.sh` asserts that, in CI too, and the flags live
+  in `tools/build-sherpa-native.sh`, nowhere else.
 
 **Lyrics and reference charts are input, not output, and are governed
-separately.** Everything above is about what MW *ships* — code it links, weights
-it would download, audio it commits. A lyric sheet or a chord chart used to
-judge whether MW read a recording correctly is none of those. MW analyses
-recordings; it does not perform music, does not publish anyone's words, and does
-not generate content from them.
+separately.** Everything above is about what MW *ships*. A lyric sheet or chord
+chart used to judge whether MW read a recording correctly is none of those. So,
+by Enrico's decision and under his responsibility:
 
-So, by Enrico's decision and under his responsibility:
-
-- **Any lyric text may be fetched and used locally** — as analysis input, as
-  ground truth, and as harness input. No licence gate, and a source that states
-  no licence is not thereby excluded.
-- **The full text stays local.** Lyric files live under `uncommitted/`, which is
-  gitignored, and are never committed and never listed in `NOTICE`. Using a work
-  to measure a program is not publishing it; putting it in a public repository
-  is, and that is the line, not the intent behind it.
-- **Short excerpts may be committed** where a test fixture or a baseline
-  genuinely needs one — a line or two, no more than the test needs to fail for
-  the right reason.
+- **Any lyric text may be fetched and used locally** — as analysis input,
+  ground truth, and harness input. No licence gate.
+- **The full text stays local**, under gitignored `uncommitted/`, never
+  committed and never in `NOTICE`. Using a work to measure a program is not
+  publishing it; putting it in a public repository is — that is the line.
+- **Short excerpts may be committed** where a fixture genuinely needs one — a
+  line or two, no more than the test needs to fail for the right reason.
 - Unchanged: **audio still gates on licence**, because `samples/` is committed
   and therefore redistributed. A commercial recording stays in `uncommitted/`
-  with its fetch command, as it always has.
+  with its fetch command.
 
 ## Rendering
 
 LilyPond source is emitted **directly from the domain model**, not via
-`musicxml2ly`, which is lossy. MusicXML is a parallel export in the notation
-layer, not the route to PDF, and is not yet wired to the CLI. PDF requires
-the LilyPond binary; without it the tool still writes the `.ly` source and
-says so rather than failing.
+`musicxml2ly`, which is lossy. MusicXML is a parallel export, not the route to
+PDF, and is not yet wired to the CLI. Without the LilyPond binary the tool
+still writes the `.ly` source and says so rather than failing.
 
 Discovery checks, in order: the `notation.lilypondPath` config key, `$PATH`,
-then — **on POSIX only** — Homebrew and `/usr/local` prefixes, because Homebrew
-installs outside a non-login shell's `PATH`, which is exactly how someone ends
-up with LilyPond installed and the tool unable to find it.
-
-**LilyPond is run with its message locale pinned to `C`.** The tool decides
-whether engraving went well by reading LilyPond's output, and LilyPond
-translates that output — a failed bar check is `attenzione: bar check failed` on
-an Italian machine, so a check reading it for "warning" stops reading it at all,
-silently. Pinning it costs a non-English user LilyPond's own complaints in their
-language. It took four attempts to pin only the message language and nothing
-else: `LC_ALL` masks eleven other categories, and setting or clearing them
-wrongly stops a file whose name is not ASCII from engraving at all. See
-`LilyPondRenderer.speakEnglish`, whose javadoc records all three wrong answers.
+then — on POSIX only — Homebrew and `/usr/local` prefixes. **LilyPond runs
+with its message locale pinned to `C`**: engraving success is judged by
+reading LilyPond's output, and LilyPond translates it. Pinning only the
+message language and nothing else is delicate — see
+`LilyPondRenderer.speakEnglish`, whose javadoc records the three wrong answers.
 
 Three rules that are easy to get wrong:
 
 - An explicit `notation.lilypondPath` is used **exactly as written**, extension
-  included, and a non-executable one is an error rather than a hint. Silently
-  falling back would ignore an explicit instruction.
-- **Relative `PATH` entries are skipped.** A shell runs `./lilypond` because the
-  user typed the command; we would run it only because the user happened to `cd`
-  somewhere, which is not the same thing.
+  included, and a non-executable one is an error, not a hint — silently falling
+  back would ignore an explicit instruction.
+- **Relative `PATH` entries are skipped**: we would be running `./lilypond`
+  only because the user happened to `cd` somewhere.
 - On Windows, discovery looks for `lilypond.exe` and friends and is `PATH`-only.
-  **Nothing has ever been run on Windows** (#33) — a user on an older installer
-  must set `notation.lilypondPath`.
+  **Nothing has ever been run on Windows** (#33).
 
 ## Testing
 
@@ -319,39 +178,25 @@ downloads a model or shells out to LilyPond belongs in `mw-it`.
 
 ## Review process
 
-**One PR in flight per Claude session**, not one across the repository. A
-session carries one change from triage to merge and does not start a second;
-running several sessions is how several PRs run at once. The rules live in
-`.claude/agents/pr-worker.md` and `pr-reviewer.md`; the incidents that shaped
-them are in `docs/history.md`. The short version:
-
-- **Two-stage gate.** Locally, `tools/premerge.sh` (branch merged with
-  current `origin/main`) — its irreplaceable part is the harness diff against
-  `tools/baselines/`, which CI cannot run in full because the local-only
-  benchmark files never leave this machine. Any movement fails; intended
-  improvements regenerate the baseline in the same PR. It leaves the test
-  suites to CI, which runs them on the merge preview anyway; `--full` runs
-  them locally too. **Finally, CI on the pull request is the quality gate**:
-  full matrix against the merge preview; merge only on reviewer approval plus
-  every check green on the approved head.
-- **Round 1 is a full adversarial review; later rounds are scoped to the
-  delta.** Loop until a round finds nothing new, or only prose
-  (`APPROVE_WITH_CORRECTIONS` → delta pass on the changed text → merge).
-  Findings are `CONFIRMED` by execution or honestly `PLAUSIBLE`.
-- **The one mechanical check every round: enumerate every reader of the value
-  that changed.** It is the project's dominant defect class and reasoning
-  about it has repeatedly failed where running it succeeded.
-- **Prose discipline:** no number outside a test or committed harness; when a
-  fact is corrected, grep for its every other statement before replying.
-- Revert-the-fix verification and mutation sweeps are **not** used; both were
-  tried and withdrawn (`docs/history.md`).
+**One PR in flight per Claude session**, not one across the repository — a
+session carries one change from triage to merge; several sessions is how
+several PRs run at once. The canonical process is
+`.claude/agents/pr-worker.md` and `.claude/agents/pr-reviewer.md`; the
+incidents that shaped it are in `docs/history.md`. Its spine: locally,
+`tools/premerge.sh` on the branch merged with current `origin/main` — its
+irreplaceable part is the harness diff against `tools/baselines/`, which CI
+cannot run in full; then CI on the pull request as the quality gate, with
+merge only on reviewer approval plus every check green on the approved head.
+Round 1 is a full adversarial review; later rounds are scoped to the delta.
+The project's dominant defect class is the fix that stops at the layer the bug
+was noticed: **enumerate every reader of the value that changed** — reasoning
+about it has repeatedly failed where running the enumeration succeeded.
 
 ## Conventions
 
 - **Push at every milestone**, not at the end.
-- **Anything not being fixed now becomes a GitHub issue**, never a `TODO`. A
-  review that finds ten things produces fixes for the serious ones and issues
-  for the rest; findings that are neither fixed nor filed are lost.
+- **Anything not being fixed now becomes a GitHub issue**, never a `TODO`.
+  Findings that are neither fixed nor filed are lost.
 - Labels: `epic` + `milestone:MX`, `priority:medium|low`, `review-finding`,
   `design-gap`, `module:*`.
 - Commit messages explain **why**. If a change fixes something subtle, say what
@@ -363,34 +208,31 @@ them are in `docs/history.md`. The short version:
   already say it gets nothing, and absent commentary is never a review finding.
   Reviewing prose is the most expensive thing this project does per unit of
   value; every sentence is a claim someone has to check.
-  - **No numbers in comments or javadoc, ever.** The project moves fast enough
-    that a figure in source is stale before it is read. Numbers live in tests
-    and in `tools/baselines/`; a comment that needs one points there.
+  - **No numbers in comments or javadoc, ever.** A figure in source is stale
+    before it is read. Numbers live in tests and in `tools/baselines/`; a
+    comment that needs one points there.
   - **Keep the rest of the prose short too** — commit messages, issue and PR
     bodies: what a future reader strictly needs, then stop. A number is allowed
     there only if a test asserts it or a committed harness reproduces it, and
     prefer the qualitative fact even then.
   - **No superlative that is a ranking of the current corpus** — *worst*,
-    *furthest*, *the only one* — since it dates the moment a benchmark is added.
-    Point at the committed baseline instead. A superlative that follows from a
-    mechanism is fine, because growth cannot falsify it.
-  - **Do not narrate the review.** "An earlier draft said", "round 3 found",
-    "corrected in review" is process history; it belongs in the commit message
-    or the PR, once, not in the source. Fix the sentence and move on.
-  - When a fact changes, grep for every statement of it before editing one. That
-    is the cheapest way to stop the next round.
+    *furthest*, *the only one* — since it dates the moment a benchmark is
+    added. Point at the committed baseline instead. A superlative that follows
+    from a mechanism is fine, because growth cannot falsify it.
+  - **Do not narrate the review.** "An earlier draft said", "round 3 found" is
+    process history; it belongs in the commit message or the PR, once, not in
+    the source.
+  - When a fact changes, grep for every statement of it before editing one.
+    That is the cheapest way to stop the next round.
 - **One git worktree per task, one local Maven repository per worktree**
-  (`-Dmaven.repo.local` via `MAVEN_ARGS`, `-am` on every build). Its first
-  build downloads the dependency closure; that is the price of the isolation.
-  Never `git checkout` in the shared clone, and never move `refs/heads/main`
-  from a worktree: git refuses most of the ways but not all of them, and one
-  that goes through moves the ref for the clone too — whose files then read as
-  deletions against a HEAD that moved without them. A worktree that must build
-  from `main` detaches. The incidents behind each half are in
+  (`-Dmaven.repo.local` via `MAVEN_ARGS`, `-am` on every build). Never
+  `git checkout` in the shared clone, and never move `refs/heads/main` from a
+  worktree — one of the ways git does not refuse moves the ref for the clone
+  too. A worktree that must build from `main` detaches. The incidents are in
   `docs/history.md`.
-- **No raw control characters in source files.** A test file once contained
-  literal NUL bytes, so git treated it as binary — no diff, no blame,
-  unreviewable. Write them as escape sequences instead: in Java, a backslash followed by u0000, never the byte itself.
+- **No raw control characters in source files** — git treats the file as
+  binary, so no diff, no blame. Write escape sequences instead: in Java, a
+  backslash followed by u0000, never the byte itself.
 
 ## Honest quality expectations
 
@@ -409,129 +251,39 @@ Beat tracking is the least reliable stage and everything depends on it.
 
 ## State
 
-**The pipeline runs end to end.** A real MP3 goes in; beats, tempo and chords
-come out; a chord chart is engraved to PDF via LilyPond. Verified on a
-synthesised I-V-vi-IV signal and on an actual MP3 encoded from it.
-
-Done: M0 (reactor, domain model, workspace with content-addressed caching,
-layered config, CLI) and the harmony half of M1b (decode, onsets, Ellis beat
-tracking, tuning-corrected chroma, chord recognition, key naming, chord chart,
-LilyPond). Four review rounds on `mw-core`.
-
-Key detection (#275) reads the estimated chords, not chroma, and reports two
-confidences because it makes two decisions of very different reliability: the
-key signature, and which of a relative pair is home. The second is what fails —
-a loop that neither begins nor ends on its tonic gives it nothing to work with,
-and it answers at the coin-flip floor rather than pretending. `KeyEstimator`
-carries the rules and `tools/baselines/score-samples.txt` carries the scores.
-
-The lyrics chain (#9) runs end to end: vocal separation (#312), forced
-alignment of supplied LRC lyrics (#313), and transcription from the audio
-itself (#314, Qwen3-ASR through a sherpa-onnx source submodule, built by
-`tools/build-sherpa-native.sh` and present only when that has run). The
-transcriber knows words but not their times — sherpa's Qwen3 emits none — so
-words are spread across their sung stretch and the aligner measures onsets
-where it speaks the language, which today is English only.
-**What the melody stage is worth is known now, on real singing.** `vocadito`
-— 40 clips of solo voice annotated note by note by two trained musicians, CC BY
-4.0, fetched into `uncommitted/` — is scored by `tools/score-melody.py --source
-vocadito`, and it carries its own ceiling: each row prints one annotator scored
-against the other by the same rule. That ceiling is nowhere near 100%, because
-where a sung note begins is genuinely ambiguous — the two annotators do not
-even agree how many notes a clip holds. MW sits close under it. Read the
-baseline rather than a figure quoted here.
-
-Two things that measurement overturned, both of which had been believed on the
-strength of how a page looked:
-
-- **Real sung notes are short**, most of them under a quarter of a second. A
-  melody stage returning notes that length is not fragmenting, and a rule that
-  absorbed short notes would destroy real music.
-- **On a mix the melody stage's accuracy is a statement about separation, not
-  about the melody stage.** `tools/measure-separation-cost.py` scores the same
-  annotated voices three ways — clean, through the separator with no band, and
-  through it with a band mixed in. The middle row costs almost nothing, so the
-  separator does not spoil a voice by itself; the whole loss appears once a
-  band is there. **What that gap is made of is known now (#503): voice the
-  mask removed dominates it, and band the mask left costs the tracker
-  something too**, and `tools/apportion-separation-loss.py` is what says so —
-  it takes the stem apart against the two sources the measurement mixed, and
-  scores each part.
-  The mask is softer for it, and the voice is still lost where the band is
-  loud, which is #575. How far the voice sits above the band is the
-  variable the tool now states rather than inherits — but the bed is added to a
-  voice at its own recorded level, so a clip with no headroom left rails before
-  the band is anywhere near loud, and what is lost is the side where the band
-  is loud, which is the side the loss lives on (#518). Absolute level is a
-  second axis and is not controlled either, since
-  the separator is not level-invariant even at a fixed ratio (#515). None of it
-  is baselined.
-
-**Melody is read from the separated vocal where a separator can be had
-(#559), and from the raw signal otherwise (#494).** pYIN in `mw-dsp`,
-segmented into notes, engraved as a lead sheet — melody staff, chord symbols,
-lyrics. The stage is off unless `analyze --melody` asks for it. The tracker
-itself is monophonic: on whatever signal it is given it confidently returns
-the loudest periodic line, so without a separator a band reads as its bass —
-and a *played* melody largely does not survive a vocal separator, which is
-what `--skip-separation` is for (#560 is choosing by evidence). The
-melody baselines under `tools/baselines/` carry both signals; only one of
-their rows runs in CI — the rest need this machine's vocadito audio or its
-separation model — so read premerge's output rather than CI for melody
-movement. *When* a sung note starts is
-genuinely ambiguous and #497 records the limit.
-
-Still missing: melody accuracy on a real mix, which is separation's quality
-problem rather than the tracker's (#575), piano
-(#10), advisor (#11). The symbolic track (#1) is four-fifths landed and parked.
-NNLS chroma (#3) and the Ellis-penalty correction (#196) have landed;
-`tools/score-samples.py` and `tools/score-chart.py` are the standing
-measurement of what they are worth, with baselines under `tools/baselines/`.
-
-`mw-core` passed round 4 once its three blockers landed, but see the open
-`design-gap` issues before treating it as frozen — especially #4 (no beat unit,
-so compound meters mis-bar) and #5 (notation-facing gaps).
-
+**The pipeline runs end to end**: a real MP3 in; beats, tempo, chords, key,
+lyrics and (opt-in) melody out; chord chart and lead sheet engraved to PDF.
+`docs/state.md` is the full account — stage by stage, what landed, what it was
+worth on real recordings, and what is still missing (melody-on-a-mix #575,
+piano #10, advisor #11). Baselines under `tools/baselines/` are the current
+readings; for melody movement read premerge's output rather than CI, which
+runs only one melody row.
 
 ## Sample files
 
-`samples/` is the corpus MW is measured on, and the reference test set for
-whether the output is any good. `samples/list.txt` says what is in each
-recording — changes confirmed by ear, which is what makes them ground truth
-rather than description — and where it came from. Committed files are CC BY and
-attributed in `NOTICE`; anything not redistributable is gitignored with the
-fetch command beside it, so a fresh clone is short of benchmarks rather than
-short of a licence (#204).
+`samples/` is the corpus MW is measured on. `samples/list.txt` says what is in
+each recording — changes confirmed by ear, which is what makes them ground
+truth rather than description — and where it came from. Committed files are
+CC BY and attributed in `NOTICE`; anything not redistributable is gitignored
+with the fetch command beside it (#204). `tools/score-samples.py` scores every
+grid written down there and `BluesLoopIT` gates one recording in CI.
 
-`synthetic_samples/` is the corpus's synthetic sibling: packages
-(spec, MIDI, rendered MP3) generated by the music-teacher agent
-(`.claude/agents/music-teacher.md`) to teach MW the common harmonic patterns of
-mainstream genres. The spec is ground truth by construction — see its README.
-Rendering uses FluidSynth and a cached, checksummed soundbank that is never
-committed (`tools/music-teacher/`). Coverage is tracked as one
-`synthetic-sample` issue per package; `tools/score-synthetic.py` scores every
-package against its own spec, sequence-aligned, and both premerge and CI diff
-it against `tools/baselines/score-synthetic.txt` — CI can run this harness in
-full because every package is committed (#447). These sit between tiers 1 and
-2 and are never quoted as product accuracy.
+`synthetic_samples/` is the synthetic sibling: packages (spec, MIDI, rendered
+MP3) generated by the music-teacher agent; the spec is ground truth by
+construction — its README carries the format and rules, `docs/music-teacher.md`
+the toolchain. `tools/score-synthetic.py` scores every package against its own
+spec, diffed against its baseline by premerge and CI both (#447). These sit
+between tiers 1 and 2 and are never quoted as product accuracy. Melody-only
+packages carry no evidence for their own chord grid, so the chord harness
+skips them and says so; `tools/score-melody.py` scores those.
 
-Some packages are for the melody stage instead: a `melody-level` on a 1-to-4
-difficulty ramp, and an `accompaniment` of `pad` or `none`. A package with no
-accompaniment carries no evidence for its own chord grid, so the chord harness
-skips it and says so rather than scoring noise; `tools/score-melody.py` is what
-scores those, against each package's own MIDI melody track, in seconds. A pair
-of packages differing in nothing but the pad is what measures what harmony
-under a melody costs, which is why a graded melody draws from its own random
-stream rather than the arrangement's.
+Lyric ground truth is gated on one thing only, and it is not the words'
+licence (see Licensing): a sung entry names its **language** — the hyphenation
+patterns cover Italian and English and nothing else, so dialect material would
+be scored against wrong syllable counts.
 
-`tools/score-samples.py` scores every grid written down there and
-`BluesLoopIT` gates one recording in CI. Lyric ground truth is gated on one
-thing only, and it is not the words' licence (see Licensing above): a sung entry
-names its **language**, because the hyphenation patterns cover Italian and
-English and nothing else, so dialect material would be scored against wrong
-syllable counts. `docs/phone-to-corpus.md` is the route
-a recording made with the phone app takes into `uncommitted/` or `samples/`,
-and what to write down beside it. The app can also fetch a shared YouTube link
-as a take, and those have only one of those two destinations: the bundle's
-`<take>.info.txt` carries a `source:` line, and `source: youtube` means
-commercial audio whatever it sounds like.
+`docs/phone-to-corpus.md` is the route a recording takes into `uncommitted/`
+or `samples/`, and what to write down beside it — including fetching a
+commercial song from a link. A phone take whose `<take>.info.txt` says
+`source: youtube` is commercial audio whatever it sounds like: `uncommitted/`
+only, never `samples/`.
