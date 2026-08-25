@@ -1,5 +1,23 @@
 # From a phone take to a corpus entry
 
+## 0. Fetching a commercial song directly (no phone involved)
+
+To test MW against a commercial recording from a YouTube link, keep only the
+video id from the URL — strip `list=`, `start_radio=`, `index=` and every other
+playlist parameter, or yt-dlp may fetch a whole radio playlist — then:
+
+```sh
+yt-dlp -x --audio-format mp3 --audio-quality 0 \
+  -o uncommitted/<slug>.mp3 'https://www.youtube.com/watch?v=<id>'
+```
+
+Record it in `uncommitted/list.txt` in the style of the entries there (title,
+artist, duration, the exact fetch command, any remembered chords labelled as
+remembered by ear) before running the pipeline on it. These recordings have no
+ground truth: the chart is looked at against the recollection, never scored —
+the `list.txt` header says why. Never commit or `git add` anything under
+`uncommitted/` but `list.txt` itself.
+
 The phone app (`android/README.md`) records; this note is what to do with a take
 once it is off the phone. The loop is the point: the same recording read on the
 phone and on the desktop, with what was played written down beside it.

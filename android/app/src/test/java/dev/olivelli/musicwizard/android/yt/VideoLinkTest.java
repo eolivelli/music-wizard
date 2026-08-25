@@ -52,9 +52,8 @@ public class VideoLinkTest {
      * The parameters that would otherwise have to be stripped.
      *
      * <p>None of them is stripped: the id is extracted and the rest of the URL is
-     * discarded whole, so a playlist parameter cannot survive into the fetch. The
-     * corresponding desktop rule is a strip-list in {@code song-tester.md}, which
-     * has to be kept up to date; this does not.
+     * discarded whole, so a playlist parameter cannot survive into the fetch —
+     * unlike a strip-list, this needs no keeping up to date.
      */
     @Test
     public void playlistAndTrackingParametersCannotSurvive() {

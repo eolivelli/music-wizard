@@ -54,7 +54,7 @@ class TempoOverrideTest {
      * <p>The offset is what makes a phase assertion mean anything. Every source
      * of a beat position agrees exactly at {@code t = 0}, so a fixture whose
      * first pulse lands there cannot tell a map that carries the tracked phase
-     * from one that threw it away -- which is the trap CLAUDE.md records and the
+     * from one that threw it away -- which is the trap pr-reviewer.md records and the
      * reason the tests below do not use {@link #clickTrack(double, double)}.
      */
     private static AudioBuffer clickTrack(double seconds, double period, double offset) {
