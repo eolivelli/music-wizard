@@ -618,3 +618,17 @@ them, though the chord content per bar would be unaffected by that shift.
 No remembered chords were supplied for this run, so this is a report of what
 MW read, not a check against recollection; the required key for the
 deliverable is what this run was run to confirm, and MW's answer is G major.
+
+
+il-filo-rosso.mp3
+
+"il filo rosso" (ALFA), 189 s, with il-filo-rosso.lrc beside it. No fetch
+command was recorded for it — @eolivelli, please add the one you used.
+
+Not in four: Enrico's ear. The recording is the acceptance case for #707, a
+6/8 counted in two whose tracker lands on the dotted quarter — which is where a
+listener taps, and which is why every bar line depended on a bar length the
+estimator refused to read. Run forced with `--time-signature 6/8` beside a run
+with nothing typed: since #707 the two agree byte for byte on the chart, the
+lyric part and the playable part. Nothing else here is confirmed — the chords,
+the key and the words are reported, not checked against recollection.

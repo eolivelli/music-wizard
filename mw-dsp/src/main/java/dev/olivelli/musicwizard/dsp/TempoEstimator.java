@@ -536,7 +536,7 @@ public final class TempoEstimator {
     }
 
     /** Linear interpolation of the correlation at a fractional lag. */
-    private static double interpolate(double[] correlation, double lag) {
+    static double interpolate(double[] correlation, double lag) {
         int low = (int) Math.floor(lag);
         int high = low + 1;
         if (low < 0 || high >= correlation.length) {
@@ -553,7 +553,7 @@ public final class TempoEstimator {
      * {@link #MIN_TEMPO}, a second and a half of envelope, so the quadratic
      * cost is small and the code stays obvious.
      */
-    private static double[] autocorrelate(double[] signal, int maxLag) {
+    static double[] autocorrelate(double[] signal, int maxLag) {
         double[] out = new double[maxLag + 1];
         for (int lag = 0; lag <= maxLag; lag++) {
             double sum = 0;
