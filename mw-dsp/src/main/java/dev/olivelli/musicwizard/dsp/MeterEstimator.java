@@ -163,14 +163,15 @@ public final class MeterEstimator {
     private static final int BARS_FOR_A_READING = 4;
 
     /**
-     * What the harmonic statistic scores at a period nothing happens at, which
-     * is the floor the two-pulse bar's harmony has to clear.
+     * The harmonic statistic's null expectation, which is the floor the
+     * two-pulse bar's harmony has to clear.
      *
      * <p>Not {@link #SUPPORTED}: the two-pulse bar is not chosen on the harmony
      * and cannot be held to the level a chosen length is. What it may not do is
-     * rest on a period the harmony scores <em>below</em> what having no period
-     * at all would give it, which is what this is — the null's expectation,
-     * property of the statistic rather than of the corpus.
+     * rest on a period the harmony scores below what a period nothing happens at
+     * scores on average. That average is a property of the statistic rather than
+     * of the corpus, and it is a floor rather than a test: the null scores above
+     * its own mean often enough that aperiodic harmony still passes.
      */
     private static final double THE_NULL = 1.0;
 
@@ -534,16 +535,13 @@ public final class MeterEstimator {
      * from the one {@link #confidenceIn} answers.
      *
      * <p>Mostly the division, because that is what chose the length: how much of
-     * the pulse the triple carries, and how far it leads the duple. <em>How
-     * strongly</em> the harmony says period two is deliberately not read — it
-     * scores a four-beat bar's comping exactly as it scores a bar of two, so a
-     * large one is not a confident bar of two. <em>Whether</em> it says anything
-     * is a different fact and is read: a two-pulse bar admitted over a harmony
-     * that is barely periodic at two was admitted by a veto that let noise
-     * through, and says so rather than reporting what the division alone would.
-     *
-     * <p>Three terms multiplied, as {@link #confidenceIn} multiplies two, so
-     * that any of them failing brings the number down.
+     * the pulse the triple carries, and how far it leads the duple. The harmony
+     * is read only up to {@link #SUPPORTED} and is flat above it, so what it
+     * contributes is whether it says anything about period two rather than how
+     * strongly — a strong one is a four-beat bar's comping as readily as a bar
+     * of two, while one barely over {@link #THE_NULL} means the veto was
+     * satisfied by something a recording with no harmonic period would have
+     * satisfied it with too.
      */
     private static Confidence confidenceInTwo(Reading reading) {
         double periodic = Math.clamp(reading.atTwo() / SUPPORTED, 0, 1);

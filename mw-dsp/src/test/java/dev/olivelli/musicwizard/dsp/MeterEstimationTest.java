@@ -278,7 +278,7 @@ class MeterEstimationTest {
         }
 
         @Test
-        @DisplayName("a two-pulse bar over a harmony that barely leads reports near the floor")
+        @DisplayName("a two-pulse bar over a harmony that barely clears the null says so")
         void aVetoSatisfiedByNoiseSaysSo() {
             // Same division, two harmonies: one that says period two clearly and
             // one that only just clears the null. What separates them is not how
