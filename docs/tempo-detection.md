@@ -111,9 +111,9 @@ What is read, and from what:
   bar is admitted only where the pulse also **divides in three**, read from
   the onset envelope's own periodicity at a third and two thirds of the pulse
   — the one thing the envelope is asked. Harmony can refuse it only on a
-  length two does not divide (a three that leads the lengths two does
-  divide) or by saying nothing at any length two divides: a two-bar chord
-  loop is periodic at four pulses whether the bar is two of them or four, so
+  length two does not divide, or by saying nothing at any length two
+  divides: a two-bar chord loop is periodic at four pulses whether the bar
+  is two of them or four, so
   a supported four is a length the shorter bar tiles, not a rival account of
   it (#712). What is read there is the length; the signature is given, since
   a bar of two dotted-quarter pulses is 3/4 as much as it is 6/8 and nothing
