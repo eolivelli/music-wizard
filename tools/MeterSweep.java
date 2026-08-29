@@ -44,7 +44,8 @@ import java.util.stream.Stream;
  * this output: {@code p2 p3 p4 p6} are the harmonic periodicity at each period
  * it reads, on a null whose expectation is one, and {@code in3} and {@code in2}
  * are how much of the onset envelope's periodicity at the pulse a triple and a
- * duple division of it carry. {@code meter} is what the estimator decides and
+ * duple division of it carry, over the {@code pulse} column, which is how much
+ * of the envelope's energy sits at the pulse for them to be shares of. {@code meter} is what the estimator decides and
  * {@code want} what {@code samples/list.txt} states; a row where they differ is
  * the reading to explain.
  *
@@ -131,8 +132,8 @@ public final class MeterSweep {
     }
 
     public static void main(String[] args) {
-        System.out.printf("%-38s %8s %8s %8s %8s %7s %7s  %-5s %-5s %s%n",
-                "file", "p2", "p3", "p4", "p6", "in3", "in2", "meter", "want",
+        System.out.printf("%-38s %8s %8s %8s %8s %7s %7s %7s  %-5s %-5s %s%n",
+                "file", "p2", "p3", "p4", "p6", "pulse", "in3", "in2", "meter", "want",
                 "pulses/bar, confidence");
         List<Job> jobs = new ArrayList<>(JOBS);
         jobs.addAll(localJobs());
@@ -163,9 +164,10 @@ public final class MeterSweep {
                 MeterEstimator.read(beatTimes, frames.beatSynchronous(beatTimes), envelope);
         MeterEstimator.Estimate estimate = MeterEstimator.decide(reading);
         String meter = estimate.meter().toString();
-        System.out.printf("%-38s %8.2f %8.2f %8.2f %8.2f %7.2f %7.2f  %-5s %-5s %d, %.2f %s%n",
+        System.out.printf(
+                "%-38s %8.2f %8.2f %8.2f %8.2f %7.2f %7.2f %7.2f  %-5s %-5s %d, %.2f %s%n",
                 job.file(), reading.atTwo(), reading.atThree(), reading.atFour(),
-                reading.atSix(), reading.inThree(), reading.inTwo(), meter,
+                reading.atSix(), reading.onThePulse(), reading.inThree(), reading.inTwo(), meter,
                 job.want().isEmpty() ? "-" : job.want(),
                 estimate.pulsesPerBar(), estimate.confidence().value(),
                 job.want().isEmpty() || job.want().equals(meter) ? "" : "MISMATCH");

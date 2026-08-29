@@ -23,6 +23,7 @@ import static org.assertj.core.api.Assertions.within;
 import dev.olivelli.musicwizard.core.model.TimeSignature;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Random;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -79,12 +80,29 @@ class MeterEstimationTest {
     private static MeterEstimator.Reading reading(double atTwo, double atThree,
                                                   double atFour, double atSix,
                                                   double inThree, double inTwo) {
-        return new MeterEstimator.Reading(atTwo, atThree, atFour, atSix, inThree, inTwo, 400);
+        return new MeterEstimator.Reading(atTwo, atThree, atFour, atSix, inThree, inTwo,
+                1, 400);
     }
 
     /** A reading of nothing at all, which is what too short a recording gives. */
     private static MeterEstimator.Reading nothing() {
-        return new MeterEstimator.Reading(0, 0, 0, 0, 0, 0, 0);
+        return new MeterEstimator.Reading(0, 0, 0, 0, 0, 0, 0, 0);
+    }
+
+    /**
+     * An onset envelope with energy everywhere and none of it at the pulse,
+     * which is what the tracker leaves behind when it has lost the beat. Drawn
+     * from a fixed seed, so the reading below is a fact about the statistic
+     * rather than about a draw.
+     */
+    private static OnsetEnvelope aperiodic() {
+        double frameRate = 120;
+        double[] strength = new double[(int) Math.round(frameRate * PULSE_SECONDS * BEATS)];
+        Random random = new Random(707);
+        for (int frame = 0; frame < strength.length; frame++) {
+            strength[frame] = random.nextGaussian();
+        }
+        return new OnsetEnvelope(strength, frameRate);
     }
 
     /**
@@ -231,14 +249,40 @@ class MeterEstimationTest {
         }
 
         @Test
-        @DisplayName("a two-pulse rival the division refused still costs the assumption")
-        void aRefusedTwoIsStillARival() {
-            double contradicted =
-                    MeterEstimator.decide(reading(400, 1, 20, 1, 0.1, 0.9)).confidence().value();
-            double supported = MeterEstimator.decide(reading(1, 1, 100, 1)).confidence().value();
-            double floor = MeterEstimator.decide(nothing()).confidence().value();
+        @DisplayName("period two does not count against the four-pulse bar it divides")
+        void twoIsNotARivalToFour() {
+            // Two divides four, so a four-pulse bar scores at period two by that
+            // degeneracy alone -- and states it again through ordinary comping.
+            // Neither is a competing reading, so neither may cost the four.
+            double comped =
+                    MeterEstimator.decide(reading(400, 1, 100, 1, 0.1, 0.9)).confidence().value();
+            double alone = MeterEstimator.decide(reading(0, 1, 100, 1)).confidence().value();
 
-            assertThat(contradicted).isLessThan(supported).isCloseTo(floor, within(0.05));
+            assertThat(comped).isEqualTo(alone);
+        }
+
+        @Test
+        @DisplayName("the division alone never leaves the assumption")
+        void theDivisionAloneDoesNotDecide() {
+            // A pulse dividing in three under a recording whose harmony has no
+            // period at all: the prior stands, as it does for every other length
+            // the evidence does not carry.
+            assertThat(MeterEstimator.decide(reading(0, 0, 0, 0, 0.9, 0.1)).meter())
+                    .isEqualTo(TimeSignature.FOUR_FOUR);
+        }
+
+        @Test
+        @DisplayName("what a two-pulse bar is worth is read from the division, not the harmony")
+        void confidenceInTwoComesFromTheDivision() {
+            double weakHarmony =
+                    MeterEstimator.decide(reading(6, 1, 0.5, 1, 0.9, 0.1)).confidence().value();
+            double strongHarmony =
+                    MeterEstimator.decide(reading(400, 1, 0.5, 1, 0.9, 0.1)).confidence().value();
+            double weakerDivision =
+                    MeterEstimator.decide(reading(400, 1, 0.5, 1, 0.7, 0.5)).confidence().value();
+
+            assertThat(weakHarmony).isEqualTo(strongHarmony);
+            assertThat(weakerDivision).isLessThan(strongHarmony);
         }
 
         @Test
@@ -365,6 +409,21 @@ class MeterEstimationTest {
             MeterEstimator.Reading undivided = MeterEstimator.read(times, chroma, clicks(1));
             assertThat(undivided.inThree()).isLessThan(0.1);
             assertThat(undivided.inTwo()).isLessThan(0.1);
+        }
+
+        @Test
+        @DisplayName("an envelope with nothing at the pulse divides neither way")
+        void aPulseTheEnvelopeDoesNotCarry() {
+            List<Double> times = beats(BEATS);
+            Chroma chroma = stepwiseChroma(BEATS - 1, 2);
+
+            MeterEstimator.Reading reading = MeterEstimator.read(times, chroma, aperiodic());
+
+            // Read against a pulse that is not there, the divisions are a ratio
+            // of two noise levels and reach any level in either direction.
+            assertThat(reading.inThree()).isZero();
+            assertThat(reading.inTwo()).isZero();
+            assertThat(MeterEstimator.decide(reading).meter()).isEqualTo(TimeSignature.FOUR_FOUR);
         }
 
         @Test

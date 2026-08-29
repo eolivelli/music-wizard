@@ -623,7 +623,8 @@ deliverable is what this run was run to confirm, and MW's answer is G major.
 il-filo-rosso.mp3
 
 "il filo rosso" (ALFA), 189 s, with il-filo-rosso.lrc beside it. No fetch
-command was recorded for it — @eolivelli, please add the one you used.
+command was recorded for it, so this directory cannot be rebuilt from the entry
+as the others can; #710 carries that.
 
 Not in four: Enrico's ear. The recording is the acceptance case for #707, a
 6/8 counted in two whose tracker lands on the dotted quarter — which is where a

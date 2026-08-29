@@ -29,20 +29,20 @@ bar phase the rows above rest on, at the estimator's own confidence in it (a pha
   phase bossa-cm.mp3: beat 0 of 4 at 0.3500  root 24.5%  best beat 2 at 27.8%
   phase pop-c-g-am-f-120.mp3: beat 0 of 4 at 0.4299  root 100.0%  best beat 0 at 100.0%
 meters, against the meter each samples/list.txt entry states:
-  meter blues-a-90bpm.mp3: 4/4 at 55%  pulses/bar 4  want 4/4  OK
+  meter blues-a-90bpm.mp3: 4/4 at 90%  pulses/bar 4  want 4/4  OK
   meter blues-shuffle-a-106bpm.mp3: 4/4 at 84%  pulses/bar 4  want 4/4  OK
-  meter blues-e-90bpm.mp3: 4/4 at 67%  pulses/bar 4  want 4/4  OK
+  meter blues-e-90bpm.mp3: 4/4 at 90%  pulses/bar 4  want 4/4  OK
   meter slow-68-40.mp3: 6/8 at 76%  pulses/bar 6  want 6/8  OK
   meter g-blues-shuffle-cc.mp3: 4/4 at 90%  pulses/bar 4  want 4/4  OK
-  meter fm7-vamp-110.mp3: 4/4 at 50%  pulses/bar 4  want 4/4  OK
-  meter eb7-vamp-130.mp3: 4/4 at 53%  pulses/bar 4  want 4/4  OK
+  meter fm7-vamp-110.mp3: 4/4 at 63%  pulses/bar 4  want 4/4  OK
+  meter eb7-vamp-130.mp3: 4/4 at 90%  pulses/bar 4  want 4/4  OK
   meter bossa-cm.mp3: 4/4 at 59%  pulses/bar 4  want 4/4  OK
-  meter cm-blues-68-95.mp3: 6/8 at 90%  pulses/bar 2  want 6/8  OK
+  meter cm-blues-68-95.mp3: 6/8 at 61%  pulses/bar 2  want 6/8  OK
   meter waltz-am-e7-160.mp3: 3/4 at 90%  pulses/bar 3  want 3/4  OK
-  meter f-blues-swing-170.mp3: 4/4 at 53%  pulses/bar 4  want 4/4  OK
+  meter f-blues-swing-170.mp3: 4/4 at 71%  pulses/bar 4  want 4/4  OK
   meter jazz-251-c-140.mp3: 4/4 at 61%  pulses/bar 4  want 4/4  OK
-  meter ballad-wine-roses-65.mp3: 4/4 at 52%  pulses/bar 4  want 4/4  OK
-  meter pop-c-g-am-f-120.mp3: 4/4 at 89%  pulses/bar 4  want 4/4  OK
+  meter ballad-wine-roses-65.mp3: 4/4 at 81%  pulses/bar 4  want 4/4  OK
+  meter pop-c-g-am-f-120.mp3: 4/4 at 90%  pulses/bar 4  want 4/4  OK
   meter pop-am-f-c-g-144.mp3: 4/4 at 90%  pulses/bar 4  want 4/4  OK
 keys, against the expected key for each file:
   key blues-a-90bpm.mp3: A major at 64%  want A major  OK
