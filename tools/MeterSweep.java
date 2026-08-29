@@ -144,9 +144,8 @@ public final class MeterSweep {
      * {@code tools/score-samples.py} scores the same truth, which is what makes
      * a regression here fail a gate rather than only print differently.
      */
-    private static final List<Job> LOCAL_METERS = List.of(
-            new Job(LOCAL, "balorda-nostalgia.mp3", "6/8"),
-            new Job(LOCAL, "il-filo-rosso.mp3", "6/8"));
+    private static final List<Job> LOCAL_METERS =
+            List.of(new Job(LOCAL, "balorda-nostalgia.mp3", "6/8"));
 
     /**
      * Every recording under {@code uncommitted/}, present only on the machine

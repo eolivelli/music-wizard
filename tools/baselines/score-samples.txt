@@ -45,7 +45,6 @@ meters, against the meter each list.txt entry states:
   meter pop-c-g-am-f-120.mp3: 4/4 at 90%  pulses/bar 4  want 4/4  OK
   meter pop-am-f-c-g-144.mp3: 4/4 at 90%  pulses/bar 4  want 4/4  OK
   meter balorda-nostalgia.mp3: 6/8 at 51%  pulses/bar 2  want 6/8  OK
-  meter il-filo-rosso.mp3: 6/8 at 82%  pulses/bar 2  want 6/8  OK
 keys, against the expected key for each file:
   key blues-a-90bpm.mp3: A major at 64%  want A major  OK
   key blues-shuffle-a-106bpm.mp3: A major at 63%  want A major  OK

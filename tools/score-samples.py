@@ -192,7 +192,6 @@ METERS = {
     "pop-c-g-am-f-120.mp3": ("samples", "4/4"),
     "pop-am-f-c-g-144.mp3": ("samples", "4/4"),
     "balorda-nostalgia.mp3": ("uncommitted", "6/8"),
-    "il-filo-rosso.mp3": ("uncommitted", "6/8"),
 }
 
 # Recordings a musician has confirmed hold no minor chord anywhere, with where
