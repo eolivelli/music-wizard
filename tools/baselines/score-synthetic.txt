@@ -1,11 +1,15 @@
 Synthetic corpus, bar-by-bar against each package's own spec
 (sequence-aligned: no rotation credit; see the module docstring)
+  blues-compound-e-126.mp3: bars=35/36  tempo 84.0/126 (x0.67)  meter 4/4 WRONG  root 21.5/36 (59.7%)  root+quality 0.0/36 (0.0%)  split 5  key OK
+  blues-shuffle-e-84.mp3: bars=35/36  tempo 84.0/84 (x1.00)  meter OK  root 25.0/36 (69.4%)  root+quality 0.0/36 (0.0%)  split 4  key OK
   hiphop-m7vamp-bbm-90.mp3: bars=52/52  tempo 90.0/90 (x1.00)  meter OK  root 51.5/52 (99.0%)  root+quality 51.5/52 (99.0%)  split 1  key OK
   melody-level1-c-96.mp3: melody only; chords not scored
   melody-level2-g-84.mp3: melody only; chords not scored
   melody-level2pad-g-84.mp3: bars=69/32  tempo 181.3/84 (x2.16)  meter OK  root 5.0/32 (15.6%)  root+quality 3.0/32 (9.4%)  split 0  key OK
   melody-level3-am-108.mp3: melody only; chords not scored
   melody-level4-f-126.mp3: melody only; chords not scored
+  pop-68-twobar-am-144.mp3: bars=31/64  tempo 96.0/144 (x0.67)  meter 4/4 WRONG  root 13.0/64 (20.3%)  root+quality 0.0/64 (0.0%)  split 0  key OK
+  pop-68-vamp-am-144.mp3: bars=63/64  tempo 144.1/144 (x1.00)  meter OK  root 63.0/64 (98.4%)  root+quality 25.0/64 (39.1%)  split 0  key OK
   pop-add9-g-96.mp3: bars=31/32  tempo 96.0/96 (x1.00)  meter OK  root 31.0/32 (96.9%)  root+quality 17.0/32 (53.1%)  split 0  key OK
   pop-add9-triads-g-96.mp3: bars=31/32  tempo 96.0/96 (x1.00)  meter OK  root 31.0/32 (96.9%)  root+quality 31.0/32 (96.9%)  split 0  key OK
   pop-axis-g-116.mp3: bars=44/44  tempo 116.0/116 (x1.00)  meter OK  root 44.0/44 (100.0%)  root+quality 44.0/44 (100.0%)  split 0  key OK
@@ -17,4 +21,5 @@ Synthetic corpus, bar-by-bar against each package's own spec
   pop-sus-a-104.mp3: bars=31/32  tempo 104.0/104 (x1.00)  meter OK  root 31.0/32 (96.9%)  root+quality 19.0/32 (59.4%)  split 0  key OK
   pop-sus-triads-a-104.mp3: bars=31/32  tempo 104.0/104 (x1.00)  meter OK  root 31.0/32 (96.9%)  root+quality 27.0/32 (84.4%)  split 0  key OK
   pop-threechord-c-108.mp3: bars=28/28  tempo 108.1/108 (x1.00)  meter OK  root 28.0/28 (100.0%)  root+quality 27.0/28 (96.4%)  split 0  key OK
+  pop-waltz-d-108.mp3: bars=39/40  tempo 108.1/108 (x1.00)  meter OK  root 39.0/40 (97.5%)  root+quality 39.0/40 (97.5%)  split 0  key OK
   rocknroll-12bar-a-168.mp3: bars=47/48  tempo 168.1/168 (x1.00)  meter OK  root 44.0/48 (91.7%)  root+quality 19.5/48 (40.6%)  split 2  key OK

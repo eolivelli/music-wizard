@@ -24,7 +24,9 @@ Parsed by `mw-teacher`'s `SpecParser`, which rejects unknown headers:
 title: Doo-wop loop in Eb
 genre: pop
 style: pop-ballad          # pop-ballad | pop-rock | hiphop-boom-bap | rocknroll-shuffle
-tempo: 72
+tempo: 72                  # quarter beats per minute, whatever the meter counts
+meter: 4/4                 # optional; 4/4, or 3/4 and 6/8 under pop-ballad and
+                           # 12/8 under rocknroll-shuffle
 key: Eb major              # <tonic> major|minor
 seed: 3                    # vary it; same seed + same spec = same MIDI bytes
 melody: flute              # optional; 'none' for comping-only packages
@@ -40,10 +42,19 @@ Eb Cm Ab Bb                # one token per bar, X-Y a split bar
 A `#` opens a comment only at line start or after whitespace — `C#m` is a
 chord, not a comment. Chord tokens only in the `samples/list.txt` shorthand:
 `7 m7 maj7 6 m6 m7b5 dim m` and plain-letter major. 24–64 bars — long enough
-for the beat tracker and chord decoder to have real material — and 4/4 only
-for now; the arranger refuses anything else. File names like the corpus:
-`<genre>-<slug>-<key>-<bpm>`, lowercase (`pop-doowop-eb-72`); the spec file
-is `<name>.spec.txt`.
+for the beat tracker and chord decoder to have real material. File names like
+the corpus: `<genre>-<slug>-<key>-<bpm>`, lowercase (`pop-doowop-eb-72`), the
+bpm being the header's; the spec file is `<name>.spec.txt`.
+
+`tempo` is in quarter beats whatever the meter counts, because everything
+downstream of the beat grid is: a 6/8 package's counted dotted quarter runs at
+two thirds of the header and a 12/8 package's at two thirds of it as well, so
+two packages meant to be counted at the same rate do not carry the same number.
+A style is a set of patterns of a particular bar length and feel rather than a
+parameter, so only the pairs listed above are written and the arranger refuses
+any other outright. It refuses a melody outside 4/4 too: `MelodyGenerator`'s
+rhythm templates are bars of four (#715), so those packages carry
+`melody: none`.
 
 Grids draw from the shared harmonic vocabulary of mainstream Western popular
 music: I–V–vi–IV and its rotations, I–IV–V, the 50s doo-wop I–vi–IV–V, the
@@ -157,6 +168,35 @@ comparable on quality until that voicing is a function of the chord rather
 than of history. Each package's own row stands, and what these four were built
 to show is per package anyway: every suspended and every added-ninth bar is
 named as its plain triad.
+
+**Five packages carry a meter other than 4/4** (#702), and they are here for
+the meter detector rather than for the harmony stages. `pop-waltz-d-108` is the
+three-pulse bar on its own: bass on one, chord on two and three, and the hat on
+the counted beat and nothing between two beats. The other four are two pairs,
+and as with the pairs above the pairing is what they are for.
+
+`pop-68-vamp-am-144` and `pop-68-twobar-am-144` are one 6/8 phrase at two
+harmonic rates — a chord to a bar, and the same chords each held for two bars —
+with key, tempo, seed, style, length and chords otherwise identical.
+`MeterEstimator` admits a bar of two tracked pulses only where no longer bar
+length is supported by the harmony on its own, so the first states that regime
+and the second states its cost (#712). The first phrase is five bars long
+because the phrase length is what decides which bar lengths the harmony can
+speak for at all: an even phrase supports two bars, a phrase in threes supports
+three, and one of five supports neither.
+
+`blues-shuffle-e-84` and `blues-compound-e-126` carry the same twelve-bar grid,
+the same seed and the same counted-beat rate, and differ in whether the middle
+eighth of each beat sounds — the one thing a musician tells a shuffle from a
+compound bar by, and the one thing #701 says nothing in the corpus isolated.
+Their tempo headers differ by the dotted quarter, which is what puts every
+event of the shuffle at the same instant in both.
+
+Two of the five are expected to read their meter wrong, and their issues say
+which and why: a four-pulse bar is not promoted to 12/8 on subdivision evidence
+(#701), and a 6/8 whose harmony supports four tracked pulses cannot reach the
+two-pulse bar (#712). Stating that by construction is what they were built for,
+so those rows are evidence rather than a regression.
 
 Regenerate a package with:
 

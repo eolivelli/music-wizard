@@ -1,0 +1,29 @@
+title: 6/8 pop vamp in A minor, a chord to a bar
+genre: pop
+style: pop-ballad
+tempo: 144
+key: A minor
+meter: 6/8
+seed: 31
+melody: none
+bars:
+# Counted in two. The tempo header is quarter beats, as everything downstream of
+# the beat grid is, so the counted dotted quarter runs at two thirds of it. All
+# six eighths are struck, by the broken chord and by the hat, which is the
+# evidence a compound bar carries and a shuffle does not (#701).
+#
+# i-iv-i-v-i, a chord to a bar, in a phrase of five. Five because the phrase
+# length is what decides which bar lengths the harmony can speak for: an even
+# phrase supports two bars and a phrase in threes supports three, and this one
+# supports neither, so the harmony is periodic at the bar and at nothing longer.
+# That is the regime MeterEstimator admits a two-pulse bar in, and the twin
+# pop-68-twobar-am-144 is this phrase with every chord held twice as long, which
+# is the regime it refuses (#712).
+Am Dm Am Em Am Am Dm Am
+Em Am Am Dm Am Em Am Am
+Dm Am Em Am Am Dm Am Em
+Am Am Dm Am Em Am Am Dm
+Am Em Am Am Dm Am Em Am
+Am Dm Am Em Am Am Dm Am
+Em Am Am Dm Am Em Am Am
+Dm Am Em Am Am Dm Am Em

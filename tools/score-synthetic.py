@@ -16,10 +16,12 @@ first bar, with no best-rotation search. The spec says where bar one is; a
 reading that is right up to rotation is wrong here.
 
 Every scored row states the meter it barred the package in against the spec's
-own. No package states anything but 4/4 today -- the arranger writes nothing
-else (#702) -- so the column is a control on the detector rather than a test of
-it: a package that leaves 4/4 here has had its bar lines moved by something no
-spec asked for.
+own. On a package stating 4/4 the column is a control -- one that leaves 4/4 has
+had its bar lines moved by something no spec asked for -- and on the packages
+#702 added in 3/4, 6/8 and 12/8 it is the reading itself, against a meter the
+spec compiled the MIDI from. Two of those are expected to read wrong today and
+their own issues say why; the column is where a fix for #701 or #712 would
+show.
 
 Every scored row states the tempo as a ratio against the spec's own (#453). A
 melody-only package states none: it returns before a grid is read at all. The
@@ -187,8 +189,7 @@ def score_package(jar: Path, spec_file: Path) -> str:
     got_key = named_key(doc)
     key_verdict = "OK" if got_key == want_key else f"{got_key or 'none'} WRONG"
     # The spec's own default, which is what SpecParser substitutes for a spec
-    # that names no meter -- and every package here is one, the arranger writing
-    # nothing but 4/4 (#702). The column is a control until that changes.
+    # that names no meter.
     want_meter = spec["headers"].get("meter", "4/4")
     got_meter = samples.barred_meter(doc)
     meter_verdict = "OK" if got_meter == want_meter else f"{got_meter or 'none'} WRONG"

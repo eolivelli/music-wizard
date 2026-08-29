@@ -1,0 +1,26 @@
+title: Slow blues in E, twelve eighths to a bar
+genre: blues
+style: rocknroll-shuffle
+tempo: 126
+key: E major
+meter: 12/8
+seed: 41
+melody: none
+bars:
+# The compound half of the pair #701 asks for, and the twin of
+# blues-shuffle-e-84: the same grid and seed, and the tempo header is that one's
+# multiplied by the dotted quarter, so both count four beats a bar at the same
+# rate and every event of the shuffle sounds here at the same instant. What is
+# added is the middle eighth of each beat, in the comp and in the ride, which is
+# the whole difference between a shuffle and a compound bar.
+# 12-bar blues, three choruses, dominant sevenths throughout; the last chorus
+# ends on the tonic rather than a turnaround.
+E7 E7 E7 E7
+A7 A7 E7 E7
+B7 A7 E7 B7
+E7 E7 E7 E7
+A7 A7 E7 E7
+B7 A7 E7 B7
+E7 E7 E7 E7
+A7 A7 E7 E7
+B7 A7 E7 E7
