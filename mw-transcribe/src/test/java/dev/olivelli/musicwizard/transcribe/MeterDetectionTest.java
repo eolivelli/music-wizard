@@ -140,6 +140,6 @@ class MeterDetectionTest {
                 new AudioTranscriber.Options(null, TimeSignature.FOUR_FOUR, null));
 
         assertThat(said).anyMatch(line -> line.startsWith("meter 4/4 as supplied, "))
-                .noneMatch(line -> line.contains("confidence"));
+                .noneMatch(line -> line.startsWith("meter ") && line.contains("confidence"));
     }
 }

@@ -122,4 +122,7 @@ length hung on the phase the downbeats agree on (#233).
   `MeterEstimator`, whose readings `tools/MeterSweep.java` prints.
 
 `--tempo` is read in the meter's *counted* beats per minute — what a
-metronome shows — which differs from quarter notes in compound time.
+metronome shows — which differs from quarter notes in compound time, and which
+meter that is may be one MW read rather than one anyone typed (#705). The run
+prints the counted rate on its own meter line, so the figure to type back is
+the one it showed; `--time-signature` pins the unit outright.

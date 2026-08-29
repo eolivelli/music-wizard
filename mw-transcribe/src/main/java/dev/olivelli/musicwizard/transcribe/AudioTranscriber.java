@@ -363,7 +363,7 @@ public final class AudioTranscriber {
         // instruction and wins outright, as a supplied downbeat does.
         MeterEstimator.Estimate detected = settings.timeSignature() != null
                 ? null
-                : MeterEstimator.estimate(beatTimes, chroma, envelope);
+                : MeterEstimator.estimate(beatTimes, chroma);
         TimeSignature meter = detected != null
                 ? detected.meter() : settings.timeSignatureOrDefault();
 

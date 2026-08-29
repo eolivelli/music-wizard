@@ -160,14 +160,14 @@ KEYS = {
 }
 
 # The meter each file is in, from samples/list.txt: an entry names its meter
-# only where it is not four, so the rows below that say 4/4 are the entries
-# that say nothing and whose grids are written in bars of four.
+# where it is not four, so the rows below that say 4/4 are the entries that say
+# nothing and whose grids are written in bars of four.
 #
-# One row is weaker than the rest and it is worth knowing which. bm-blues-slow
-# was read rather than heard -- its list.txt entry records the argument, which
-# is that its confirmed twelve-bar cycle aligns when the recording is barred
-# every six tracked pulses and does not when it is barred in four -- and its
-# entry is where a row of this kind says so.
+# Two files the KEYS table covers are deliberately absent. bm-blues-slow and
+# footprints-200 have a bar length that was read rather than heard and a
+# signature that was not: 3/4 and 6/8 bar the same three quarter notes, and
+# "in three" does not choose between 3/4 and 6/4, so scoring either would be
+# scoring MW against its own reading. Their entries say so.
 #
 # The shuffles are the guard this column exists for. Their swing is a triple
 # subdivision of the pulse, and they are barred in four by their own confirmed
@@ -182,13 +182,11 @@ METERS = {
     "fm7-vamp-110.mp3": "4/4",
     "eb7-vamp-130.mp3": "4/4",
     "bossa-cm.mp3": "4/4",
-    "bm-blues-slow.mp3": "6/8",
     "cm-blues-68-95.mp3": "6/8",
     "waltz-am-e7-160.mp3": "3/4",
     "f-blues-swing-170.mp3": "4/4",
     "jazz-251-c-140.mp3": "4/4",
     "ballad-wine-roses-65.mp3": "4/4",
-    "footprints-200.mp3": "3/4",
     "pop-c-g-am-f-120.mp3": "4/4",
     "pop-am-f-c-g-144.mp3": "4/4",
 }

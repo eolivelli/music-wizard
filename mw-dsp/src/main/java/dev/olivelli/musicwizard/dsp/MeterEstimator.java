@@ -22,41 +22,41 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * Reads the meter from the recording: how many tracked pulses make a bar, and
- * whether the pulse divides in two or in three.
+ * Reads how many tracked pulses make a bar, and names the meter that bars them.
  *
- * <p>The two questions are independent and both are needed. The bar length is
- * read from harmonic change, which {@link DownbeatEstimator} already measures
- * per beat — chords change preferentially at bar lines, so the bar length is
- * the period that change repeats at. The subdivision cannot be read there at
- * all: the tracker lands on the counted beat of a compound groove as readily
- * as on its eighths, so it is read from where the onsets fall <em>between</em>
- * pulses.
+ * <p>The bar length is read from harmonic change, which {@link DownbeatEstimator}
+ * already measures per beat — chords change preferentially at bar lines, so the
+ * bar is the period that change repeats at. Each candidate is scored as the
+ * squared magnitude of one Fourier coefficient of that novelty over the
+ * novelty's own energy, which is what makes lengths comparable at all:
+ * per-phase means are not, because the best of four phases beats the best of
+ * three by chance (#88, #303), while this has expectation one at every period
+ * under a null of independent beats.
  *
- * <p>Both halves are scored the same way, as the squared magnitude of one
- * Fourier coefficient over the coefficient's own energy. That normalisation is
- * the whole reason the numbers may be compared at all: per-phase means are not
- * comparable across bar lengths, because the best of four phases beats the
- * best of three by chance (#88, #303), while this statistic has expectation
- * one at every period under a null of independent beats. The evidence is the
- * same; only the null it is read against is new.
+ * <p><b>4/4 is the prior and a reading must clear a margin to leave it.</b> A
+ * wrong meter moves every bar line, which is why {@link BeatTracker} declined to
+ * guess one at all, so the gates are asymmetric by design and a bar length that
+ * does not clear them is reported as 4/4 at the confidence the evidence gave it
+ * rather than hidden.
  *
- * <p><b>4/4 is the prior and the reading must clear a margin to leave it.</b>
- * A wrong meter moves every bar line, which is why {@link BeatTracker} declined
- * to guess one at all, so the gates below are asymmetric by design: a bar
- * length other than four has to be supported on its own <em>and</em> beat the
- * four-beat bar by a margin, and where it does not the answer is 4/4 reported
- * at the confidence the evidence gave it rather than hidden.
+ * <p><b>The statistic cannot prefer a period over its own divisors.</b> Novelty
+ * that repeats every six beats carries the same coefficient at three and at two,
+ * six being a multiple of both, so where six is comparable it is six that is
+ * believed: the shorter reading is implied by the longer and never the other way
+ * round. Four is coprime with three and with six, so nothing of the kind relates
+ * it to either.
  *
- * <p>Two things this deliberately does not read. <b>A swung eighth is not a
- * compound bar.</b> Every shuffle in {@code samples/list.txt} measures as a
- * triple subdivision and is barred in four by its ground-truth cycle, so the
- * subdivision may name a bar that has already left four and may not move one
- * that has not: 12/8 and 3/8 are reachable only through
- * {@code --time-signature} (#701). And <b>the accent is not asked about the
- * bar length</b> — its strongest periodicity on ordinary drum material is the
- * backbeat (#70), which argues for a two-beat bar on most of the corpus,
- * including recordings whose harmony names the bar unambiguously.
+ * <p>Three things this deliberately does not read, each because the corpus says
+ * it cannot be read. <b>A bar of two tracked pulses is not a candidate</b>: it is
+ * indistinguishable from a four-beat bar whose harmony moves twice in it, which
+ * is ordinary comping, and no onset evidence separates them (#701). <b>A swung
+ * eighth is not a compound bar</b>, for the same reason one layer down — every
+ * shuffle in {@code samples/list.txt} subdivides in three and is barred in four
+ * by its own ground-truth cycle — so 12/8 and 3/8 are reachable only through
+ * {@code --time-signature}. And <b>the accent is not asked about the bar
+ * length</b>: its strongest periodicity on ordinary drum material is the
+ * backbeat (#70), which argues for a two-beat bar on most of the corpus and
+ * prefers four to three on material whose harmony names three unambiguously.
  *
  * <p>{@code tools/MeterSweep.java} prints the readings behind every constant
  * here, for the committed benchmarks and the local-only ones alike; read it
@@ -65,12 +65,12 @@ import java.util.Objects;
 public final class MeterEstimator {
 
     /**
-     * Tracked pulses to a bar this reads. Two, three and four are bars; six is
-     * a bar the tracker has filled with the subdivision of a compound meter,
-     * which is a reading about the pulse level rather than about the bar and
-     * is why {@link Estimate#pulsesPerBar()} is carried beside the meter.
+     * Tracked pulses to a bar this reads. Three and four are bars; six is a bar
+     * the tracker has filled with the subdivision of a compound meter, which is
+     * a reading about the pulse level rather than about the bar and is why
+     * {@link Estimate#pulsesPerBar()} is carried beside the meter.
      */
-    private static final int[] CANDIDATES = {2, 3, 4, 6};
+    private static final int[] CANDIDATES = {3, 4, 6};
 
     /** The bar length assumed when the evidence does not displace it. */
     private static final int ASSUMED = 4;
@@ -80,24 +80,33 @@ public final class MeterEstimator {
      *
      * <p>A significance level rather than a tuning: the statistic has
      * expectation one under a null of independent beats whatever the period, so
-     * a point in that null's tail means the same thing at every candidate. It
-     * does not mean it equally strongly — the coefficient at a period of two is
-     * real where the others are complex, so its tail is the fatter of the two —
-     * which is one more reason the two-pulse reading carries gates the others
-     * do not. Below this a candidate is not distinguishable from a recording
-     * whose harmony has no period at all.
+     * a point in that null's tail means the same thing at every candidate.
+     * Below it a candidate is not distinguishable from a recording whose harmony
+     * has no period at all.
      */
     private static final double SUPPORTED = 5.0;
 
     /**
      * How far a bar length must beat the assumed one before it may replace it.
      *
-     * <p>A ratio, since the two are the same statistic on the same series. It
-     * is the margin {@link BeatTracker#toBeatGrid}'s refusal to guess is being
-     * traded for, so it is deliberately wide: every bar length the corpus
-     * states clears it, and {@code tools/MeterSweep.java} prints by how much.
+     * <p>A ratio, since the two are the same statistic on the same series. It is
+     * the margin {@link BeatTracker#toBeatGrid}'s refusal to guess is being
+     * traded for, so it is deliberately wide: every bar length the corpus states
+     * clears it, and {@code tools/MeterSweep.java} prints by how much.
      */
     private static final double MARGIN = 4.0;
+
+    /**
+     * The share of a three-pulse reading that a six-pulse one must carry before
+     * the six is believed instead.
+     *
+     * <p>Not a margin in the sense above, and the comparison runs the other way:
+     * three divides six, so novelty that really repeats every six beats scores
+     * the two <em>equally</em> and a three that is real leaves the six far
+     * behind. What this separates is those two cases, and the corpus puts them
+     * either side of it by a wide margin in both directions.
+     */
+    private static final double DIVIDED = 0.5;
 
     /**
      * Confidence in a meter the evidence does not decide.
@@ -115,10 +124,10 @@ public final class MeterEstimator {
     /**
      * The most any reading may report.
      *
-     * <p>Below certainty because the vocabulary is smaller than the question:
-     * a bar of four tracked pulses is read as 4/4 whether the recording is in
-     * four or in twelve-eight, so a reading can be right about the bar and
-     * wrong about what to write on the page (#701).
+     * <p>Below certainty because the vocabulary is smaller than the question: a
+     * bar of four tracked pulses is read as 4/4 whether the recording is in four
+     * or in twelve-eight, so a reading can be right about the bar and wrong
+     * about what to write on the page (#701).
      */
     private static final double CEILING = 0.9;
 
@@ -146,10 +155,10 @@ public final class MeterEstimator {
     /**
      * The meter read from a recording, and how the tracked pulses fill its bars.
      *
-     * <p>{@code pulsesPerBar} is not {@code meter.beatsPerBar()} in general:
-     * a tracker that landed on the eighths of a 6/8 groove puts six pulses in
-     * a bar that is counted in two, and a caller that bars on the counted beat
-     * would draw bars a third of the right length.
+     * <p>{@code pulsesPerBar} is not {@code meter.beatsPerBar()} in general: a
+     * tracker that landed on the eighths of a 6/8 groove puts six pulses in a bar
+     * that is counted in two, and a caller that barred on the counted beat would
+     * draw bars a third of the right length.
      *
      * @param meter        the meter to bar the recording in
      * @param pulsesPerBar tracked pulses in one of its bars
@@ -181,36 +190,30 @@ public final class MeterEstimator {
      * The statistics a reading is made of, for an instrument that wants the
      * numbers rather than the decision.
      *
-     * <p>Every field has expectation one under its own null, so they may be
-     * read against each other and against {@link #SUPPORTED}.
+     * <p>One statistic at four periods, so they may be read against each other
+     * and against {@link #SUPPORTED}. Two is not a candidate bar length and is
+     * measured anyway: it is what says how a six-pulse bar groups.
      *
      * @param atTwo       harmonic periodicity at two tracked pulses
      * @param atThree     the same at three
      * @param atFour      the same at four, which is the assumption's own score
      * @param atSix       the same at six
-     * @param duple       onset periodicity at half a pulse
-     * @param triple      onset periodicity at a third of a pulse
      * @param usableBeats beats novelty is defined at, which is what all of the
      *                    above are measured over
      */
     public record Reading(double atTwo, double atThree, double atFour, double atSix,
-                          double duple, double triple, int usableBeats) {
+                          int usableBeats) {
 
-        /** The harmonic periodicity at a candidate bar length. */
-        public double at(int pulsesPerBar) {
-            return switch (pulsesPerBar) {
+        /** The harmonic periodicity at a period, which need not be a candidate. */
+        public double at(int pulses) {
+            return switch (pulses) {
                 case 2 -> atTwo;
                 case 3 -> atThree;
                 case 4 -> atFour;
                 case 6 -> atSix;
                 default -> throw new IllegalArgumentException(
-                        "not a candidate bar length: " + pulsesPerBar);
+                        "not a period this reads: " + pulses);
             };
-        }
-
-        /** Whether the onsets between pulses fall in three rather than in two. */
-        public boolean subdividesInThree() {
-            return triple > duple;
         }
     }
 
@@ -220,11 +223,9 @@ public final class MeterEstimator {
      * @param beatTimes the tracked beats, in seconds and ascending
      * @param chroma    beat-synchronous chroma over exactly those beats, as
      *                  {@link DownbeatEstimator#estimate} takes it
-     * @param envelope  the onset envelope the beats were tracked from
      */
-    public static Estimate estimate(List<Double> beatTimes, Chroma chroma,
-                                    OnsetEnvelope envelope) {
-        return decide(read(beatTimes, chroma, envelope));
+    public static Estimate estimate(List<Double> beatTimes, Chroma chroma) {
+        return decide(read(beatTimes, chroma));
     }
 
     /**
@@ -233,10 +234,9 @@ public final class MeterEstimator {
      * <p>A reading over too few beats reports zeroes rather than a coefficient
      * of a window: {@link Reading#usableBeats()} is what says which it is.
      */
-    public static Reading read(List<Double> beatTimes, Chroma chroma, OnsetEnvelope envelope) {
+    public static Reading read(List<Double> beatTimes, Chroma chroma) {
         Objects.requireNonNull(beatTimes, "beatTimes");
         Objects.requireNonNull(chroma, "chroma");
-        Objects.requireNonNull(envelope, "envelope");
 
         // Novelty is only defined where a beat has a chroma span on both sides,
         // exactly as DownbeatEstimator scopes it.
@@ -244,7 +244,7 @@ public final class MeterEstimator {
         int lastBeat = beatTimes.size() - 2;
         int usable = lastBeat - firstBeat + 1;
         if (usable < BARS_FOR_A_READING * longestCandidate() || chroma.frameCount() == 0) {
-            return new Reading(0, 0, 0, 0, 0, 0, Math.max(0, usable));
+            return new Reading(0, 0, 0, 0, Math.max(0, usable));
         }
         if (!chroma.isBeatSynchronous() || chroma.frameCount() != beatTimes.size() - 1) {
             throw new IllegalArgumentException(
@@ -255,23 +255,20 @@ public final class MeterEstimator {
         }
 
         double[] novelty = DownbeatEstimator.harmonicNovelty(chroma);
-        double[] within = withinPulsePhases(beatTimes, envelope);
         return new Reading(
                 periodicity(novelty, firstBeat, lastBeat, 2),
                 periodicity(novelty, firstBeat, lastBeat, 3),
                 periodicity(novelty, firstBeat, lastBeat, 4),
                 periodicity(novelty, firstBeat, lastBeat, 6),
-                circularPeriodicity(within, 2),
-                circularPeriodicity(within, 3),
                 usable);
     }
 
     /**
      * The meter a reading names.
      *
-     * <p>One winner and one fallback: a bar length that fails any gate returns
-     * the assumption rather than the next candidate down, because a candidate
-     * that only wins once the winner is disqualified was never the evidence.
+     * <p>One winner and one fallback: a bar length that fails a gate returns the
+     * assumption rather than the next candidate down, because a candidate that
+     * only wins once the winner is disqualified was never the evidence.
      */
     public static Estimate decide(Reading reading) {
         Objects.requireNonNull(reading, "reading");
@@ -281,68 +278,56 @@ public final class MeterEstimator {
                 best = candidate;
             }
         }
-        TimeSignature meter = best == ASSUMED ? null : meterAt(reading, best);
-        if (meter == null || !clearsThePrior(reading, best)) {
+        // Three divides six, so a six-pulse bar scores three as strongly as it
+        // scores itself and would take the reading on floating-point residue.
+        if (best == 3 && reading.atSix() >= DIVIDED * reading.atThree()) {
+            best = 6;
+        }
+        if (best == ASSUMED || !clearsThePrior(reading, best)) {
             return new Estimate(TimeSignature.FOUR_FOUR, ASSUMED,
                     confidenceIn(reading, ASSUMED));
         }
-        return new Estimate(meter, best, confidenceIn(reading, best));
+        return new Estimate(meterAt(reading, best), best, confidenceIn(reading, best));
     }
 
     /**
-     * Whether a bar length other than the assumed one is worth acting on.
-     *
-     * <p>Three gates, and the third applies only to a candidate that divides
-     * the assumption. <b>A bar of four states its own halves</b>, so a two-beat
-     * periodicity is also what a four-beat bar looks like when its halves are
-     * alike — which most comping is, and which is why the two-beat reading is
-     * the strongest one on several recordings that are plainly in four. Nothing
-     * of the kind relates three or six to four, so nothing there needs the gate.
+     * Whether a bar length other than the assumed one is worth acting on: it has
+     * to be a period at all, and to beat the four-beat bar by the margin that
+     * leaving the prior costs.
      */
     private static boolean clearsThePrior(Reading reading, int candidate) {
-        if (reading.at(candidate) < SUPPORTED) {
-            return false;
-        }
-        if (reading.at(candidate) < MARGIN * reading.at(ASSUMED)) {
-            return false;
-        }
-        return ASSUMED % candidate != 0 || reading.at(ASSUMED) < SUPPORTED;
+        return reading.at(candidate) >= SUPPORTED
+                && reading.at(candidate) >= MARGIN * reading.at(ASSUMED);
     }
 
     /**
-     * The meter a bar length and the subdivision name together, or null where
-     * the pair names nothing this reads.
+     * The meter a bar length names.
      *
-     * <p>Six is the tracker on a subdivision rather than on the counted beat,
-     * and which meter it is comes from how those six group — in two threes,
-     * which is 6/8, or in three twos, which is 3/4 — read from the harmonic
-     * statistic rather than from the onsets, since there is nothing below the
-     * pulse left to hear.
-     *
-     * <p><b>The subdivision decides the two-pulse bar and nothing else.</b>
-     * There it settles 6/8 against 2/4, which are different bars; at three
-     * pulses it would settle 3/4 against 9/8, which are the same bar under two
-     * spellings, so refusing one for the other would cost a bar axis to buy a
-     * notation this cannot reach anyway. 2/4 is left to the prior, since
-     * barring a four-beat bar in two draws every other bar line in the right
-     * place, which is worse than drawing none of them wrong.
+     * <p>Three pulses is 3/4. Six is the tracker on a subdivision rather than on
+     * the counted beat, and which meter that is comes from how the six group —
+     * in two threes, which is 6/8, or in three twos, which is 3/4 — read from the
+     * same harmonic statistic, there being nothing below the pulse left to hear.
+     * Both divide six, so a bar that marks nothing but its own line scores them
+     * equally, and the tie goes to the compound reading, which is what a tracker
+     * on a six-pulse bar has most often landed in. Nothing about the bar lines
+     * turns on it: 3/4 and 6/8 hold the same three quarter notes, so at six
+     * pulses to a bar they agree on every bar line and on the pulse, and differ
+     * only in what is printed.
      */
     private static TimeSignature meterAt(Reading reading, int pulsesPerBar) {
-        return switch (pulsesPerBar) {
-            case 2 -> reading.subdividesInThree() ? TimeSignature.SIX_EIGHT : null;
-            case 3 -> TimeSignature.THREE_FOUR;
-            case 6 -> reading.atThree() > reading.atTwo()
-                    ? TimeSignature.SIX_EIGHT : TimeSignature.THREE_FOUR;
-            default -> null;
-        };
+        if (pulsesPerBar == 3) {
+            return TimeSignature.THREE_FOUR;
+        }
+        return reading.atThree() >= reading.atTwo()
+                ? TimeSignature.SIX_EIGHT : TimeSignature.THREE_FOUR;
     }
 
     /**
      * How far the evidence backs a bar length, from the floor to the ceiling.
      *
      * <p>Two things have to hold and they fail separately: the length has to
-     * carry periodicity at all, and it has to carry more of it than the best
-     * of the others by the margin leaving the prior costs. Multiplied, so that
+     * carry periodicity at all, and it has to carry more of it than the best of
+     * the others by the margin leaving the prior costs. Multiplied, so that
      * either failing brings the number down. A four-beat bar held against a
      * stronger rival therefore reports near the floor, which is the honest
      * reading of an assumption that survived contrary evidence.
@@ -365,11 +350,13 @@ public final class MeterEstimator {
      * How strongly a per-beat series repeats at a period, against a null of
      * independent beats.
      *
-     * <p>The squared magnitude of the series' Fourier coefficient at that
-     * period over the series' own energy. Comparable across periods because
-     * that ratio has expectation one at every one of them: the coefficient at
-     * a period of two is real and the others are complex, and the two arrive at
-     * the same expectation by different routes.
+     * <p>The squared magnitude of the series' Fourier coefficient at that period
+     * over the series' own energy. Comparable across periods because that ratio
+     * has expectation one at every one of them: the coefficient at a period of
+     * two is real and the others are complex, and the two arrive at the same
+     * expectation by different routes. It measures energy at a frequency and not
+     * a period, so it cannot tell a period from its own divisors — see the
+     * divisor rule in {@link #decide}.
      */
     static double periodicity(double[] perBeat, int from, int to, int period) {
         double mean = 0;
@@ -388,73 +375,5 @@ public final class MeterEstimator {
             energy += centred * centred;
         }
         return energy > 0 ? (real * real + imaginary * imaginary) / energy : 0;
-    }
-
-    /**
-     * The same statistic over samples carrying their own phase, for the onsets
-     * between one pulse and the next.
-     *
-     * @param phased alternating position within the pulse, in turns, and onset
-     *               strength at it
-     */
-    private static double circularPeriodicity(double[] phased, int perPulse) {
-        int count = phased.length / 2;
-        if (count == 0) {
-            return 0;
-        }
-        double mean = 0;
-        for (int i = 0; i < count; i++) {
-            mean += phased[2 * i + 1];
-        }
-        mean /= count;
-        double real = 0;
-        double imaginary = 0;
-        double energy = 0;
-        for (int i = 0; i < count; i++) {
-            double centred = phased[2 * i + 1] - mean;
-            double angle = -2 * Math.PI * perPulse * phased[2 * i];
-            real += centred * Math.cos(angle);
-            imaginary += centred * Math.sin(angle);
-            energy += centred * centred;
-        }
-        return energy > 0 ? (real * real + imaginary * imaginary) / energy : 0;
-    }
-
-    /**
-     * Every onset frame between two tracked pulses, as its position within the
-     * pulse and its strength.
-     *
-     * <p>Flattened into one array as {@code position, strength} pairs, so that
-     * the two coefficients read the same samples without allocating a second
-     * view of them. Frames before the first pulse and after the last carry no
-     * position and are left out.
-     */
-    private static double[] withinPulsePhases(List<Double> beatTimes, OnsetEnvelope envelope) {
-        if (envelope.length() == 0 || beatTimes.size() < 2) {
-            return new double[0];
-        }
-        double[] strength = envelope.strength();
-        // One pass over the frames rather than one per pulse, so that each frame
-        // contributes at most one pair however the pulses fall and the array
-        // below cannot overflow.
-        double[] out = new double[2 * strength.length];
-        int size = 0;
-        int beat = 0;
-        for (int frame = 0; frame < strength.length; frame++) {
-            double time = envelope.timeOf(frame);
-            while (beat + 2 < beatTimes.size() && beatTimes.get(beat + 1) <= time) {
-                beat++;
-            }
-            double from = beatTimes.get(beat);
-            double to = beatTimes.get(beat + 1);
-            if (time < from || time >= to) {
-                continue;
-            }
-            out[size++] = (time - from) / (to - from);
-            out[size++] = strength[frame];
-        }
-        double[] trimmed = new double[size];
-        System.arraycopy(out, 0, trimmed, 0, size);
-        return trimmed;
     }
 }

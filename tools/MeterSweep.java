@@ -23,9 +23,14 @@ import dev.olivelli.musicwizard.dsp.HarmonicRhythm;
 import dev.olivelli.musicwizard.dsp.MeterEstimator;
 import dev.olivelli.musicwizard.dsp.NnlsChroma;
 import dev.olivelli.musicwizard.dsp.OnsetEnvelope;
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
+import java.util.stream.Stream;
 
 /**
  * Prints what {@link MeterEstimator} reads on every benchmark, for #700.
@@ -36,15 +41,15 @@ import java.util.List;
  *
  * <p>Every column is one of the estimator's own statistics rather than a
  * reproduction of them, so the constants in that class can be re-derived from
- * this output: {@code p2 p3 p4 p6} are the harmonic periodicities at each
- * candidate bar length and {@code duple triple} the onset periodicities within
- * a pulse, all of them on a null whose expectation is one. {@code meter} is
- * what the estimator decides and {@code want} what {@code samples/list.txt}
- * states; a row where they differ is the reading to explain.
+ * this output: {@code p2 p3 p4 p6} are the harmonic periodicity at each period
+ * it reads, on a null whose expectation is one. {@code meter} is what the
+ * estimator decides and {@code want} what {@code samples/list.txt} states; a
+ * row where they differ is the reading to explain.
  *
- * <p>The local-only recordings are listed and SKIPPED where they are absent,
- * because a claim about what real mixes do is worth what the mixes behind it
- * are worth.
+ * <p><b>Every recording under {@code uncommitted/} is swept</b>, listed from the
+ * directory rather than by name, because a claim about what real mixes do is
+ * worth what the mixes behind it are worth and a hand-written list is one
+ * commercial track away from being out of date. None of them states a meter.
  */
 public final class MeterSweep {
 
@@ -68,7 +73,9 @@ public final class MeterSweep {
     private static final List<Job> JOBS = List.of(
             // The meters samples/list.txt states.
             new Job("waltz-am-e7-160.mp3", "3/4"),
-            new Job("footprints-200.mp3", "3/4"),
+            // "In three" without a denominator: three tracked pulses to a bar
+            // is what the entry supports, and 3/4 against 6/4 is not.
+            new Job("footprints-200.mp3", ""),
             new Job("cm-blues-68-95.mp3", "6/8"),
             new Job("slow-68-40.mp3", "6/8"),
             // Barred in four by their own ground-truth cycles. The shuffles are
@@ -78,7 +85,9 @@ public final class MeterSweep {
             new Job("blues-shuffle-a-106bpm.mp3", "4/4"),
             new Job("blues-a-90bpm.mp3", "4/4"),
             new Job("blues-e-90bpm.mp3", "4/4"),
-            new Job("bm-blues-slow.mp3", "6/8"),
+            // Its entry states a bar of six tracked pulses and not a spelling,
+            // so nothing here is scored against it.
+            new Job("bm-blues-slow.mp3", ""),
             new Job("f-blues-swing-170.mp3", "4/4"),
             new Job("jazz-251-c-140.mp3", "4/4"),
             new Job("fm7-vamp-110.mp3", "4/4"),
@@ -92,32 +101,43 @@ public final class MeterSweep {
             new Job("synthetic_samples", "pop-axis-g-116.mp3", "4/4"),
             new Job("synthetic_samples", "pop-deceptive-f-72.mp3", "4/4"),
             new Job("synthetic_samples", "rocknroll-12bar-a-168.mp3", "4/4"),
-            new Job("synthetic_samples", "hiphop-m7vamp-bbm-90.mp3", "4/4"),
-            // Commercial, local-only and stating no meter. Here because the
-            // gates above are a claim about real mixes.
-            new Job(LOCAL, "la-canzone-del-sole.mp3", ""),
-            new Job(LOCAL, "johnny-b-goode.mp3", ""),
-            new Job(LOCAL, "generale.mp3", ""),
-            new Job(LOCAL, "gli-anni.mp3", ""),
-            new Job(LOCAL, "karma-chameleon.mp3", ""),
-            new Job(LOCAL, "sweet-home-alabama.mp3", ""),
-            new Job(LOCAL, "la-mia-banda-suona-il-rock.mp3", ""),
-            new Job(LOCAL, "hanno-ucciso-luomo-ragno.mp3", ""),
-            new Job(LOCAL, "bellissimissima.mp3", ""),
-            new Job(LOCAL, "islanda.mp3", ""),
-            new Job(LOCAL, "sere-doltremare.mp3", ""),
-            new Job(LOCAL, "cortez-feel-stripped.mp3", ""),
-            new Job(LOCAL, "rxbyn-bad-side.mp3", ""),
-            new Job(LOCAL, "josh-woodward-california-lullabye.mp3", ""));
+            // Commercial, local-only, is added from the directory rather than
+            // named here; see localJobs.
+            new Job("synthetic_samples", "hiphop-m7vamp-bbm-90.mp3", "4/4"));
+
+    /**
+     * Every recording under {@code uncommitted/}, which states no meter and is
+     * present only on the machine that fetched it.
+     *
+     * <p>Listed rather than named, so a track added to that directory is swept
+     * without anyone remembering to add it here — which is the whole value of
+     * these rows, the gates above being a claim about real mixes.
+     */
+    private static List<Job> localJobs() {
+        Path corpus = Path.of(LOCAL);
+        if (!Files.isDirectory(corpus)) {
+            return List.of();
+        }
+        try (Stream<Path> files = Files.list(corpus)) {
+            return files.filter(file -> file.getFileName().toString().endsWith(".mp3"))
+                    .sorted(Comparator.comparing(Path::getFileName))
+                    .map(file -> new Job(LOCAL, file.getFileName().toString(), ""))
+                    .toList();
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
 
     public static void main(String[] args) {
-        System.out.printf("%-30s %7s %7s %7s %7s %7s %7s  %-5s %-5s %s%n",
-                "file", "p2", "p3", "p4", "p6", "duple", "triple",
-                "meter", "want", "pulses/bar, confidence");
-        for (Job job : JOBS) {
+        System.out.printf("%-38s %8s %8s %8s %8s  %-5s %-5s %s%n",
+                "file", "p2", "p3", "p4", "p6", "meter", "want",
+                "pulses/bar, confidence");
+        List<Job> jobs = new ArrayList<>(JOBS);
+        jobs.addAll(localJobs());
+        for (Job job : jobs) {
             Path file = Path.of(job.corpus()).resolve(job.file());
             if (!Files.isRegularFile(file)) {
-                System.out.printf("%-30s SKIPPED (not present)%n", job.file());
+                System.out.printf("%-38s SKIPPED (not present)%n", job.file());
                 continue;
             }
             report(job, file);
@@ -133,19 +153,18 @@ public final class MeterSweep {
         BeatTracker.Result beats =
                 BeatTracker.track(envelope, HarmonicRhythm.of(frames), onsets.pulseRegister());
         if (beats.isEmpty()) {
-            System.out.printf("%-30s no beats%n", job.file());
+            System.out.printf("%-38s no beats%n", job.file());
             return;
         }
         List<Double> beatTimes = beats.beatTimes();
         MeterEstimator.Reading reading =
-                MeterEstimator.read(beatTimes, frames.beatSynchronous(beatTimes), envelope);
+                MeterEstimator.read(beatTimes, frames.beatSynchronous(beatTimes));
         MeterEstimator.Estimate estimate = MeterEstimator.decide(reading);
         String meter = estimate.meter().toString();
-        System.out.printf("%-30s %7.2f %7.2f %7.2f %7.2f %7.0f %7.0f  %-5s %-5s %d, %.2f %s%n",
+        System.out.printf("%-38s %8.2f %8.2f %8.2f %8.2f  %-5s %-5s %d, %.2f %s%n",
                 job.file(), reading.atTwo(), reading.atThree(), reading.atFour(),
-                reading.atSix(), reading.duple(), reading.triple(), meter,
-                job.want().isEmpty() ? "-" : job.want(), estimate.pulsesPerBar(),
-                estimate.confidence().value(),
+                reading.atSix(), meter, job.want().isEmpty() ? "-" : job.want(),
+                estimate.pulsesPerBar(), estimate.confidence().value(),
                 job.want().isEmpty() || job.want().equals(meter) ? "" : "MISMATCH");
     }
 }
