@@ -62,9 +62,9 @@ REPO = Path(__file__).resolve().parent.parent
 # Every grid here is one repeating cycle a musician confirmed against the
 # recording. Two committed files are deliberately absent: ballad-wine-roses-65
 # is a 32-bar standard rather than a loop, and its changes carry a bass note
-# and a suspension this scorer has nowhere to put; footprints-200 is in three,
-# so the bars a 4/4 downbeat sequence cuts are not its bars. samples/list.txt
-# carries both sets of changes.
+# and a suspension this scorer has nowhere to put; footprints-200 is not a loop
+# this scorer can rotate either. samples/list.txt carries both sets of changes
+# and says why of each.
 BENCHMARKS = {
     "blues-a-90bpm.mp3":
         "A7 A7 A7 A7  D7 D7 A7 A7  E7 D7 A7 E7",
@@ -162,6 +162,12 @@ KEYS = {
 # The meter each file is in, from samples/list.txt: an entry names its meter
 # where it is not four, so the rows below that say 4/4 are the entries that say
 # nothing and whose grids are written in bars of four.
+#
+# One row rests on the uploader rather than on an ear, and list.txt's header
+# says what that is worth: cm-blues-68-95's entry calls it a 6/8 groove in the
+# same breath as it attributes the tempo. It is the corpus's compound recording
+# whose pulse is its own counted beat, so the row is worth having; read its
+# WRONG as a question about the recording as much as about the reading.
 #
 # Two files the KEYS table covers are deliberately absent. bm-blues-slow and
 # footprints-200 have a bar length that was read rather than heard and a

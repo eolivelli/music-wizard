@@ -66,8 +66,8 @@ public final class MeterEstimator {
 
     /**
      * Tracked pulses to a bar this reads. Three and four are bars; six is a bar
-     * the tracker has filled with the subdivision of a compound meter, which is
-     * a reading about the pulse level rather than about the bar and is why
+     * the tracker has filled with its own subdivision, which is a reading about
+     * the pulse level rather than about the bar and is why
      * {@link Estimate#pulsesPerBar()} is carried beside the meter.
      */
     private static final int[] CANDIDATES = {3, 4, 6};
@@ -190,9 +190,9 @@ public final class MeterEstimator {
      * The statistics a reading is made of, for an instrument that wants the
      * numbers rather than the decision.
      *
-     * <p>One statistic at four periods, so they may be read against each other
-     * and against {@link #SUPPORTED}. Two is not a candidate bar length and is
-     * measured anyway: it is what says how a six-pulse bar groups.
+     * <p>One statistic at four periods, so they may be read against each other.
+     * Two is not a candidate bar length and is measured anyway: it is what says
+     * how a six-pulse bar groups.
      *
      * @param atTwo       harmonic periodicity at two tracked pulses
      * @param atThree     the same at three
@@ -220,7 +220,7 @@ public final class MeterEstimator {
     /**
      * Reads the meter, with 4/4 as the prior.
      *
-     * @param beatTimes the tracked beats, in seconds and ascending
+     * @param beatTimes the tracked beats, read for their count
      * @param chroma    beat-synchronous chroma over exactly those beats, as
      *                  {@link DownbeatEstimator#estimate} takes it
      */
@@ -307,12 +307,11 @@ public final class MeterEstimator {
      * the counted beat, and which meter that is comes from how the six group —
      * in two threes, which is 6/8, or in three twos, which is 3/4 — read from the
      * same harmonic statistic, there being nothing below the pulse left to hear.
-     * Both divide six, so a bar that marks nothing but its own line scores them
-     * equally, and the tie goes to the compound reading, which is what a tracker
-     * on a six-pulse bar has most often landed in. Nothing about the bar lines
-     * turns on it: 3/4 and 6/8 hold the same three quarter notes, so at six
-     * pulses to a bar they agree on every bar line and on the pulse, and differ
-     * only in what is printed.
+     * Both divide six, so a bar that marks nothing inside itself scores them
+     * alike and the reading is weak there. Nothing about the bar lines turns on
+     * it: 3/4 and 6/8 hold the same three quarter notes, so at six pulses to a
+     * bar they agree on every bar line and on the pulse, and differ only in what
+     * is printed.
      */
     private static TimeSignature meterAt(Reading reading, int pulsesPerBar) {
         if (pulsesPerBar == 3) {

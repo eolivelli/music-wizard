@@ -148,10 +148,9 @@ Am7-Dm7  Gm7-C7  F6     Gm7-C7
 footprints-200.mp3   (CC-BY, Guitar Improvisation, https://www.youtube.com/watch?v=4QUIK0sVhO0)
 "Footprints" at a stated 200 bpm in three. The deliberate stress ceiling: fast
 and ternary and minor jazz at once. Expect failure today; keep it as the
-horizon marker. Its chords are not scored: the tune is a sixteen-bar form
-rather than a loop the harness can rotate. Its bars are three tracked pulses
-long, which the run now reads; whether those three are written 3/4 or 6/4 is
-not settled here, so no meter is scored against this file either.
+horizon marker. Its chords are not scored: it is not a loop the harness can
+rotate. Nor is its meter: it is in three, and whether that three is written 3/4
+or 6/4 this entry does not say.
 
 intro:
 Cm7 Cm7 Cm7 Cm7

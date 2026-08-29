@@ -112,7 +112,8 @@ length hung on the phase the downbeats agree on (#233).
 - `--tempo` corrects the *rate* and keeps the tracked beats: a user
   correcting tempo is usually correcting a half-or-double reading, and the
   beats are measured evidence. The corrected ratio also tells MW how many
-  tracked pulses fill a bar (#139), which nothing can measure from audio.
+  tracked pulses fill a bar (#139), and since #700 a meter read off the
+  recording says the same thing where the tracker landed on a subdivision.
 - `--first-downbeat` chooses the bar phase outright, as a time in
   *seconds* snapped to the nearest tracked beat; the estimator is not run,
   because a human who counted the bars outranks harmonic novelty.

@@ -273,15 +273,5 @@ class MeterEstimationTest {
             assertThat(MeterEstimator.estimate(beats(BEATS), new Chroma(new double[0][], 0))
                     .meter()).isEqualTo(TimeSignature.FOUR_FOUR);
         }
-
-        @Test
-        @DisplayName("beats that do not ascend are answered rather than indexed off the end")
-        void unorderedBeats() {
-            List<Double> times = new ArrayList<>(beats(BEATS));
-            times.set(10, times.get(60));
-
-            assertThat(MeterEstimator.estimate(times, stepwiseChroma(BEATS - 1, 3)).meter())
-                    .isNotNull();
-        }
     }
 }
