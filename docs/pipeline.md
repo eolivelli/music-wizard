@@ -5,7 +5,7 @@ with lyrics under the chords when supplied or transcribed, and a lead sheet
 when the melody stage is asked for. Bass and piano parts are the goal, not
 yet the product. This page is the map; each stage has a page of its own:
 
-- [Tempo, beats and bars](tempo-detection.md)
+- [Tempo, beats, meter and bars](tempo-detection.md)
 - [Harmony: chords and key](harmony-detection.md)
 - [Melody](melody-detection.md)
 - [Lyrics](lyrics-detection.md)
@@ -14,7 +14,7 @@ yet the product. This page is the map; each stage has a page of its own:
 
 ```
 decode ─ resample ─┬─ onset envelope ──┐
-                   │                   ├─ beat tracking ─ downbeats ─ TempoMap
+                   │                   ├─ beat tracking ─ meter ─ downbeats ─ TempoMap
                    └─ NNLS chroma ─────┘        │
                             │                   │
                             └─ chords ── key ───┴─ Score ─ quantize ─ engrave
@@ -27,12 +27,16 @@ decode ─ resample ─┬─ onset envelope ──┐
    approximate-transcription front end (NNLS) built for real mixes.
 4. **Beat tracking** — dynamic programming over the onset envelope, with the
    recording's harmonic rhythm weighing the tempo candidates.
-5. **Downbeats** — which tracked beats begin bars, chosen from harmonic change.
-6. **Chords** — template matching over beat-synchronous chroma, decoded with
+5. **Meter** — how many tracked pulses make a bar, from the period harmonic
+   change repeats at, with 4/4 as the prior; a 6/8 counted in two rests on
+   how the pulse divides, read from the onset envelope. 4/4, 3/4 and 6/8 are
+   read; 12/8, 3/8 and irregular meters are typed.
+6. **Downbeats** — which tracked beats begin bars, chosen from harmonic change.
+7. **Chords** — template matching over beat-synchronous chroma, decoded with
    Viterbi, with the bass register as a prior over roots.
-7. **Key** — read from the estimated chords, not from chroma.
-8. **Score assembly** — everything lands in one `Score` on one time axis.
-9. **Quantize and engrave** — grid choice per bar, then LilyPond source and
+8. **Key** — read from the estimated chords, not from chroma.
+9. **Score assembly** — everything lands in one `Score` on one time axis.
+10. **Quantize and engrave** — grid choice per bar, then LilyPond source and
    PDF, emitted straight from the domain model (a MusicXML export exists in
    the notation layer but is not yet wired to the CLI).
 

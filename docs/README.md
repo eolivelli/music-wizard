@@ -3,7 +3,7 @@
 ## How it works
 
 - [The pipeline](pipeline.md) — the stages, the two rules, what to trust
-- [Tempo, beats and bars](tempo-detection.md)
+- [Tempo, beats, meter and bars](tempo-detection.md)
 - [Harmony: chords and key](harmony-detection.md)
 - [Melody](melody-detection.md)
 - [Lyrics](lyrics-detection.md)
