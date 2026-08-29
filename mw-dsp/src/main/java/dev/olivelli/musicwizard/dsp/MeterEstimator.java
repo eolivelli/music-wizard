@@ -18,6 +18,8 @@ package dev.olivelli.musicwizard.dsp;
 
 import dev.olivelli.musicwizard.core.model.Confidence;
 import dev.olivelli.musicwizard.core.model.TimeSignature;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 
@@ -33,11 +35,12 @@ import java.util.Objects;
  * three by chance (#88, #303), while this has expectation one at every period
  * under a null of independent beats.
  *
- * <p><b>4/4 is the prior and a reading must clear a margin to leave it.</b> A
- * wrong meter moves every bar line, which is why {@link BeatTracker} declined to
- * guess one at all, so the gates are asymmetric by design and a bar length that
- * does not clear them is reported as 4/4 at the confidence the evidence gave it
- * rather than hidden.
+ * <p><b>4/4 is the prior and nothing leaves it cheaply.</b> A wrong meter moves
+ * every bar line, which is why {@link BeatTracker} declined to guess one at all,
+ * so the gates are asymmetric by design and a bar length that does not clear
+ * them is reported as 4/4 at the confidence the evidence gave it rather than
+ * hidden. Three and six leave it on a margin over the four-beat bar; two cannot,
+ * for the reason below, and leaves it on evidence of another kind entirely.
  *
  * <p><b>The statistic cannot prefer a period over its own divisors.</b> Novelty
  * that repeats every six beats carries the same coefficient at three and at two,
@@ -46,17 +49,25 @@ import java.util.Objects;
  * round. Four is coprime with three and with six, so nothing of the kind relates
  * it to either.
  *
- * <p>Three things this deliberately does not read, each because the corpus says
- * it cannot be read. <b>A bar of two tracked pulses is not a candidate</b>: it is
- * indistinguishable from a four-beat bar whose harmony moves twice in it, which
- * is ordinary comping, and no onset evidence separates them (#701). <b>A swung
- * eighth is not a compound bar</b>, for the same reason one layer down — every
- * shuffle in {@code samples/list.txt} subdivides in three and is barred in four
- * by its own ground-truth cycle — so 12/8 and 3/8 are reachable only through
- * {@code --time-signature}. And <b>the accent is not asked about the bar
- * length</b>: its strongest periodicity on ordinary drum material is the
- * backbeat (#70), which argues for a two-beat bar on most of the corpus and
- * prefers four to three on material whose harmony names three unambiguously.
+ * <p><b>A bar of two tracked pulses is the one length the harmony may not
+ * choose on its own</b> (#707). Harmony moving every two beats of a four-beat
+ * bar is ordinary comping and scores at period two exactly as a compound bar
+ * counted in two does, so the two-pulse bar is admitted only where the pulse
+ * also divides in three — which is a reading of the onset envelope's own
+ * periodicity rather than of the harmony, and is the only place this class asks
+ * the envelope anything. Both are needed and neither is sufficient: the corpus
+ * holds two-beat comping under a pulse that divides in two, and a pulse
+ * dividing in three under a four-beat bar the harmony supports.
+ *
+ * <p>Two things this still does not read. <b>A swung eighth is not a compound
+ * bar</b>: a shuffle divides its pulse in three and is barred in four by its own
+ * ground-truth cycle, so the division may admit a two-pulse bar and may not
+ * promote a four-pulse one, and 12/8 and 3/8 stay with {@code --time-signature}
+ * (#701). And <b>the accent is not asked
+ * about the bar length</b>: its strongest periodicity on ordinary drum material
+ * is the backbeat (#70), which argues for a two-beat bar on most of the corpus
+ * and prefers four to three on material whose harmony names three
+ * unambiguously.
  *
  * <p>{@code tools/MeterSweep.java} prints the readings behind every constant
  * here, for the committed benchmarks and the local-only ones alike; read it
@@ -71,6 +82,17 @@ public final class MeterEstimator {
      * {@link Estimate#pulsesPerBar()} is carried beside the meter.
      */
     private static final int[] CANDIDATES = {3, 4, 6};
+
+    /**
+     * The bar length the harmony alone may not choose, because two divides both
+     * four and six and the statistic below cannot prefer a period to its own
+     * divisors. It reaches {@link Estimate#pulsesPerBar()} only through
+     * {@link #barsInTwo}, and it is never a rival to a length it divides: a
+     * four-pulse bar scores at period two both by that degeneracy and by the
+     * ordinary comping that fills it, so neither reading is a hypothesis
+     * competing with the four.
+     */
+    private static final int IN_TWO = 2;
 
     /** The bar length assumed when the evidence does not displace it. */
     private static final int ASSUMED = 4;
@@ -140,6 +162,55 @@ public final class MeterEstimator {
      */
     private static final int BARS_FOR_A_READING = 4;
 
+    /**
+     * The harmonic statistic's null expectation, which is the floor the
+     * two-pulse bar's harmony has to clear.
+     *
+     * <p>Not {@link #SUPPORTED}: the two-pulse bar is not chosen on the harmony
+     * and cannot be held to the level a chosen length is. What it may not do is
+     * rest on a period the harmony scores below what a period nothing happens at
+     * scores on average. That average is a property of the statistic rather than
+     * of the corpus, and it is a floor rather than a test: the null scores above
+     * its own mean often enough that aperiodic harmony still passes.
+     */
+    private static final double THE_NULL = 1.0;
+
+    /**
+     * How much of the pulse's own periodicity the onset envelope must carry at
+     * a triple division of it before the pulse counts as dividing in three.
+     *
+     * <p>A share rather than a level, because the envelope's periodicity at the
+     * pulse is what the division is a division of, and recordings differ by an
+     * order of magnitude in how periodic they are at all.
+     * {@code tools/MeterSweep.java} prints the share, and the pulse it is a
+     * share of, for every benchmark and every local-only recording; read it
+     * rather than this text for the room either side of this.
+     */
+    private static final double DIVIDES_IN_THREE = 0.65;
+
+    /**
+     * How much of the envelope's own energy has to sit at the tracked pulse
+     * before a division of it is a share of anything.
+     *
+     * <p>The divisions are read against the pulse, so a pulse the envelope does
+     * not carry makes them a ratio of two noise levels, and a ratio of noise
+     * clears any level in either direction. {@code tools/MeterSweep.java}'s
+     * {@code pulse} column is what the corpus carries here, and
+     * {@code MeterEstimationTest} pins the other side on an envelope with
+     * nothing at the pulse at all.
+     */
+    private static final double PULSE_PERIODIC = 0.10;
+
+    /**
+     * How far either side of a division's lag the envelope's peak is looked for,
+     * as a share of the lag.
+     *
+     * <p>The tracked pulse is a mean over the recording and a division of it is
+     * played by hand, so the peak sits near the arithmetic lag rather than on
+     * it.
+     */
+    private static final double LAG_TOLERANCE = 0.03;
+
     private MeterEstimator() {
     }
 
@@ -190,19 +261,29 @@ public final class MeterEstimator {
      * The statistics a reading is made of, for an instrument that wants the
      * numbers rather than the decision.
      *
-     * <p>One statistic at four periods, so they may be read against each other.
-     * Two is not a candidate bar length and is measured anyway: it is what says
-     * how a six-pulse bar groups.
+     * <p>One statistic at four periods, so they may be read against each other,
+     * and beside them the one thing here that is not read from the harmony at
+     * all: how the tracked pulse divides.
      *
      * @param atTwo       harmonic periodicity at two tracked pulses
      * @param atThree     the same at three
      * @param atFour      the same at four, which is the assumption's own score
      * @param atSix       the same at six
-     * @param usableBeats beats novelty is defined at, which is what all of the
-     *                    above are measured over
+     * @param inThree     the stronger of the onset envelope's periodicities at
+     *                    the two lags a triple division of the pulse puts a peak
+     *                    at, over its periodicity at the pulse itself; zero
+     *                    where the pulse carries too little for it to be a share
+     *                    of anything
+     * @param inTwo       the same at a half of the pulse and at a quarter of it,
+     *                    which is where dividing it evenly puts a peak
+     * @param onThePulse  how much of the envelope's energy sits at the pulse
+     *                    itself, which is what the two above are shares of and
+     *                    the floor they have to clear to be shares at all
+     * @param usableBeats beats novelty is defined at, which is what the harmonic
+     *                    periodicities are measured over
      */
     public record Reading(double atTwo, double atThree, double atFour, double atSix,
-                          int usableBeats) {
+                          double inThree, double inTwo, double onThePulse, int usableBeats) {
 
         /** The harmonic periodicity at a period, which need not be a candidate. */
         public double at(int pulses) {
@@ -220,12 +301,15 @@ public final class MeterEstimator {
     /**
      * Reads the meter, with 4/4 as the prior.
      *
-     * @param beatTimes the tracked beats, read for their count
+     * @param beatTimes the tracked beats, read for their count and their spacing
      * @param chroma    beat-synchronous chroma over exactly those beats, as
      *                  {@link DownbeatEstimator#estimate} takes it
+     * @param envelope  the onset envelope those beats were tracked on, which is
+     *                  where the pulse's division is read
      */
-    public static Estimate estimate(List<Double> beatTimes, Chroma chroma) {
-        return decide(read(beatTimes, chroma));
+    public static Estimate estimate(List<Double> beatTimes, Chroma chroma,
+                                    OnsetEnvelope envelope) {
+        return decide(read(beatTimes, chroma, envelope));
     }
 
     /**
@@ -234,9 +318,10 @@ public final class MeterEstimator {
      * <p>A reading over too few beats reports zeroes rather than a coefficient
      * of a window: {@link Reading#usableBeats()} is what says which it is.
      */
-    public static Reading read(List<Double> beatTimes, Chroma chroma) {
+    public static Reading read(List<Double> beatTimes, Chroma chroma, OnsetEnvelope envelope) {
         Objects.requireNonNull(beatTimes, "beatTimes");
         Objects.requireNonNull(chroma, "chroma");
+        Objects.requireNonNull(envelope, "envelope");
 
         // Novelty is only defined where a beat has a chroma span on both sides,
         // exactly as DownbeatEstimator scopes it.
@@ -244,7 +329,7 @@ public final class MeterEstimator {
         int lastBeat = beatTimes.size() - 2;
         int usable = lastBeat - firstBeat + 1;
         if (usable < BARS_FOR_A_READING * longestCandidate() || chroma.frameCount() == 0) {
-            return new Reading(0, 0, 0, 0, Math.max(0, usable));
+            return new Reading(0, 0, 0, 0, 0, 0, 0, Math.max(0, usable));
         }
         if (!chroma.isBeatSynchronous() || chroma.frameCount() != beatTimes.size() - 1) {
             throw new IllegalArgumentException(
@@ -255,11 +340,13 @@ public final class MeterEstimator {
         }
 
         double[] novelty = DownbeatEstimator.harmonicNovelty(chroma);
+        Divisions divisions = divisionsOfThePulse(envelope, medianInterval(beatTimes));
         return new Reading(
                 periodicity(novelty, firstBeat, lastBeat, 2),
                 periodicity(novelty, firstBeat, lastBeat, 3),
                 periodicity(novelty, firstBeat, lastBeat, 4),
                 periodicity(novelty, firstBeat, lastBeat, 6),
+                divisions.inThree(), divisions.inTwo(), divisions.onThePulse(),
                 usable);
     }
 
@@ -272,6 +359,9 @@ public final class MeterEstimator {
      */
     public static Estimate decide(Reading reading) {
         Objects.requireNonNull(reading, "reading");
+        if (barsInTwo(reading)) {
+            return new Estimate(TimeSignature.SIX_EIGHT, IN_TWO, confidenceInTwo(reading));
+        }
         int best = ASSUMED;
         for (int candidate : CANDIDATES) {
             if (reading.at(candidate) > reading.at(best)) {
@@ -288,6 +378,34 @@ public final class MeterEstimator {
                     confidenceIn(reading, ASSUMED));
         }
         return new Estimate(meterAt(reading, best), best, confidenceIn(reading, best));
+    }
+
+    /**
+     * Whether the recording is barred in two tracked pulses, which this names
+     * 6/8 — the pulse being a dotted quarter wherever it divides in three.
+     *
+     * <p>The harmony cannot decide this on its own and is not asked to: a
+     * four-beat bar comping every two beats produces the same period two, and
+     * the corpus puts recordings of that kind above the compound ones on the
+     * harmonic statistic. So the harmony is asked only not to contradict it —
+     * period two clears {@link #THE_NULL} and leads, and no longer bar length is
+     * supported on its own, which is what keeps a shuffle's four-beat bar and a
+     * waltz's three out of reach of the division below — and the division of the
+     * pulse decides.
+     *
+     * <p>Deliberately answered before the candidates are ranked. Nothing is lost
+     * by the order: a bar length the harmony supports refuses this outright.
+     */
+    private static boolean barsInTwo(Reading reading) {
+        if (reading.atTwo() < THE_NULL) {
+            return false;
+        }
+        for (int candidate : CANDIDATES) {
+            if (reading.at(candidate) >= SUPPORTED || reading.at(candidate) >= reading.atTwo()) {
+                return false;
+            }
+        }
+        return reading.inThree() >= DIVIDES_IN_THREE && reading.inThree() > reading.inTwo();
     }
 
     /**
@@ -342,6 +460,95 @@ public final class MeterEstimator {
                 reading.at(chosen) / (MARGIN * Math.max(rival, SUPPORTED)), 0, 1);
         return Confidence.clamped(
                 ASSUMED_CONFIDENCE + (CEILING - ASSUMED_CONFIDENCE) * observed * separation);
+    }
+
+    /**
+     * How the pulse divides, each as a share of the pulse's own periodicity, and
+     * that periodicity as a share of the envelope's energy.
+     */
+    private record Divisions(double inThree, double inTwo, double onThePulse) {
+    }
+
+    /**
+     * How the tracked pulse divides, read from the onset envelope's own
+     * periodicity at the lags a division of the pulse puts a peak at.
+     *
+     * <p>The envelope repeats at every level of the metre, so a division is
+     * read against the pulse rather than in absolute terms: the pulse's lag is
+     * what the recording is periodic at by construction, having been tracked,
+     * and each division is scored as a share of it. A third of the pulse and
+     * two thirds of it are the same division seen at two lags, and either alone
+     * is thin — a shuffle strikes two of three positions and a compound bar all
+     * three — so the stronger of them stands for the division.
+     *
+     * <p>Zero for both where the envelope carries less than
+     * {@link #PULSE_PERIODIC} of its energy at the pulse, since a share of noise
+     * is noise and reaches any level in either direction.
+     */
+    private static Divisions divisionsOfThePulse(OnsetEnvelope envelope, double pulseSeconds) {
+        double lag = envelope.frameRate() * pulseSeconds;
+        int longest = (int) Math.ceil(lag * (1 + LAG_TOLERANCE)) + 1;
+        if (!(lag > 0) || longest >= envelope.length()) {
+            return new Divisions(0, 0, 0);
+        }
+        double[] correlation = TempoEstimator.autocorrelate(envelope.strength(), longest);
+        if (!(correlation[0] > 0)) {
+            return new Divisions(0, 0, 0);
+        }
+        double pulse = peakNear(correlation, lag);
+        double onThePulse = pulse / correlation[0];
+        if (!(onThePulse >= PULSE_PERIODIC)) {
+            return new Divisions(0, 0, onThePulse);
+        }
+        double inThree =
+                Math.max(peakNear(correlation, lag / 3), peakNear(correlation, 2 * lag / 3));
+        double inTwo = Math.max(peakNear(correlation, lag / 2), peakNear(correlation, lag / 4));
+        return new Divisions(inThree / pulse, inTwo / pulse, onThePulse);
+    }
+
+    /** The envelope's strongest periodicity within {@link #LAG_TOLERANCE} of a lag. */
+    private static double peakNear(double[] correlation, double lag) {
+        double strongest = Double.NEGATIVE_INFINITY;
+        for (double at = lag * (1 - LAG_TOLERANCE); at <= lag * (1 + LAG_TOLERANCE); at += 0.25) {
+            strongest = Math.max(strongest, TempoEstimator.interpolate(correlation, at));
+        }
+        return strongest;
+    }
+
+    /**
+     * The middle interval between tracked beats, which is the pulse the bars
+     * are drawn on. A median rather than a mean: a tracker that dropped a beat
+     * leaves one interval of twice the pulse, and the lags above are read at a
+     * tolerance far narrower than that error.
+     */
+    private static double medianInterval(List<Double> beatTimes) {
+        List<Double> intervals = new ArrayList<>(beatTimes.size() - 1);
+        for (int beat = 1; beat < beatTimes.size(); beat++) {
+            intervals.add(beatTimes.get(beat) - beatTimes.get(beat - 1));
+        }
+        Collections.sort(intervals);
+        return intervals.get(intervals.size() / 2);
+    }
+
+    /**
+     * How far the evidence backs a two-pulse bar, which is a different question
+     * from the one {@link #confidenceIn} answers.
+     *
+     * <p>Mostly the division, because that is what chose the length: how much of
+     * the pulse the triple carries, and how far it leads the duple. The harmony
+     * is read only up to {@link #SUPPORTED} and is flat above it, so what it
+     * contributes is whether it says anything about period two rather than how
+     * strongly — a strong one is a four-beat bar's comping as readily as a bar
+     * of two, while one barely over {@link #THE_NULL} means the veto was
+     * satisfied by something a recording with no harmonic period would have
+     * satisfied it with too.
+     */
+    private static Confidence confidenceInTwo(Reading reading) {
+        double periodic = Math.clamp(reading.atTwo() / SUPPORTED, 0, 1);
+        double carried = Math.clamp(reading.inThree(), 0, 1);
+        double lead = Math.clamp(reading.inThree() - reading.inTwo(), 0, 1);
+        return Confidence.clamped(
+                ASSUMED_CONFIDENCE + (CEILING - ASSUMED_CONFIDENCE) * periodic * carried * lead);
     }
 
     /**

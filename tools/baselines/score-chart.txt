@@ -5,7 +5,7 @@ charts emitted for samples with known ground truth:
   slow-68-40.mp3: bars=121  chords/bar 1.04  root 117.0/121 (96.7%)  root+quality 99.0/121 (81.8%)  split 5  short: not measurable
   g-blues-shuffle-cc.mp3: bars=137  chords/bar 1.01  root 131.5/137 (96.0%)  root+quality 101.0/137 (73.7%)  split 1  short: tracked 0.0%, chart 3.8%
   bm-blues-slow.mp3: bars=125  chords/bar 1.18  root 113.0/125 (90.4%)  root+quality 93.0/125 (74.4%)  split 20  short: not measurable
-  cm-blues-68-95.mp3: bars=92  chords/bar 1.18  root 34.0/92 (37.0%)  root+quality 20.0/92 (21.7%)  split 17  short: tracked 0.0%, chart 31.5%
+  cm-blues-68-95.mp3: bars=183  chords/bar 1.39  root 83.5/183 (45.6%)  root+quality 69.0/183 (37.7%)  split 71  short: tracked 0.0%, chart 31.5%
   waltz-am-e7-160.mp3: bars=278  chords/bar 1.00  root 140.0/278 (50.4%)  root+quality 140.0/278 (50.4%)  split 0  short: tracked 0.0%, chart 0.0%
   f-blues-swing-170.mp3: bars=111  chords/bar 1.09  root 24.5/111 (22.1%)  root+quality 18.0/111 (16.2%)  split 10  short: tracked 0.0%, chart 27.7%
   jazz-251-c-140.mp3: bars=177  chords/bar 1.11  root 67.0/177 (37.9%)  root+quality 52.0/177 (29.4%)  split 19  short: tracked 0.0%, chart 10.8%

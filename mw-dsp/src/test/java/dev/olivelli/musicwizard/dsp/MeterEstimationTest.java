@@ -23,6 +23,7 @@ import static org.assertj.core.api.Assertions.within;
 import dev.olivelli.musicwizard.core.model.TimeSignature;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Random;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -33,22 +34,26 @@ import org.junit.jupiter.api.Test;
  *
  * <p>Split in two on purpose. The gates are exercised through
  * {@link MeterEstimator#decide} on written-out readings, because what they are
- * is a decision over four numbers and driving them through synthesised audio
- * would test the synthesiser. The statistic itself is exercised through
- * {@link MeterEstimator#read} on chroma built to carry a known period, which is
- * the half a written-out reading cannot check — and in particular that a period
- * scores its own divisors just as strongly, which is the whole reason the
- * divisor rule exists.
+ * is a decision over a handful of numbers and driving them through synthesised
+ * audio would test the synthesiser. The statistics themselves are exercised
+ * through {@link MeterEstimator#read} on chroma built to carry a known period
+ * and on an envelope clicking at a known division, which is the half a
+ * written-out reading cannot check — and in particular that a period scores its
+ * own divisors just as strongly, which is the whole reason the divisor rule
+ * exists.
  */
 class MeterEstimationTest {
 
     /** Enough beats to clear the estimator's own minimum several times over. */
     private static final int BEATS = 97;
 
+    /** The spacing of those beats, which is the pulse the divisions divide. */
+    private static final double PULSE_SECONDS = 0.5;
+
     private static List<Double> beats(int count) {
         List<Double> times = new ArrayList<>(count);
         for (int beat = 0; beat < count; beat++) {
-            times.add(beat * 0.5);
+            times.add(beat * PULSE_SECONDS);
         }
         return times;
     }
@@ -62,10 +67,58 @@ class MeterEstimationTest {
         return new Chroma(vectors, 0);
     }
 
-    /** A reading over enough beats to be one, with the periodicities written out. */
+    /**
+     * A reading over enough beats to be one, with the harmonic periodicities
+     * written out and nothing read about how the pulse divides.
+     */
     private static MeterEstimator.Reading reading(double atTwo, double atThree,
                                                   double atFour, double atSix) {
-        return new MeterEstimator.Reading(atTwo, atThree, atFour, atSix, 400);
+        return reading(atTwo, atThree, atFour, atSix, 0, 0);
+    }
+
+    /** The same with the pulse's divisions written out too. */
+    private static MeterEstimator.Reading reading(double atTwo, double atThree,
+                                                  double atFour, double atSix,
+                                                  double inThree, double inTwo) {
+        return new MeterEstimator.Reading(atTwo, atThree, atFour, atSix, inThree, inTwo,
+                1, 400);
+    }
+
+    /** A reading of nothing at all, which is what too short a recording gives. */
+    private static MeterEstimator.Reading nothing() {
+        return new MeterEstimator.Reading(0, 0, 0, 0, 0, 0, 0, 0);
+    }
+
+    /**
+     * An onset envelope with energy everywhere and none of it at the pulse,
+     * which is what the tracker leaves behind when it has lost the beat. Drawn
+     * from a fixed seed, so the reading below is a fact about the statistic
+     * rather than about a draw.
+     */
+    private static OnsetEnvelope aperiodic() {
+        double frameRate = 120;
+        double[] strength = new double[(int) Math.round(frameRate * PULSE_SECONDS * BEATS)];
+        Random random = new Random(707);
+        for (int frame = 0; frame < strength.length; frame++) {
+            strength[frame] = random.nextGaussian();
+        }
+        return new OnsetEnvelope(strength, frameRate);
+    }
+
+    /**
+     * An onset envelope clicking at every pulse and at every division of one,
+     * over the same beats {@link #beats} lays down.
+     */
+    private static OnsetEnvelope clicks(int divisions) {
+        // A frame rate that makes every division of the pulse a whole number of
+        // frames, so what is measured is the statistic and not the rounding.
+        double frameRate = 120;
+        double lag = frameRate * PULSE_SECONDS;
+        double[] strength = new double[(int) Math.round(lag * BEATS)];
+        for (double at = 0; at <= strength.length - 1; at += lag / divisions) {
+            strength[(int) Math.round(at)] = 1;
+        }
+        return new OnsetEnvelope(strength, frameRate);
     }
 
     @Nested
@@ -147,11 +200,11 @@ class MeterEstimationTest {
         }
 
         @Test
-        @DisplayName("a two-pulse bar is not a reading this makes")
-        void twoIsNotACandidate() {
+        @DisplayName("the harmony alone never reads a two-pulse bar")
+        void theHarmonyAloneDoesNotReadTwo() {
             // Harmony that moves every two pulses is a four-beat bar with two
-            // chords in it as readily as a bar of two, and nothing measured
-            // separates them (#701). The assumption stands.
+            // chords in it as readily as a bar of two, so with nothing read
+            // about the pulse the assumption stands however strong it is (#704).
             MeterEstimator.Estimate estimate = MeterEstimator.decide(reading(400, 1, 0.5, 1));
 
             assertThat(estimate.meter()).isEqualTo(TimeSignature.FOUR_FOUR);
@@ -159,10 +212,108 @@ class MeterEstimationTest {
         }
 
         @Test
+        @DisplayName("harmony in two under a pulse that divides in three is 6/8")
+        void twoPulsesToACompoundBar() {
+            MeterEstimator.Estimate estimate =
+                    MeterEstimator.decide(reading(400, 1, 0.5, 1, 0.9, 0.1));
+
+            assertThat(estimate.meter()).isEqualTo(TimeSignature.SIX_EIGHT);
+            assertThat(estimate.pulsesPerBar()).isEqualTo(2);
+            assertThat(estimate.pulseQuarters()).isEqualTo(1.5);
+        }
+
+        @Test
+        @DisplayName("the same harmony under a pulse that divides in two stays in four")
+        void twoBeatCompingIsNotABarOfTwo() {
+            // The endemic case the division exists to refuse: a vamp comping
+            // every two beats of a four-beat bar.
+            MeterEstimator.Estimate estimate =
+                    MeterEstimator.decide(reading(400, 1, 0.5, 1, 0.1, 0.9));
+
+            assertThat(estimate.meter()).isEqualTo(TimeSignature.FOUR_FOUR);
+            assertThat(estimate.pulsesPerBar()).isEqualTo(4);
+        }
+
+        @Test
+        @DisplayName("a division in three does not shorten a bar the harmony supports")
+        void aSupportedBarRefusesTheDivision() {
+            // Every shuffle in the corpus divides its pulse in three and is
+            // barred in four by its own cycle (#701), so a supported four-beat
+            // bar has to survive a triple division whatever the harmony makes
+            // of period two.
+            assertThat(MeterEstimator.decide(reading(400, 1, 40, 1, 0.9, 0.1)).pulsesPerBar())
+                    .isEqualTo(4);
+            // And a supported three, which the same reasoning covers.
+            assertThat(MeterEstimator.decide(reading(400, 40, 1, 1, 0.9, 0.1)).meter())
+                    .isEqualTo(TimeSignature.THREE_FOUR);
+        }
+
+        @Test
+        @DisplayName("period two does not count against the four-pulse bar it divides")
+        void twoIsNotARivalToFour() {
+            // Two divides four, so a four-pulse bar scores at period two by that
+            // degeneracy alone -- and states it again through ordinary comping.
+            // Neither is a competing reading, so neither may cost the four.
+            double comped =
+                    MeterEstimator.decide(reading(400, 1, 100, 1, 0.1, 0.9)).confidence().value();
+            double alone = MeterEstimator.decide(reading(0, 1, 100, 1)).confidence().value();
+
+            assertThat(comped).isEqualTo(alone);
+        }
+
+        @Test
+        @DisplayName("the division alone never leaves the assumption")
+        void theDivisionAloneDoesNotDecide() {
+            // The harmony is a veto rather than the evidence, but a veto that
+            // passes on a period scoring under what no period at all would score
+            // is no veto. A pulse dividing in three cannot carry a bar of two
+            // over it, however cleanly it divides.
+            assertThat(MeterEstimator.decide(reading(0, 0, 0, 0, 1, 0)).meter())
+                    .isEqualTo(TimeSignature.FOUR_FOUR);
+            assertThat(MeterEstimator.decide(reading(0.5, 0.1, 0.1, 0.1, 1, 0)).meter())
+                    .isEqualTo(TimeSignature.FOUR_FOUR);
+            // And just over it, the division does decide.
+            assertThat(MeterEstimator.decide(reading(1.5, 0.1, 0.1, 0.1, 1, 0)).meter())
+                    .isEqualTo(TimeSignature.SIX_EIGHT);
+        }
+
+        @Test
+        @DisplayName("a two-pulse bar over a harmony that barely clears the null says so")
+        void aVetoSatisfiedByNoiseSaysSo() {
+            // Same division, two harmonies: one that says period two clearly and
+            // one that only just clears the null. What separates them is not how
+            // strongly the harmony leads -- that is a four-beat bar's comping as
+            // readily as a bar of two -- but whether it says anything at all.
+            double periodic =
+                    MeterEstimator.decide(reading(50, 1, 0.5, 1, 0.9, 0)).confidence().value();
+            double barely =
+                    MeterEstimator.decide(reading(1.2, 0.1, 0.1, 0.1, 0.9, 0)).confidence().value();
+            double floor = MeterEstimator.decide(nothing()).confidence().value();
+
+            assertThat(barely).isLessThan(periodic).isCloseTo(floor, within(0.1));
+        }
+
+        @Test
+        @DisplayName("what a two-pulse bar is worth is read from the division, not the harmony")
+        void confidenceInTwoComesFromTheDivision() {
+            // Both harmonies are periodic at two beyond any doubt; only their
+            // strength differs, and strength is what this must not read.
+            double weakHarmony =
+                    MeterEstimator.decide(reading(6, 1, 0.5, 1, 0.9, 0.1)).confidence().value();
+            double strongHarmony =
+                    MeterEstimator.decide(reading(400, 1, 0.5, 1, 0.9, 0.1)).confidence().value();
+            double weakerDivision =
+                    MeterEstimator.decide(reading(400, 1, 0.5, 1, 0.7, 0.5)).confidence().value();
+
+            assertThat(weakHarmony).isEqualTo(strongHarmony);
+            assertThat(weakerDivision).isLessThan(strongHarmony);
+        }
+
+        @Test
         @DisplayName("a reading of nothing at all is 4/4 at the floor")
         void nothingReadIsTheAssumption() {
             MeterEstimator.Estimate estimate =
-                    MeterEstimator.decide(new MeterEstimator.Reading(0, 0, 0, 0, 0));
+                    MeterEstimator.decide(nothing());
 
             assertThat(estimate.meter()).isEqualTo(TimeSignature.FOUR_FOUR);
             assertThat(estimate.pulsesPerBar()).isEqualTo(4);
@@ -178,7 +329,7 @@ class MeterEstimationTest {
             double contradicted = MeterEstimator.decide(reading(1, 79, 20, 1))
                     .confidence().value();
             double supported = MeterEstimator.decide(reading(1, 1, 100, 1)).confidence().value();
-            double floor = MeterEstimator.decide(new MeterEstimator.Reading(0, 0, 0, 0, 0))
+            double floor = MeterEstimator.decide(nothing())
                     .confidence().value();
 
             assertThat(MeterEstimator.decide(reading(1, 79, 20, 1)).meter())
@@ -210,7 +361,7 @@ class MeterEstimationTest {
         void harmonicPeriod() {
             List<Double> times = beats(BEATS);
             MeterEstimator.Reading reading =
-                    MeterEstimator.read(times, stepwiseChroma(BEATS - 1, 3));
+                    MeterEstimator.read(times, stepwiseChroma(BEATS - 1, 3), clicks(1));
 
             assertThat(reading.atThree()).isGreaterThan(reading.atFour());
             // The null this is read against has expectation one at every period.
@@ -226,7 +377,7 @@ class MeterEstimationTest {
             // repeats every three and every two as well.
             List<Double> times = beats(BEATS);
             MeterEstimator.Reading reading =
-                    MeterEstimator.read(times, stepwiseChroma(BEATS - 1, 6));
+                    MeterEstimator.read(times, stepwiseChroma(BEATS - 1, 6), clicks(1));
 
             assertThat(reading.atSix()).isCloseTo(reading.atThree(), within(1e-9))
                     .isCloseTo(reading.atTwo(), within(1e-9));
@@ -239,7 +390,7 @@ class MeterEstimationTest {
         void endToEnd() {
             List<Double> times = beats(BEATS);
             MeterEstimator.Estimate estimate =
-                    MeterEstimator.estimate(times, stepwiseChroma(BEATS - 1, 3));
+                    MeterEstimator.estimate(times, stepwiseChroma(BEATS - 1, 3), clicks(1));
 
             assertThat(estimate.meter()).isEqualTo(TimeSignature.THREE_FOUR);
             assertThat(estimate.pulsesPerBar()).isEqualTo(3);
@@ -249,7 +400,8 @@ class MeterEstimationTest {
         @DisplayName("too few beats to carry a period is answered as the assumption, not measured")
         void tooFewBeats() {
             List<Double> times = beats(20);
-            MeterEstimator.Reading reading = MeterEstimator.read(times, stepwiseChroma(19, 3));
+            MeterEstimator.Reading reading =
+                    MeterEstimator.read(times, stepwiseChroma(19, 3), clicks(1));
 
             assertThat(reading.atThree()).isZero();
             assertThat(reading.usableBeats()).isEqualTo(18);
@@ -262,16 +414,65 @@ class MeterEstimationTest {
         void misalignedChroma() {
             List<Double> times = beats(BEATS);
 
-            assertThatThrownBy(() -> MeterEstimator.read(times, stepwiseChroma(BEATS + 5, 3)))
+            assertThatThrownBy(
+                    () -> MeterEstimator.read(times, stepwiseChroma(BEATS + 5, 3), clicks(1)))
                     .isInstanceOf(IllegalArgumentException.class)
                     .hasMessageContaining("beat-synchronous");
         }
 
         @Test
+        @DisplayName("a pulse struck in thirds divides in three, and one struck in halves in two")
+        void divisionsOfThePulse() {
+            List<Double> times = beats(BEATS);
+            Chroma chroma = stepwiseChroma(BEATS - 1, 2);
+
+            MeterEstimator.Reading inThree = MeterEstimator.read(times, chroma, clicks(3));
+            MeterEstimator.Reading inTwo = MeterEstimator.read(times, chroma, clicks(2));
+
+            assertThat(inThree.inThree()).isGreaterThan(inThree.inTwo());
+            assertThat(inTwo.inTwo()).isGreaterThan(inTwo.inThree());
+            // A pulse struck and nothing else says nothing about either.
+            MeterEstimator.Reading undivided = MeterEstimator.read(times, chroma, clicks(1));
+            assertThat(undivided.inThree()).isLessThan(0.1);
+            assertThat(undivided.inTwo()).isLessThan(0.1);
+        }
+
+        @Test
+        @DisplayName("an envelope with nothing at the pulse divides neither way")
+        void aPulseTheEnvelopeDoesNotCarry() {
+            List<Double> times = beats(BEATS);
+            Chroma chroma = stepwiseChroma(BEATS - 1, 2);
+
+            MeterEstimator.Reading reading = MeterEstimator.read(times, chroma, aperiodic());
+
+            // Read against a pulse that is not there, the divisions are a ratio
+            // of two noise levels and reach any level in either direction.
+            assertThat(reading.inThree()).isZero();
+            assertThat(reading.inTwo()).isZero();
+            assertThat(MeterEstimator.decide(reading).meter()).isEqualTo(TimeSignature.FOUR_FOUR);
+        }
+
+        @Test
+        @DisplayName("harmony every two pulses over a pulse struck in thirds is 6/8, end to end")
+        void aCompoundBarCountedInTwo() {
+            List<Double> times = beats(BEATS);
+            Chroma chroma = stepwiseChroma(BEATS - 1, 2);
+
+            assertThat(MeterEstimator.estimate(times, chroma, clicks(3)).meter())
+                    .isEqualTo(TimeSignature.SIX_EIGHT);
+            assertThat(MeterEstimator.estimate(times, chroma, clicks(3)).pulsesPerBar())
+                    .isEqualTo(2);
+            // The same harmony over a pulse struck in halves is the assumption.
+            assertThat(MeterEstimator.estimate(times, chroma, clicks(2)).meter())
+                    .isEqualTo(TimeSignature.FOUR_FOUR);
+        }
+
+        @Test
         @DisplayName("a recording with no harmony at all is the assumption rather than an error")
         void noHarmony() {
-            assertThat(MeterEstimator.estimate(beats(BEATS), new Chroma(new double[0][], 0))
-                    .meter()).isEqualTo(TimeSignature.FOUR_FOUR);
+            assertThat(MeterEstimator
+                    .estimate(beats(BEATS), new Chroma(new double[0][], 0), clicks(1)).meter())
+                    .isEqualTo(TimeSignature.FOUR_FOUR);
         }
     }
 }

@@ -42,9 +42,13 @@ import java.util.stream.Stream;
  * <p>Every column is one of the estimator's own statistics rather than a
  * reproduction of them, so the constants in that class can be re-derived from
  * this output: {@code p2 p3 p4 p6} are the harmonic periodicity at each period
- * it reads, on a null whose expectation is one. {@code meter} is what the
- * estimator decides and {@code want} what {@code samples/list.txt} states; a
- * row where they differ is the reading to explain.
+ * it reads, on a null whose expectation is one, and {@code in3} and {@code in2}
+ * are how much of the onset envelope's periodicity at the pulse a triple and an
+ * even division of it carry, over the {@code pulse} column, which is how much of
+ * the envelope's energy sits at the pulse for them to be shares of.
+ * {@code meter} is what the estimator decides and {@code want} what
+ * {@code samples/list.txt} states; a row where they differ is the reading to
+ * explain.
  *
  * <p><b>Every recording under {@code uncommitted/} is swept</b>, listed from the
  * directory rather than by name, because a claim about what real mixes do is
@@ -129,8 +133,8 @@ public final class MeterSweep {
     }
 
     public static void main(String[] args) {
-        System.out.printf("%-38s %8s %8s %8s %8s  %-5s %-5s %s%n",
-                "file", "p2", "p3", "p4", "p6", "meter", "want",
+        System.out.printf("%-38s %8s %8s %8s %8s %7s %7s %7s  %-5s %-5s %s%n",
+                "file", "p2", "p3", "p4", "p6", "pulse", "in3", "in2", "meter", "want",
                 "pulses/bar, confidence");
         List<Job> jobs = new ArrayList<>(JOBS);
         jobs.addAll(localJobs());
@@ -158,12 +162,14 @@ public final class MeterSweep {
         }
         List<Double> beatTimes = beats.beatTimes();
         MeterEstimator.Reading reading =
-                MeterEstimator.read(beatTimes, frames.beatSynchronous(beatTimes));
+                MeterEstimator.read(beatTimes, frames.beatSynchronous(beatTimes), envelope);
         MeterEstimator.Estimate estimate = MeterEstimator.decide(reading);
         String meter = estimate.meter().toString();
-        System.out.printf("%-38s %8.2f %8.2f %8.2f %8.2f  %-5s %-5s %d, %.2f %s%n",
+        System.out.printf(
+                "%-38s %8.2f %8.2f %8.2f %8.2f %7.2f %7.2f %7.2f  %-5s %-5s %d, %.2f %s%n",
                 job.file(), reading.atTwo(), reading.atThree(), reading.atFour(),
-                reading.atSix(), meter, job.want().isEmpty() ? "-" : job.want(),
+                reading.atSix(), reading.onThePulse(), reading.inThree(), reading.inTwo(), meter,
+                job.want().isEmpty() ? "-" : job.want(),
                 estimate.pulsesPerBar(), estimate.confidence().value(),
                 job.want().isEmpty() || job.want().equals(meter) ? "" : "MISMATCH");
     }
