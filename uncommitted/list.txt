@@ -468,8 +468,20 @@ the older `android` client format worked):
     https://www.youtube.com/watch?v=guIQwWgjATY
 Downloaded duration 203.8 s, matching the stated 3:24. This is the ORIGINAL
 recording; a cover in a different key is being analysed separately elsewhere
-and is not this file. No remembered chords supplied for this run — nothing
-here is confirmed by ear.
+and is not this file. No remembered chords supplied for this run.
+
+Confirmed by ear 2026-08-29 (Enrico): **6/8**. The 4/4 in the run below is
+MW's reading at the time, not the truth; the pulse it tracked is the dotted
+quarter, so the bar is two of them. This is the real recording on #712's
+line — division of the pulse inside the 6/8 band, harmony periodic at four
+tracked pulses — and the one that decides that rule on real audio.
+
+Run 2026-08-29, after #712. MW reads 6/8 on two of the tracked pulses, at the
+same pulse rate, the same 362 beats, the same 83 chord spans and the same key
+as the run below; only the barring moved. `render --parts chords` engraves it.
+Its meter confidence sits near the floor, which is what the reading is worth:
+the harmony says nothing at period two, so the bar length rests on the
+division of the pulse alone.
 
 Run 2026-08-24. MW read Db major (signature 56%, tonic-over-relative 67%),
 110 BPM, 4/4 — plausible for this mid-tempo pop ballad. 83 chord spans,

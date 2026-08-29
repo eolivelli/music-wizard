@@ -235,17 +235,52 @@ class MeterEstimationTest {
         }
 
         @Test
-        @DisplayName("a division in three does not shorten a bar the harmony supports")
-        void aSupportedBarRefusesTheDivision() {
-            // Every shuffle in the corpus divides its pulse in three and is
-            // barred in four by its own cycle (#701), so a supported four-beat
-            // bar has to survive a triple division whatever the harmony makes
-            // of period two.
-            assertThat(MeterEstimator.decide(reading(400, 1, 40, 1, 0.9, 0.1)).pulsesPerBar())
-                    .isEqualTo(4);
-            // And a supported three, which the same reasoning covers.
+        @DisplayName("a division in three does not shorten a bar of three")
+        void aSupportedThreeRefusesTheDivision() {
+            // No number of two-pulse bars makes three of them, so a supported
+            // three is a rival account of the same beats and refuses the
+            // division outright.
             assertThat(MeterEstimator.decide(reading(400, 40, 1, 1, 0.9, 0.1)).meter())
                     .isEqualTo(TimeSignature.THREE_FOUR);
+        }
+
+        @Test
+        @DisplayName("a supported four does not refuse a pulse that divides in three")
+        void aSupportedFourDoesNotRefuseTheDivision() {
+            // A chord loop two bars long is periodic at four tracked pulses
+            // whether the bar is two of them or four (#712), so the four is a
+            // length the shorter bar tiles and the division still decides.
+            MeterEstimator.Estimate estimate =
+                    MeterEstimator.decide(reading(20, 0.1, 40, 0.1, 0.9, 0.1));
+
+            assertThat(estimate.meter()).isEqualTo(TimeSignature.SIX_EIGHT);
+            assertThat(estimate.pulsesPerBar()).isEqualTo(2);
+        }
+
+        @Test
+        @DisplayName("harmony at four alone reaches a two-pulse bar; the null still has to clear")
+        void theLengthTheHarmonySpeaksAtNeedNotBeTwo() {
+            // The regime #712 names: a 6/8 whose chords move every two bars says
+            // nothing at period two at all. What the veto asks is that the
+            // harmony say something at SOME length two divides.
+            assertThat(MeterEstimator.decide(reading(0.2, 0.3, 10, 0.9, 0.9, 0.1)).pulsesPerBar())
+                    .isEqualTo(2);
+            assertThat(MeterEstimator.decide(reading(0.2, 0.3, 0.5, 0.9, 0.9, 0.1)).pulsesPerBar())
+                    .isEqualTo(4);
+        }
+
+        @Test
+        @DisplayName("a shuffle keeps its four-beat bar on the division floor alone")
+        void aShuffleKeepsItsBar() {
+            // Every shuffle in the corpus divides its pulse in three and is
+            // barred in four by its own cycle (#701). Since #712 the harmony no
+            // longer refuses on their supported four, so the whole guard is the
+            // floor: the strongest triple division any of them reaches is below
+            // it, and tools/MeterSweep.java prints the room either side.
+            assertThat(MeterEstimator.decide(reading(400, 1, 40, 1, 0.56, 0.1)).pulsesPerBar())
+                    .isEqualTo(4);
+            assertThat(MeterEstimator.decide(reading(400, 1, 40, 1, 0.65, 0.1)).pulsesPerBar())
+                    .isEqualTo(2);
         }
 
         @Test
