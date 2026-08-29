@@ -15,6 +15,12 @@ one deliberate difference: bars are aligned as a sequence, first downbeat to
 first bar, with no best-rotation search. The spec says where bar one is; a
 reading that is right up to rotation is wrong here.
 
+Every scored row states the meter it barred the package in against the spec's
+own. No package states anything but 4/4 today -- the arranger writes nothing
+else (#702) -- so the column is a control on the detector rather than a test of
+it: a package that leaves 4/4 here has had its bar lines moved by something no
+spec asked for.
+
 Every scored row states the tempo as a ratio against the spec's own (#453). A
 melody-only package states none: it returns before a grid is read at all. The
 spec compiled the MIDI, so that tempo is exact, and a grid running at twice or
@@ -180,7 +186,13 @@ def score_package(jar: Path, spec_file: Path) -> str:
     want_key = spec["headers"].get("key")
     got_key = named_key(doc)
     key_verdict = "OK" if got_key == want_key else f"{got_key or 'none'} WRONG"
-    return (f"  {name}.mp3: bars={len(shares)}/{n}  {tempo}"
+    # The spec's own default, which is what SpecParser substitutes for a spec
+    # that names no meter -- and every package here is one, the arranger writing
+    # nothing but 4/4 (#702). The column is a control until that changes.
+    want_meter = spec["headers"].get("meter", "4/4")
+    got_meter = samples.barred_meter(doc)
+    meter_verdict = "OK" if got_meter == want_meter else f"{got_meter or 'none'} WRONG"
+    return (f"  {name}.mp3: bars={len(shares)}/{n}  {tempo}  meter {meter_verdict}"
             f"  root {root_ok:.1f}/{n} ({100 * root_ok / n:.1f}%)"
             f"  root+quality {full_ok:.1f}/{n} ({100 * full_ok / n:.1f}%)"
             f"  split {split}"

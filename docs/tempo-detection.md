@@ -112,12 +112,17 @@ length hung on the phase the downbeats agree on (#233).
 - `--tempo` corrects the *rate* and keeps the tracked beats: a user
   correcting tempo is usually correcting a half-or-double reading, and the
   beats are measured evidence. The corrected ratio also tells MW how many
-  tracked pulses fill a bar (#139), which nothing can measure from audio.
+  tracked pulses fill a bar (#139).
 - `--first-downbeat` chooses the bar phase outright, as a time in
   *seconds* snapped to the nearest tracked beat; the estimator is not run,
   because a human who counted the bars outranks harmonic novelty.
-- `--time-signature` states the meter, which is **assumed 4/4 and never
-  inferred** — nothing on the audio path estimates a meter.
+- `--time-signature` states the meter and wins outright: the estimator is
+  not run at all, as with `--first-downbeat`. Untyped, the meter is read from
+  the recording between 4/4, 3/4 and 6/8, with 4/4 as the prior — see
+  `MeterEstimator`, whose readings `tools/MeterSweep.java` prints.
 
 `--tempo` is read in the meter's *counted* beats per minute — what a
-metronome shows — which differs from quarter notes in compound time.
+metronome shows — which differs from quarter notes in compound time, and which
+meter that is may be one MW read rather than one anyone typed (#705). The run
+prints the counted rate on its own meter line, so the figure to type back is
+the one it showed; `--time-signature` pins the unit outright.

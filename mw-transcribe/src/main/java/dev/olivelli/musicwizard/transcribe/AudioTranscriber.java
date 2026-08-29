@@ -40,6 +40,7 @@ import dev.olivelli.musicwizard.dsp.ChordEstimator;
 import dev.olivelli.musicwizard.dsp.DownbeatEstimator;
 import dev.olivelli.musicwizard.dsp.KeyEstimator;
 import dev.olivelli.musicwizard.dsp.MelodyEstimator;
+import dev.olivelli.musicwizard.dsp.MeterEstimator;
 import dev.olivelli.musicwizard.dsp.HarmonicRhythm;
 import dev.olivelli.musicwizard.dsp.NnlsAblation;
 import dev.olivelli.musicwizard.dsp.NnlsChroma;
@@ -103,7 +104,10 @@ public final class AudioTranscriber {
      *                            as quarter notes puts the bar grid 1.5x out in
      *                            compound time. It corrects the rate; the phase
      *                            comes from the tracked pulses either way.
-     * @param timeSignature       the meter to assume, 4/4 when null
+     * @param timeSignature       the meter to use, read from the recording when
+     *                            null. Supplied, it wins outright and the
+     *                            estimator is not run, exactly as a supplied
+     *                            downbeat replaces the phase estimate (#700).
      * @param firstDownbeatSeconds when a bar starts, in seconds. Chooses the
      *                            phase of the bar grid outright rather than
      *                            contributing to it: the estimator is not run at
@@ -162,9 +166,16 @@ public final class AudioTranscriber {
         }
 
         public static Options defaults() {
-            return new Options(null, TimeSignature.FOUR_FOUR, null, false);
+            return new Options(null, null, null, false);
         }
 
+        /**
+         * The supplied meter, or the assumption for a run that cannot read one.
+         *
+         * <p>Not "the meter this run uses": since #700 a run with beats reads
+         * its own, and this answers only where there are no beats to read it
+         * from.
+         */
         public TimeSignature timeSignatureOrDefault() {
             return timeSignature != null ? timeSignature : TimeSignature.FOUR_FOUR;
         }
@@ -244,7 +255,6 @@ public final class AudioTranscriber {
                             Supplier<AudioBuffer> vocalStem) {
         Objects.requireNonNull(audio, "audio");
         Options settings = options != null ? options : Options.defaults();
-        TimeSignature meter = settings.timeSignatureOrDefault();
 
         progress.accept("detecting onsets");
         // One transform, two readings of it: the summed envelope everything
@@ -299,42 +309,27 @@ public final class AudioTranscriber {
             // override disagree in compound time.
             FallbackTempo fallback = FallbackTempo.forOptions(settings);
             return Score.empty(
-                    TempoMap.constantPulse(
-                            fallback.pulsesPerMinute(), meter, fallback.provenance()),
+                    TempoMap.constantPulse(fallback.pulsesPerMinute(),
+                            // No beats, so nothing to read a meter off: the
+                            // assumption is all there is here.
+                            settings.timeSignatureOrDefault(), fallback.provenance()),
                     audio.durationSeconds());
         }
 
         List<Double> beatTimes = beats.beatTimes();
-        // "beats/min", not a tempo: the tracker counts pulses, which are the
-        // quarter note only in simple time. The grid's own steady rate rather
-        // than the tracker's median, because the user is told they may type
-        // this figure back via --tempo and it must match what the chart is
-        // headed with (#200). The lone-pulse arm cannot hold that property —
-        // no interval, no rate — and falls back to the tracker's seed, which
-        // on a short clip is a function of the clip's length (#240).
-        progress.accept(String.format(Locale.ROOT, "found %d beats at %.1f beats/min",
+        // "pulses/min", which is not the tempo: the tracker counts pulses, and
+        // a pulse is the counted beat only where the meter says so. The figure
+        // a user may type back via --tempo is on the meter line below, and it
+        // is that one that must match what the chart is headed with (#200).
+        // The grid's own steady rate rather than the tracker's median; the
+        // lone-pulse arm has no interval to take one from and falls back to the
+        // tracker's seed, which on a short clip is a function of the clip's
+        // length (#240).
+        progress.accept(String.format(Locale.ROOT, "found %d beats at %.1f pulses/min",
                 beatTimes.size(),
                 beatTimes.size() >= 2
                         ? BeatGrid.steadyPulseRate(beatTimes)
                         : beats.beatsPerMinute()));
-
-        // How the tracked pulses bar the music where the correction says they
-        // are not the counted beat. Nothing measures this from audio — the
-        // tracker lands on a sub-multiple without knowing it (#353) — so a
-        // typed tempo against kept pulses is the only producer: their ratio is
-        // the pulse. Read before the map, whose lead-in is measured in tracked
-        // pulses too.
-        OptionalInt correctedPulsesPerBar =
-                trackedPulsesPerBar(settings.tempoOverride(), beatTimes, meter);
-        int pulsesPerBar = correctedPulsesPerBar.orElse(meter.beatsPerBar());
-        OptionalDouble pulseQuarters = correctedPulsesPerBar.isPresent()
-                ? OptionalDouble.of(meter.quarterBeatsPerBar() / pulsesPerBar)
-                : OptionalDouble.empty();
-        if (correctedPulsesPerBar.isPresent()) {
-            progress.accept(String.format(Locale.ROOT,
-                    "the supplied tempo puts %d tracked beat%s in a bar, not %d",
-                    pulsesPerBar, pulsesPerBar == 1 ? "" : "s", meter.beatsPerBar()));
-        }
 
         // Beat-synchronised chroma before the beat grid, and the grid before
         // the tempo map: the downbeat phase is chosen from harmonic change and
@@ -363,6 +358,56 @@ public final class AudioTranscriber {
         NnlsAblation ablation =
                 NnlsAblation.extract(transform, tuning).beatSynchronous(beatTimes);
 
+        // The meter, read from the same beat-synchronous chroma the phase is
+        // read from, and only where nothing was typed: a supplied meter is an
+        // instruction and wins outright, as a supplied downbeat does.
+        MeterEstimator.Estimate detected = settings.timeSignature() != null
+                ? null
+                : MeterEstimator.estimate(beatTimes, chroma);
+        TimeSignature meter = detected != null
+                ? detected.meter() : settings.timeSignatureOrDefault();
+
+        // How the tracked pulses bar the music where the pulse is not the
+        // meter's counted beat. Two producers, and they are not the same
+        // claim: a typed tempo against kept pulses says so by their ratio
+        // (#139), and a meter read off the recording says so when the tracker
+        // filled a compound bar with its subdivision (#700). The typed one
+        // wins, being a correction rather than an estimate. Read before the
+        // map, whose lead-in is measured in tracked pulses too.
+        OptionalInt correctedPulsesPerBar =
+                trackedPulsesPerBar(settings.tempoOverride(), beatTimes, meter);
+        if (correctedPulsesPerBar.isPresent()) {
+            progress.accept(String.format(Locale.ROOT,
+                    "the supplied tempo puts %d tracked beat%s in a bar, not %d",
+                    correctedPulsesPerBar.getAsInt(),
+                    correctedPulsesPerBar.getAsInt() == 1 ? "" : "s", meter.beatsPerBar()));
+        }
+        int pulsesPerBar = correctedPulsesPerBar
+                .orElseGet(() -> detected != null ? detected.pulsesPerBar() : meter.beatsPerBar());
+        // Derived from the pair rather than from which producer spoke, so that
+        // a bar can never be tiled by a pulse length no reader agrees with.
+        OptionalDouble pulseQuarters = pulsesPerBar == meter.beatsPerBar()
+                ? OptionalDouble.empty()
+                : OptionalDouble.of(meter.quarterBeatsPerBar() / pulsesPerBar);
+
+        // The meter and, beside it, the rate in the beat that meter is counted
+        // in -- which is the figure --tempo takes and the one the chart is
+        // headed with (#200), and which differs from the pulse rate above by
+        // the pulse wherever the tracker filled a compound bar with its
+        // subdivision. Said whether the meter was read or supplied, so the two
+        // cases print the same facts and differ only in where the meter came
+        // from.
+        progress.accept(String.format(Locale.ROOT, "meter %s %s, %.1f beats/min", meter,
+                detected == null
+                        ? "as supplied"
+                        : String.format(Locale.ROOT, "(%.0f%% confidence)",
+                                100 * detected.confidence().value()),
+                beatTimes.size() >= 2
+                        ? BeatGrid.steadyPulseRate(beatTimes)
+                                * pulseQuarters.orElse(meter.beatUnitQuarters())
+                                / meter.beatUnitQuarters()
+                        : beats.beatsPerMinute()));
+
         // Pulses per bar, not the numerator: DownbeatEstimator asks for "the
         // assumed bar length in beats", and the beats it means are the tracked
         // ones it is phasing. 6/8 counts two of them to a bar rather than six,
@@ -389,8 +434,12 @@ public final class AudioTranscriber {
         // clip transcribable.
         TempoMap tempoMap;
         if (beatTimes.size() >= 2 && settings.tempoOverride() == null) {
+            // The pulse the bars were counted in, not the meter's counted beat:
+            // where the two differ, TempoMap.requireBarPhase refuses the pair
+            // outright rather than tiling a bar with pulses that do not fill it.
             tempoMap = TempoMap.fromBeatTimes(beatTimes, meter,
-                    meter.beatUnitQuarters(), downbeat.phase(), pulsesPerBar);
+                    pulseQuarters.orElse(meter.beatUnitQuarters()),
+                    downbeat.phase(), pulsesPerBar);
         } else {
             // A typed tempo, or a clip with no interval to infer one from —
             // both take the figure and its origin from one place, so a tempo
@@ -407,7 +456,7 @@ public final class AudioTranscriber {
                     downbeat.phase(), pulsesPerBar);
         }
 
-        recordBeats(beats);
+        recordBeats(beats, meter, pulsesPerBar, detected);
 
         progress.accept("estimating chords");
         ChordEstimator.Decoded decoded =
@@ -553,16 +602,28 @@ public final class AudioTranscriber {
     }
 
     /**
-     * What the tracker chose between, for the run's record (#675).
+     * What the tracker chose between, and what its beats were barred by (#675).
      *
-     * <p>The line carries the one decision a reader would want without opening
+     * <p>The line carries the two decisions a reader would want without opening
      * the trace: whether the bass register moved the pulse the windows had
-     * agreed on, which is the halving or doubling a user most often corrects
-     * by hand.
+     * agreed on, which is the halving or doubling a user most often corrects by
+     * hand, and what the bars were made of, which is where a run whose bars are
+     * the wrong length says so.
+     *
+     * @param detected the meter read off the recording, or null where one was
+     *                 typed
      */
-    private void recordBeats(BeatTracker.Result beats) {
+    private void recordBeats(BeatTracker.Result beats, TimeSignature meter, int pulsesPerBar,
+                             MeterEstimator.Estimate detected) {
         BeatTrace trace = beats.trace();
         RunLog.Stage stage = runLog.stage(BeatTrace.STAGE).trace(trace);
+        stage.fact("meter", detected == null
+                ? meter + ", supplied"
+                : String.format(Locale.ROOT, "%s, read at %.0f%% confidence",
+                        meter, 100 * detected.confidence().value()));
+        if (pulsesPerBar != meter.beatsPerBar()) {
+            stage.fact("tracked pulses in a bar", pulsesPerBar);
+        }
         if (trace == null) {
             stage.computed();
             return;

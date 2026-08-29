@@ -12,6 +12,14 @@
 # syllable counts. Its words are licensed separately from its recording and
 # both must be clear — docs/phone-to-corpus.md carries the rule.
 #
+# Every grid is written in bars of the recording's own meter. An entry names
+# that meter where it is not four, and says so where what was confirmed is the
+# bar's length rather than how it is written -- 3/4 and 6/8 bar the same three
+# quarter notes, and telling them apart is a judgement about the page, not
+# about where the bar lines fall. tools/score-samples.py scores the meter MW
+# reads against the entries that name one, so a meter written here is ground
+# truth in the same sense the chords are.
+#
 # Chords are lead-sheet shorthand, spelled as the tool spells them: 7 dominant,
 # m7 minor seventh, maj7 major seventh, 6 major sixth, m6 minor sixth,
 # m7b5 half-diminished, dim diminished, a plain letter a major triad. One
@@ -41,9 +49,16 @@ C7 C7 G7 G7
 D7 C7 G7 D7
 
 bm-blues-slow.mp3   (CC-BY, Guitar Improvisation, https://www.youtube.com/watch?v=hLeDkqjxWtw)
-Slow B minor blues. A minor key that stays minor, which is what a corpus of
-dominant sevenths cannot ask: here a major third on the tonic is an error
-rather than the answer.
+Slow B minor blues, whose bar is six tracked pulses long. A minor key that
+stays minor, which is what a corpus of dominant sevenths cannot ask: here a
+major third on the tonic is an error rather than the answer.
+
+The bar length here was read rather than heard, and the argument is the cycle
+below: barred every six tracked pulses it aligns, and barred in four it does
+not, by the margin tools/baselines/score-samples.txt carries. That says the
+length and not the signature -- 6/8 and 3/4 bar those six pulses identically --
+so no meter is written here and none is scored against this file. It wants an
+ear.
 
 Bm Bm Bm Bm
 Em Em Bm Bm
@@ -133,8 +148,9 @@ Am7-Dm7  Gm7-C7  F6     Gm7-C7
 footprints-200.mp3   (CC-BY, Guitar Improvisation, https://www.youtube.com/watch?v=4QUIK0sVhO0)
 "Footprints" at a stated 200 bpm in three. The deliberate stress ceiling: fast
 and ternary and minor jazz at once. Expect failure today; keep it as the
-horizon marker. Not scored: in three, so the bars a 4/4 downbeat sequence cuts
-are not this recording's bars.
+horizon marker. Its chords are not scored: it is not a loop the harness can
+rotate. Nor is its meter: it is in three, and whether that three is written 3/4
+or 6/4 this entry does not say.
 
 intro:
 Cm7 Cm7 Cm7 Cm7

@@ -1204,7 +1204,10 @@ final class AnalyzeCommand implements Callable<Integer> {
                 .withFile("source", source);
         if (kind == SourceKind.AUDIO && options != null) {
             key.with("tempo", options.tempoOverride())
-                    .with("meter", options.timeSignatureOrDefault())
+                    // The typed meter and not the assumption: since #700 a run
+                    // with no meter typed reads its own, so "nothing typed" and
+                    // "4/4 typed" are different runs and must key differently.
+                    .with("meter", options.timeSignature())
                     .with("firstDownbeat", options.firstDownbeatSeconds())
                     .with("melody", melodySignal)
                     .with("skipSeparation", skipSeparation);
@@ -1664,9 +1667,10 @@ final class AnalyzeCommand implements Callable<Integer> {
                 melody);
     }
 
+    /** The typed meter, or null for "read it off the recording" (#700). */
     private static TimeSignature parseMeter(String text) {
         if (text == null || text.isBlank()) {
-            return TimeSignature.FOUR_FOUR;
+            return null;
         }
         String[] parts = text.split("/");
         if (parts.length != 2) {
