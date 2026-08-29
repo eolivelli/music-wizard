@@ -264,16 +264,40 @@ class MeterEstimationTest {
         @Test
         @DisplayName("the division alone never leaves the assumption")
         void theDivisionAloneDoesNotDecide() {
-            // A pulse dividing in three under a recording whose harmony has no
-            // period at all: the prior stands, as it does for every other length
-            // the evidence does not carry.
-            assertThat(MeterEstimator.decide(reading(0, 0, 0, 0, 0.9, 0.1)).meter())
+            // The harmony is a veto rather than the evidence, but a veto that
+            // passes on a period scoring under what no period at all would score
+            // is no veto. A pulse dividing in three cannot carry a bar of two
+            // over it, however cleanly it divides.
+            assertThat(MeterEstimator.decide(reading(0, 0, 0, 0, 1, 0)).meter())
                     .isEqualTo(TimeSignature.FOUR_FOUR);
+            assertThat(MeterEstimator.decide(reading(0.5, 0.1, 0.1, 0.1, 1, 0)).meter())
+                    .isEqualTo(TimeSignature.FOUR_FOUR);
+            // And just over it, the division does decide.
+            assertThat(MeterEstimator.decide(reading(1.5, 0.1, 0.1, 0.1, 1, 0)).meter())
+                    .isEqualTo(TimeSignature.SIX_EIGHT);
+        }
+
+        @Test
+        @DisplayName("a two-pulse bar over a harmony that barely leads reports near the floor")
+        void aVetoSatisfiedByNoiseSaysSo() {
+            // Same division, two harmonies: one that says period two clearly and
+            // one that only just clears the null. What separates them is not how
+            // strongly the harmony leads -- that is a four-beat bar's comping as
+            // readily as a bar of two -- but whether it says anything at all.
+            double periodic =
+                    MeterEstimator.decide(reading(50, 1, 0.5, 1, 0.9, 0)).confidence().value();
+            double barely =
+                    MeterEstimator.decide(reading(1.2, 0.1, 0.1, 0.1, 0.9, 0)).confidence().value();
+            double floor = MeterEstimator.decide(nothing()).confidence().value();
+
+            assertThat(barely).isLessThan(periodic).isCloseTo(floor, within(0.1));
         }
 
         @Test
         @DisplayName("what a two-pulse bar is worth is read from the division, not the harmony")
         void confidenceInTwoComesFromTheDivision() {
+            // Both harmonies are periodic at two beyond any doubt; only their
+            // strength differs, and strength is what this must not read.
             double weakHarmony =
                     MeterEstimator.decide(reading(6, 1, 0.5, 1, 0.9, 0.1)).confidence().value();
             double strongHarmony =
@@ -376,7 +400,8 @@ class MeterEstimationTest {
         @DisplayName("too few beats to carry a period is answered as the assumption, not measured")
         void tooFewBeats() {
             List<Double> times = beats(20);
-            MeterEstimator.Reading reading = MeterEstimator.read(times, stepwiseChroma(19, 3), clicks(1));
+            MeterEstimator.Reading reading =
+                    MeterEstimator.read(times, stepwiseChroma(19, 3), clicks(1));
 
             assertThat(reading.atThree()).isZero();
             assertThat(reading.usableBeats()).isEqualTo(18);
@@ -389,7 +414,8 @@ class MeterEstimationTest {
         void misalignedChroma() {
             List<Double> times = beats(BEATS);
 
-            assertThatThrownBy(() -> MeterEstimator.read(times, stepwiseChroma(BEATS + 5, 3), clicks(1)))
+            assertThatThrownBy(
+                    () -> MeterEstimator.read(times, stepwiseChroma(BEATS + 5, 3), clicks(1)))
                     .isInstanceOf(IllegalArgumentException.class)
                     .hasMessageContaining("beat-synchronous");
         }
@@ -444,8 +470,9 @@ class MeterEstimationTest {
         @Test
         @DisplayName("a recording with no harmony at all is the assumption rather than an error")
         void noHarmony() {
-            assertThat(MeterEstimator.estimate(beats(BEATS), new Chroma(new double[0][], 0), clicks(1))
-                    .meter()).isEqualTo(TimeSignature.FOUR_FOUR);
+            assertThat(MeterEstimator
+                    .estimate(beats(BEATS), new Chroma(new double[0][], 0), clicks(1)).meter())
+                    .isEqualTo(TimeSignature.FOUR_FOUR);
         }
     }
 }

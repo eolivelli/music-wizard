@@ -163,6 +163,18 @@ public final class MeterEstimator {
     private static final int BARS_FOR_A_READING = 4;
 
     /**
+     * What the harmonic statistic scores at a period nothing happens at, which
+     * is the floor the two-pulse bar's harmony has to clear.
+     *
+     * <p>Not {@link #SUPPORTED}: the two-pulse bar is not chosen on the harmony
+     * and cannot be held to the level a chosen length is. What it may not do is
+     * rest on a period the harmony scores <em>below</em> what having no period
+     * at all would give it, which is what this is — the null's expectation,
+     * property of the statistic rather than of the corpus.
+     */
+    private static final double THE_NULL = 1.0;
+
+    /**
      * How much of the pulse's own periodicity the onset envelope must carry at
      * a triple division of it before the pulse counts as dividing in three.
      *
@@ -180,11 +192,11 @@ public final class MeterEstimator {
      * before a division of it is a share of anything.
      *
      * <p>The divisions are read against the pulse, so a pulse the envelope does
-     * not carry makes them a ratio of two noise levels — and a ratio of noise
-     * clears any level, in either direction, on about half of aperiodic input.
-     * This is what stands where {@link #SUPPORTED} stands for the harmony: over
-     * white-noise envelopes at every length a reading is taken from, no trial
-     * both reached it and divided in three.
+     * not carry makes them a ratio of two noise levels, and a ratio of noise
+     * clears any level in either direction. {@code tools/MeterSweep.java}'s
+     * {@code pulse} column is what the corpus carries here, and
+     * {@code MeterEstimationTest} pins the other side on an envelope with
+     * nothing at the pulse at all.
      */
     private static final double PULSE_PERIODIC = 0.10;
 
@@ -261,7 +273,8 @@ public final class MeterEstimator {
      *                    at, over its periodicity at the pulse itself; zero
      *                    where the pulse carries too little for it to be a share
      *                    of anything
-     * @param inTwo       the same over the two lags a duple division puts one at
+     * @param inTwo       the same at a half of the pulse and at a quarter of it,
+     *                    which is where dividing it evenly puts a peak
      * @param onThePulse  how much of the envelope's energy sits at the pulse
      *                    itself, which is what the two above are shares of and
      *                    the floor they have to clear to be shares at all
@@ -374,14 +387,18 @@ public final class MeterEstimator {
      * four-beat bar comping every two beats produces the same period two, and
      * the corpus puts recordings of that kind above the compound ones on the
      * harmonic statistic. So the harmony is asked only not to contradict it —
-     * period two leads, and no longer bar length is supported on its own, which
-     * is what keeps a shuffle's four-beat bar and a waltz's three out of reach
-     * of the division below — and the division of the pulse decides.
+     * period two clears {@link #THE_NULL} and leads, and no longer bar length is
+     * supported on its own, which is what keeps a shuffle's four-beat bar and a
+     * waltz's three out of reach of the division below — and the division of the
+     * pulse decides.
      *
      * <p>Deliberately answered before the candidates are ranked. Nothing is lost
      * by the order: a bar length the harmony supports refuses this outright.
      */
     private static boolean barsInTwo(Reading reading) {
+        if (reading.atTwo() < THE_NULL) {
+            return false;
+        }
         for (int candidate : CANDIDATES) {
             if (reading.at(candidate) >= SUPPORTED || reading.at(candidate) >= reading.atTwo()) {
                 return false;
@@ -516,20 +533,24 @@ public final class MeterEstimator {
      * How far the evidence backs a two-pulse bar, which is a different question
      * from the one {@link #confidenceIn} answers.
      *
-     * <p>Read from the division and not from the harmony, because the harmony
-     * did not choose this length and could not: it scores a four-beat bar's
-     * comping exactly as it scores a bar of two, so how strongly it says
-     * "period two" is not how strongly it says "bar of two". What decided is how
-     * much of the pulse the triple division carries and how far it leads the
-     * duple one, and those are what this reads — the same shape as
-     * {@link #confidenceIn}, a level and a separation multiplied so that either
-     * failing brings the number down.
+     * <p>Mostly the division, because that is what chose the length: how much of
+     * the pulse the triple carries, and how far it leads the duple. <em>How
+     * strongly</em> the harmony says period two is deliberately not read — it
+     * scores a four-beat bar's comping exactly as it scores a bar of two, so a
+     * large one is not a confident bar of two. <em>Whether</em> it says anything
+     * is a different fact and is read: a two-pulse bar admitted over a harmony
+     * that is barely periodic at two was admitted by a veto that let noise
+     * through, and says so rather than reporting what the division alone would.
+     *
+     * <p>Three terms multiplied, as {@link #confidenceIn} multiplies two, so
+     * that any of them failing brings the number down.
      */
     private static Confidence confidenceInTwo(Reading reading) {
+        double periodic = Math.clamp(reading.atTwo() / SUPPORTED, 0, 1);
         double carried = Math.clamp(reading.inThree(), 0, 1);
         double lead = Math.clamp(reading.inThree() - reading.inTwo(), 0, 1);
         return Confidence.clamped(
-                ASSUMED_CONFIDENCE + (CEILING - ASSUMED_CONFIDENCE) * carried * lead);
+                ASSUMED_CONFIDENCE + (CEILING - ASSUMED_CONFIDENCE) * periodic * carried * lead);
     }
 
     /**
