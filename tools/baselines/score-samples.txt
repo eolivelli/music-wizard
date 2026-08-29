@@ -28,7 +28,7 @@ bar phase the rows above rest on, at the estimator's own confidence in it (a pha
   phase eb7-vamp-130.mp3: beat 0 of 4 at 0.3500  root 97.6%  best beat 2 at 98.2%
   phase bossa-cm.mp3: beat 0 of 4 at 0.3500  root 24.5%  best beat 2 at 27.8%
   phase pop-c-g-am-f-120.mp3: beat 0 of 4 at 0.4299  root 100.0%  best beat 0 at 100.0%
-meters, against the meter each samples/list.txt entry states:
+meters, against the meter each list.txt entry states:
   meter blues-a-90bpm.mp3: 4/4 at 90%  pulses/bar 4  want 4/4  OK
   meter blues-shuffle-a-106bpm.mp3: 4/4 at 84%  pulses/bar 4  want 4/4  OK
   meter blues-e-90bpm.mp3: 4/4 at 90%  pulses/bar 4  want 4/4  OK
@@ -44,6 +44,7 @@ meters, against the meter each samples/list.txt entry states:
   meter ballad-wine-roses-65.mp3: 4/4 at 81%  pulses/bar 4  want 4/4  OK
   meter pop-c-g-am-f-120.mp3: 4/4 at 90%  pulses/bar 4  want 4/4  OK
   meter pop-am-f-c-g-144.mp3: 4/4 at 90%  pulses/bar 4  want 4/4  OK
+  meter balorda-nostalgia.mp3: 6/8 at 51%  pulses/bar 2  want 6/8  OK
 keys, against the expected key for each file:
   key blues-a-90bpm.mp3: A major at 64%  want A major  OK
   key blues-shuffle-a-106bpm.mp3: A major at 63%  want A major  OK

@@ -975,6 +975,86 @@ class VttConversion(unittest.TestCase):
             vtt.convert(text, set()))
 
 
+def sweep_jobs(name: str) -> list[tuple[str, str, str]]:
+    """One of MeterSweep's job tables, as (corpus, file, want).
+
+    The whole initialiser is consumed, so a row this shape cannot read raises
+    quoting it rather than being dropped -- reading all but one and passing is
+    the failure this kind of rule exists to prevent (#612), and here it would
+    pass in exactly the case the table below it is written to catch."""
+    source = re.sub(r"//[^\n]*|/\*.*?\*/", " ",
+                    java_source("tools/MeterSweep.java"), flags=re.DOTALL)
+    opened = re.search(rf"\b{name}\s*=\s*List\.of\(", source)
+    if not opened:
+        raise AssertionError(f"no {name} in MeterSweep.java")
+    end = source.find(";", opened.end())
+    if end < 0:
+        raise AssertionError(f"{name}'s list does not end")
+    body = source[opened.end():end].rstrip().removesuffix(")")
+
+    rows = []
+    at = 0
+    while at < len(body):
+        if body[at].isspace() or body[at] == ",":
+            at += 1
+            continue
+        found = SWEEP_JOB.match(body, at)
+        if not found:
+            raise AssertionError(f"{name}: cannot read {body[at:at + 60].strip()!r}")
+        first, second, third = found.groups()
+        if third is None:
+            # Job(file, want), whose one-argument-shorter constructor is samples.
+            rows.append(("samples", first.strip('"'), second))
+        else:
+            rows.append(("uncommitted" if first == "LOCAL" else first.strip('"'),
+                         second, third))
+        at = found.end()
+    if not rows:
+        raise AssertionError(f"{name} holds no row")
+    return rows
+
+
+SWEEP_JOB = re.compile(r'new\s+Job\(\s*(LOCAL|"[^"]*")\s*,\s*"([^"]*)"\s*'
+                       r'(?:,\s*"([^"]*)"\s*)?\)')
+
+
+class ConfirmedMeters(unittest.TestCase):
+    """The meter stated for a recording is written twice -- in score-samples.py,
+    which gates it, and in tools/MeterSweep.java, which is the instrument the
+    estimator's constants are read from. A fact in two files is a fact that can
+    disagree with itself, so they are held to each other here rather than to a
+    second careful edit (#725)."""
+
+    def sweep_table(self, name: str, corpus: str) -> dict[str, str]:
+        return {file: want for where, file, want in sweep_jobs(name)
+                if where == corpus and want}
+
+    def scored(self, corpus: str) -> dict[str, str]:
+        return {name: want for name, (where, want) in samples.METERS.items()
+                if where == corpus}
+
+    def test_the_local_tables_state_the_same_meters(self):
+        self.assertEqual(self.scored("uncommitted"),
+                         self.sweep_table("LOCAL_METERS", "uncommitted"))
+
+    def test_the_committed_tables_state_the_same_meters(self):
+        self.assertEqual(self.scored("samples"), self.sweep_table("JOBS", "samples"))
+
+    def test_a_sample_the_sweep_declines_to_score_is_not_scored_here(self):
+        """A benchmark whose entry declines a meter carries an empty want in the
+        sweep; scoring it here would score MW against its own reading."""
+        declined = {file for where, file, want in sweep_jobs("JOBS")
+                    if where == "samples" and not want}
+        self.assertTrue(declined)
+        self.assertEqual(set(), declined & set(samples.METERS))
+
+    def test_a_row_the_shape_cannot_read_raises(self):
+        with mock.patch(f"{__name__}.java_source",
+                        return_value="LOCAL_METERS = List.of(new Job(LOCAL, x, \"6/8\"));"):
+            with self.assertRaises(AssertionError):
+                sweep_jobs("LOCAL_METERS")
+
+
 class Keying(unittest.TestCase):
     """The gate keys each line on the text before its first colon, and reads
     a line as a row when it carries '.mp3:' or is an indented '  name: '. Both

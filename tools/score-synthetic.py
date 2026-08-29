@@ -19,8 +19,8 @@ Every scored row states the meter it barred the package in against the spec's
 own. On a package stating 4/4 the column is a control -- one that leaves 4/4 has
 had its bar lines moved by something no spec asked for -- and on the packages
 #702 added in 3/4, 6/8 and 12/8 it is the reading itself, against a meter the
-spec compiled the MIDI from. Two of those are expected to read wrong today and
-their own issues say why; the column is where a fix for #712 would show.
+spec compiled the MIDI from. One of those is expected to read wrong today and
+its own issue says why.
 
 Every scored row states the tempo as a ratio against the spec's own (#453). A
 melody-only package states none: it returns before a grid is read at all. The

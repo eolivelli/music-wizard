@@ -55,9 +55,19 @@ import java.util.Objects;
  * counted in two does, so the two-pulse bar is admitted only where the pulse
  * also divides in three — which is a reading of the onset envelope's own
  * periodicity rather than of the harmony, and is the only place this class asks
- * the envelope anything. Both are needed and neither is sufficient: the corpus
- * holds two-beat comping under a pulse that divides in two, and a pulse
- * dividing in three under a four-beat bar the harmony supports.
+ * the envelope anything. The corpus holds two-beat comping under a pulse that
+ * divides in two, so the division is needed; it is what the two-pulse bar
+ * rests on.
+ *
+ * <p><b>The harmony vetoes only the bar lengths two does not divide</b>
+ * (#712). A chord loop two bars long is periodic at four tracked pulses
+ * whether the bar is two of them or four, so a supported four is a length the
+ * shorter bar tiles rather than a rival account of it, and refusing on it puts
+ * every ordinary two-bar 6/8 loop out of reach. A supported three is a rival,
+ * no number of two-pulse bars making three of them. What the harmony is asked
+ * for is that it say something at some length two divides, and nothing louder
+ * at one it does not — which leaves the 4/4 prior carried by the division
+ * alone, and that is what a shuffle's four-beat bar now survives on.
  *
  * <p>Two things this still does not read. <b>A swung eighth is not a compound
  * bar</b>: a shuffle divides its pulse in three and is barred in four by its own
@@ -174,10 +184,11 @@ public final class MeterEstimator {
      *
      * <p>Not {@link #SUPPORTED}: the two-pulse bar is not chosen on the harmony
      * and cannot be held to the level a chosen length is. What it may not do is
-     * rest on a period the harmony scores below what a period nothing happens at
-     * scores on average. That average is a property of the statistic rather than
-     * of the corpus, and it is a floor rather than a test: the null scores above
-     * its own mean often enough that aperiodic harmony still passes.
+     * rest on harmony that scores, at every length two divides, below what a
+     * period nothing happens at scores on average. That average is a property
+     * of the statistic rather than of the corpus, and it is a floor rather than
+     * a test: the null scores above its own mean often enough that aperiodic
+     * harmony still passes.
      */
     private static final double THE_NULL = 1.0;
 
@@ -361,13 +372,12 @@ public final class MeterEstimator {
      *
      * <p>One winner and one fallback: a bar length that fails a gate returns the
      * assumption rather than the next candidate down, because a candidate that
-     * only wins once the winner is disqualified was never the evidence.
+     * only wins once the winner is disqualified was never the evidence. The
+     * two-pulse bar is read where that fallback is reached, so it displaces the
+     * assumption and never a bar length the harmony won outright.
      */
     public static Estimate decide(Reading reading) {
         Objects.requireNonNull(reading, "reading");
-        if (barsInTwo(reading)) {
-            return new Estimate(TimeSignature.SIX_EIGHT, IN_TWO, confidenceInTwo(reading));
-        }
         int best = ASSUMED;
         for (int candidate : CANDIDATES) {
             if (reading.at(candidate) > reading.at(best)) {
@@ -380,8 +390,10 @@ public final class MeterEstimator {
             best = 6;
         }
         if (best == ASSUMED || !clearsThePrior(reading, best)) {
-            return new Estimate(TimeSignature.FOUR_FOUR, ASSUMED,
-                    confidenceIn(reading, ASSUMED));
+            return barsInTwo(reading)
+                    ? new Estimate(TimeSignature.SIX_EIGHT, IN_TWO, confidenceInTwo(reading))
+                    : new Estimate(TimeSignature.FOUR_FOUR, ASSUMED,
+                            confidenceIn(reading, ASSUMED));
         }
         return new Estimate(meterAt(reading, best), best, confidenceIn(reading, best));
     }
@@ -393,23 +405,29 @@ public final class MeterEstimator {
      * <p>The harmony cannot decide this on its own and is not asked to: a
      * four-beat bar comping every two beats produces the same period two, and
      * the corpus puts recordings of that kind above the compound ones on the
-     * harmonic statistic. So the harmony is asked only not to contradict it —
-     * period two clears {@link #THE_NULL} and leads, and no longer bar length is
-     * supported on its own, which is what keeps a shuffle's four-beat bar and a
-     * waltz's three out of reach of the division below — and the division of the
-     * pulse decides.
+     * harmonic statistic. So the harmony is asked only not to contradict it, at
+     * the lengths where it can: the best it scores at a length two divides
+     * clears {@link #THE_NULL} and leads whatever it scores at a length two
+     * does not. The division of the pulse decides, and a waltz's three-pulse
+     * bar is what the veto still keeps out of its reach.
      *
-     * <p>Deliberately answered before the candidates are ranked. Nothing is lost
-     * by the order: a bar length the harmony supports refuses this outright.
+     * <p>Asked only where the ranking fell back to the assumption, so a bar
+     * length that beat the prior on its own keeps the reading — including a
+     * six-pulse bar, which two divides and this would otherwise have shortened
+     * to a third of its length.
      */
     private static boolean barsInTwo(Reading reading) {
-        if (reading.atTwo() < THE_NULL) {
-            return false;
-        }
+        double tiled = reading.atTwo();
+        double contrary = 0;
         for (int candidate : CANDIDATES) {
-            if (reading.at(candidate) >= SUPPORTED || reading.at(candidate) >= reading.atTwo()) {
-                return false;
+            if (candidate % IN_TWO == 0) {
+                tiled = Math.max(tiled, reading.at(candidate));
+            } else {
+                contrary = Math.max(contrary, reading.at(candidate));
             }
+        }
+        if (tiled < THE_NULL || contrary >= SUPPORTED || contrary >= tiled) {
+            return false;
         }
         return reading.inThree() >= DIVIDES_IN_THREE && reading.inThree() > reading.inTwo();
     }
@@ -430,11 +448,11 @@ public final class MeterEstimator {
      * <p>Three pulses is 3/4. Six is the tracker on a subdivision rather than on
      * the counted beat, and which meter that is comes from how the six group —
      * in two threes, which is 6/8, or in three twos, which is 3/4 — read from the
-     * same harmonic statistic, there being nothing below the pulse left to hear.
-     * Both divide six, so a bar that marks nothing inside itself scores them
-     * alike. Nothing about the bar lines turns on it: 3/4 and 6/8 hold the same
-     * three quarter notes, so at six pulses to a bar they agree on every bar
-     * line and on the pulse, and differ only in what is printed.
+     * same harmonic statistic. Both divide six, so a bar that marks nothing
+     * inside itself scores them alike. Nothing about the bar lines turns on it:
+     * 3/4 and 6/8 hold the same three quarter notes, so at six pulses to a bar
+     * they agree on every bar line and on the pulse, and differ only in what is
+     * printed.
      */
     private static TimeSignature meterAt(Reading reading, int pulsesPerBar) {
         if (pulsesPerBar == 3) {
@@ -559,7 +577,9 @@ public final class MeterEstimator {
      * strongly — a strong one is a four-beat bar's comping as readily as a bar
      * of two, while one barely over {@link #THE_NULL} means the veto was
      * satisfied by something a recording with no harmonic period would have
-     * satisfied it with too.
+     * satisfied it with too. Period two rather than the length
+     * {@link #barsInTwo} let through, because a chord loop spanning several
+     * bars corroborates the bar it tiles no more than the one it does.
      */
     private static Confidence confidenceInTwo(Reading reading) {
         double periodic = Math.clamp(reading.atTwo() / SUPPORTED, 0, 1);

@@ -49,8 +49,8 @@ import java.util.stream.Stream;
  * envelope's periodicity at the pulse a triple and an even division of it carry,
  * over the {@code pulse} column, which is how much of the envelope's energy sits
  * at the pulse for them to be shares of. {@code meter} is what the estimator
- * decides and {@code want} what {@code samples/list.txt} states; a row where
- * they differ is the reading to explain.
+ * decides, and a row where it differs from {@code want} is the reading to
+ * explain.
  *
  * <p>{@code mid} is none of those and nothing decides on it: it is what #701
  * asks whether a four-pulse bar may be promoted to 12/8 on. See
@@ -68,7 +68,9 @@ import java.util.stream.Stream;
  * <p><b>Every recording under {@code uncommitted/} is swept</b>, listed from the
  * directory rather than by name, because a claim about what real mixes do is
  * worth what the mixes behind it are worth and a hand-written list is one
- * commercial track away from being out of date. None of them states a meter.
+ * commercial track away from being out of date. A local recording whose meter
+ * a musician has confirmed is named in {@link #LOCAL_METERS} so that its row
+ * is scored like any other; the rest state none.
  */
 public final class MeterSweep {
 
@@ -77,10 +79,10 @@ public final class MeterSweep {
     /**
      * A benchmark and the meter stated for it.
      *
-     * <p>{@code want} is empty where nothing states one: the commercial
-     * recordings carry no confirmed meter, and printing a guess beside the
-     * reading would turn this sweep into a scorer against truth it does not
-     * have.
+     * <p>{@code want} is empty where nothing states one: most of the commercial
+     * recordings have never been listened to for their meter, and printing a
+     * guess beside the reading would turn this sweep into a scorer against
+     * truth it does not have.
      */
     private record Job(String corpus, String file, String want) {
 
@@ -134,26 +136,58 @@ public final class MeterSweep {
             new Job("synthetic_samples", "blues-compound-e-126.mp3", "12/8"));
 
     /**
-     * Every recording under {@code uncommitted/}, which states no meter and is
-     * present only on the machine that fetched it.
+     * The meters a musician has confirmed by ear for local-only recordings,
+     * {@code uncommitted/list.txt} carrying the confirmation per file.
+     *
+     * <p>Real audio, so these are the rows the gates above are ultimately for,
+     * and a reading that leaves one is a mismatch rather than a curiosity.
+     * {@code tools/score-samples.py} scores the same truth, which is what makes
+     * a regression here fail a gate rather than only print differently.
+     */
+    private static final List<Job> LOCAL_METERS =
+            List.of(new Job(LOCAL, "balorda-nostalgia.mp3", "6/8"));
+
+    /**
+     * Every recording under {@code uncommitted/}, present only on the machine
+     * that fetched it.
      *
      * <p>Listed rather than named, so a track added to that directory is swept
      * without anyone remembering to add it here — which is the whole value of
-     * these rows, the gates above being a claim about real mixes.
+     * these rows, the gates above being a claim about real mixes. What a row
+     * is scored against, where anything states it, comes from
+     * {@link #LOCAL_METERS}.
      */
     private static List<Job> localJobs() {
         Path corpus = Path.of(LOCAL);
-        if (!Files.isDirectory(corpus)) {
-            return List.of();
+        List<Job> jobs = new ArrayList<>();
+        if (Files.isDirectory(corpus)) {
+            try (Stream<Path> files = Files.list(corpus)) {
+                files.filter(file -> file.getFileName().toString().endsWith(".mp3"))
+                        .sorted(Comparator.comparing(Path::getFileName))
+                        .map(file -> new Job(LOCAL, file.getFileName().toString(),
+                                confirmedMeter(file.getFileName().toString())))
+                        .forEach(jobs::add);
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
+            }
         }
-        try (Stream<Path> files = Files.list(corpus)) {
-            return files.filter(file -> file.getFileName().toString().endsWith(".mp3"))
-                    .sorted(Comparator.comparing(Path::getFileName))
-                    .map(file -> new Job(LOCAL, file.getFileName().toString(), ""))
-                    .toList();
-        } catch (IOException e) {
-            throw new UncheckedIOException(e);
-        }
+        // A stated meter whose file the listing did not turn up is a row this
+        // sweep owes, so it is added here to be reported as absent. Leaving the
+        // join one-directional would answer a mistyped name and an unfetched
+        // recording with the silence of a corpus that states nothing.
+        LOCAL_METERS.stream()
+                .filter(stated -> jobs.stream().noneMatch(job -> job.file().equals(stated.file())))
+                .forEach(jobs::add);
+        return jobs;
+    }
+
+    /** The meter confirmed for a local recording, or none. */
+    private static String confirmedMeter(String file) {
+        return LOCAL_METERS.stream()
+                .filter(job -> job.file().equals(file))
+                .map(Job::want)
+                .findFirst()
+                .orElse("");
     }
 
     public static void main(String[] args) {

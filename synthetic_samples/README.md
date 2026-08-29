@@ -177,13 +177,11 @@ and as with the pairs above the pairing is what they are for.
 
 `pop-68-vamp-am-144` and `pop-68-twobar-am-144` are one 6/8 phrase at two
 harmonic rates — a chord to a bar, and the same chords each held for two bars —
-with key, tempo, seed, style, length and chords otherwise identical.
-`MeterEstimator` admits a bar of two tracked pulses only where no longer bar
-length is supported by the harmony on its own, so the first states that regime
-and the second states its cost (#712). The first phrase is five bars long
-because the phrase length is what decides which bar lengths the harmony can
-speak for at all: an even phrase supports two bars, a phrase in threes supports
-three, and one of five supports neither.
+with key, tempo, seed, style, length and chords otherwise identical. The pair
+is what #712 was decided on. The first phrase is five bars long because the
+phrase length is what decides which bar lengths the harmony can speak for at
+all: an even phrase supports two bars, a phrase in threes supports three, and
+one of five supports neither.
 
 `blues-shuffle-e-84` and `blues-compound-e-126` carry the same twelve-bar grid,
 the same seed and the same counted-beat rate, and differ in whether the middle
@@ -200,11 +198,10 @@ carry much of it, while this one accents its counted beats as a shuffle's
 pattern does and carries less of it than a shuffle can — though it sounds all
 three subdivisions exactly as they do.
 
-Two of the five are expected to read their meter wrong, and their issues say
-which and why: a four-pulse bar is not promoted to 12/8 on subdivision evidence
-(#701), and a 6/8 whose harmony supports four tracked pulses cannot reach the
-two-pulse bar (#712). Stating that by construction is what they were built for,
-so those rows are evidence rather than a regression.
+One of the five is expected to read its meter wrong, and its issue says why: a
+four-pulse bar is not promoted to 12/8 on subdivision evidence (#701). Stating
+that by construction is what it was built for, so that row is evidence rather
+than a regression.
 
 Regenerate a package with:
 

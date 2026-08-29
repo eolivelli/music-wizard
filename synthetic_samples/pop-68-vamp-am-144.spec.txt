@@ -15,9 +15,9 @@ bars:
 # length is what decides which bar lengths the harmony can speak for: an even
 # phrase supports two bars and a phrase in threes supports three, and this one
 # supports neither, so the harmony is periodic at the bar and at nothing longer.
-# That is the regime MeterEstimator admits a two-pulse bar in, and the twin
-# pop-68-twobar-am-144 is this phrase with every chord held twice as long, which
-# is the regime it refuses (#712).
+# That is the regime MeterEstimator admits a two-pulse bar in on the harmony's
+# own period, and the twin pop-68-twobar-am-144 is this phrase with every chord
+# held twice as long, which is the regime #712 opened to it.
 Am Dm Am Em Am Am Dm Am
 Em Am Am Dm Am Em Am Am
 Dm Am Em Am Am Dm Am Em

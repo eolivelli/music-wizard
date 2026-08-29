@@ -14,10 +14,10 @@ cannot tell the two apart. The best phase a row names is an oracle -- the known
 cycle picks it -- so it explains a row that moved and is never a figure the tool
 could have produced.
 
-It then reports the meter each file was barred in, against the meter its
-samples/list.txt entry states -- so a wrong meter on a 4/4 recording is a
-visible row rather than a silent drop in the columns above, which is what it
-was until the meter was read at all (#700).
+It then reports the meter each file was barred in, against the meter its own
+list.txt entry states -- so a wrong meter on a 4/4 recording is a visible row
+rather than a silent drop in the columns above, which is what it was until the
+meter was read at all (#700).
 
 It then reports the key each file was named with, against the key expected for
 it -- see KEYS below for where each of those comes from, which is not the same
@@ -159,9 +159,9 @@ KEYS = {
     "pop-am-f-c-g-144.mp3": "A minor",
 }
 
-# The meter each file is in, from samples/list.txt: an entry names its meter
-# where it is not four, so the rows below that say 4/4 are the entries that say
-# nothing and whose grids are written in bars of four.
+# The meter each file is in: an entry names its meter where it is not four, so
+# the rows below that say 4/4 are the entries that say nothing and whose grids
+# are written in bars of four.
 #
 # Two files the KEYS table covers are deliberately absent. bm-blues-slow and
 # footprints-200 have a bar length that was read rather than heard and a
@@ -173,22 +173,25 @@ KEYS = {
 # subdivision of the pulse, and they are barred in four by their own confirmed
 # cycles, so a reading that names one of them a compound meter is wrong by the
 # corpus's own truth however plausible the subdivision looks.
+#
+# Each carries where its recording lives, as the two tables below do.
 METERS = {
-    "blues-a-90bpm.mp3": "4/4",
-    "blues-shuffle-a-106bpm.mp3": "4/4",
-    "blues-e-90bpm.mp3": "4/4",
-    "slow-68-40.mp3": "6/8",
-    "g-blues-shuffle-cc.mp3": "4/4",
-    "fm7-vamp-110.mp3": "4/4",
-    "eb7-vamp-130.mp3": "4/4",
-    "bossa-cm.mp3": "4/4",
-    "cm-blues-68-95.mp3": "6/8",
-    "waltz-am-e7-160.mp3": "3/4",
-    "f-blues-swing-170.mp3": "4/4",
-    "jazz-251-c-140.mp3": "4/4",
-    "ballad-wine-roses-65.mp3": "4/4",
-    "pop-c-g-am-f-120.mp3": "4/4",
-    "pop-am-f-c-g-144.mp3": "4/4",
+    "blues-a-90bpm.mp3": ("samples", "4/4"),
+    "blues-shuffle-a-106bpm.mp3": ("samples", "4/4"),
+    "blues-e-90bpm.mp3": ("samples", "4/4"),
+    "slow-68-40.mp3": ("samples", "6/8"),
+    "g-blues-shuffle-cc.mp3": ("samples", "4/4"),
+    "fm7-vamp-110.mp3": ("samples", "4/4"),
+    "eb7-vamp-130.mp3": ("samples", "4/4"),
+    "bossa-cm.mp3": ("samples", "4/4"),
+    "cm-blues-68-95.mp3": ("samples", "6/8"),
+    "waltz-am-e7-160.mp3": ("samples", "3/4"),
+    "f-blues-swing-170.mp3": ("samples", "4/4"),
+    "jazz-251-c-140.mp3": ("samples", "4/4"),
+    "ballad-wine-roses-65.mp3": ("samples", "4/4"),
+    "pop-c-g-am-f-120.mp3": ("samples", "4/4"),
+    "pop-am-f-c-g-144.mp3": ("samples", "4/4"),
+    "balorda-nostalgia.mp3": ("uncommitted", "6/8"),
 }
 
 # Recordings a musician has confirmed hold no minor chord anywhere, with where
@@ -746,16 +749,16 @@ def main() -> None:
     for name in missing:
         print(missing_line(f"phase {name}"))
 
-    print("meters, against the meter each samples/list.txt entry states:")
+    print("meters, against the meter each list.txt entry states:")
     missing = []
-    for name, want in METERS.items():
-        run = run_for(name)
+    for name, (where, want) in METERS.items():
+        run = run_for(name, where)
         if run is None:
-            missing.append(name)
+            missing.append((name, where))
         else:
-            score_meter(REPO / "samples" / name, run[0], run[1], want)
-    for name in missing:
-        print(missing_line(f"meter {name}"))
+            score_meter(REPO / where / name, run[0], run[1], want)
+    for name, where in missing:
+        print(missing_line(f"meter {name}", where))
 
     print("keys, against the expected key for each file:")
     missing = []

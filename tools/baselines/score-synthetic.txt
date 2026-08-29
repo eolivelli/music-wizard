@@ -8,7 +8,7 @@ Synthetic corpus, bar-by-bar against each package's own spec
   melody-level2pad-g-84.mp3: bars=69/32  tempo 181.3/84 (x2.16)  meter OK  root 5.0/32 (15.6%)  root+quality 3.0/32 (9.4%)  split 0  key OK
   melody-level3-am-108.mp3: melody only; chords not scored
   melody-level4-f-126.mp3: melody only; chords not scored
-  pop-68-twobar-am-144.mp3: bars=31/64  tempo 96.0/144 (x0.67)  meter 4/4 WRONG  root 13.0/64 (20.3%)  root+quality 0.0/64 (0.0%)  split 0  key OK
+  pop-68-twobar-am-144.mp3: bars=63/64  tempo 144.1/144 (x1.00)  meter OK  root 62.0/64 (96.9%)  root+quality 24.0/64 (37.5%)  split 0  key OK
   pop-68-vamp-am-144.mp3: bars=63/64  tempo 144.1/144 (x1.00)  meter OK  root 63.0/64 (98.4%)  root+quality 25.0/64 (39.1%)  split 0  key OK
   pop-add9-g-96.mp3: bars=31/32  tempo 96.0/96 (x1.00)  meter OK  root 31.0/32 (96.9%)  root+quality 17.0/32 (53.1%)  split 0  key OK
   pop-add9-triads-g-96.mp3: bars=31/32  tempo 96.0/96 (x1.00)  meter OK  root 31.0/32 (96.9%)  root+quality 31.0/32 (96.9%)  split 0  key OK
