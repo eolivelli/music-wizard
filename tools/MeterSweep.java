@@ -73,8 +73,8 @@ public final class MeterSweep {
     private static final List<Job> JOBS = List.of(
             // The meters samples/list.txt states.
             new Job("waltz-am-e7-160.mp3", "3/4"),
-            // "In three" without a denominator: three tracked pulses to a bar
-            // is what the entry supports, and 3/4 against 6/4 is not.
+            // Its entry states no denominator, and "in three" does not choose
+            // between 3/4 and 6/4.
             new Job("footprints-200.mp3", ""),
             new Job("cm-blues-68-95.mp3", "6/8"),
             new Job("slow-68-40.mp3", "6/8"),

@@ -163,12 +163,6 @@ KEYS = {
 # where it is not four, so the rows below that say 4/4 are the entries that say
 # nothing and whose grids are written in bars of four.
 #
-# One row rests on the uploader rather than on an ear, and list.txt's header
-# says what that is worth: cm-blues-68-95's entry calls it a 6/8 groove in the
-# same breath as it attributes the tempo. It is the corpus's compound recording
-# whose pulse is its own counted beat, so the row is worth having; read its
-# WRONG as a question about the recording as much as about the reading.
-#
 # Two files the KEYS table covers are deliberately absent. bm-blues-slow and
 # footprints-200 have a bar length that was read rather than heard and a
 # signature that was not: 3/4 and 6/8 bar the same three quarter notes, and
