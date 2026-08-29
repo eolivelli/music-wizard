@@ -372,13 +372,12 @@ public final class MeterEstimator {
      *
      * <p>One winner and one fallback: a bar length that fails a gate returns the
      * assumption rather than the next candidate down, because a candidate that
-     * only wins once the winner is disqualified was never the evidence.
+     * only wins once the winner is disqualified was never the evidence. The
+     * two-pulse bar is read where that fallback is reached, so it displaces the
+     * assumption and never a bar length the harmony won outright.
      */
     public static Estimate decide(Reading reading) {
         Objects.requireNonNull(reading, "reading");
-        if (barsInTwo(reading)) {
-            return new Estimate(TimeSignature.SIX_EIGHT, IN_TWO, confidenceInTwo(reading));
-        }
         int best = ASSUMED;
         for (int candidate : CANDIDATES) {
             if (reading.at(candidate) > reading.at(best)) {
@@ -391,8 +390,10 @@ public final class MeterEstimator {
             best = 6;
         }
         if (best == ASSUMED || !clearsThePrior(reading, best)) {
-            return new Estimate(TimeSignature.FOUR_FOUR, ASSUMED,
-                    confidenceIn(reading, ASSUMED));
+            return barsInTwo(reading)
+                    ? new Estimate(TimeSignature.SIX_EIGHT, IN_TWO, confidenceInTwo(reading))
+                    : new Estimate(TimeSignature.FOUR_FOUR, ASSUMED,
+                            confidenceIn(reading, ASSUMED));
         }
         return new Estimate(meterAt(reading, best), best, confidenceIn(reading, best));
     }
@@ -410,9 +411,10 @@ public final class MeterEstimator {
      * does not. The division of the pulse decides, and a waltz's three-pulse
      * bar is what the veto still keeps out of its reach.
      *
-     * <p>Deliberately answered before the candidates are ranked. Nothing is lost
-     * by the order: a supported three refuses this outright, and a bar length
-     * two divides was never a rival to it.
+     * <p>Asked only where the ranking fell back to the assumption, so a bar
+     * length that beat the prior on its own keeps the reading — including a
+     * six-pulse bar, which two divides and this would otherwise have shortened
+     * to a third of its length.
      */
     private static boolean barsInTwo(Reading reading) {
         double tiled = reading.atTwo();
@@ -577,8 +579,7 @@ public final class MeterEstimator {
      * satisfied by something a recording with no harmonic period would have
      * satisfied it with too. Period two rather than the length
      * {@link #barsInTwo} let through, because a chord loop spanning several
-     * bars corroborates the bar it tiles no more than the one it does, so a
-     * two-pulse bar admitted over a longer length reports near the floor.
+     * bars corroborates the bar it tiles no more than the one it does.
      */
     private static Confidence confidenceInTwo(Reading reading) {
         double periodic = Math.clamp(reading.atTwo() / SUPPORTED, 0, 1);

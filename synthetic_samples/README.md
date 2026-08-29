@@ -178,13 +178,10 @@ and as with the pairs above the pairing is what they are for.
 `pop-68-vamp-am-144` and `pop-68-twobar-am-144` are one 6/8 phrase at two
 harmonic rates — a chord to a bar, and the same chords each held for two bars —
 with key, tempo, seed, style, length and chords otherwise identical. The pair
-is what #712 was decided on: `MeterEstimator` refused the two-pulse bar
-wherever a longer one was supported by the harmony, so the second was barred in
-four, and it now vetoes only the bar lengths two does not divide. The first
-phrase is five bars long
-because the phrase length is what decides which bar lengths the harmony can
-speak for at all: an even phrase supports two bars, a phrase in threes supports
-three, and one of five supports neither.
+is what #712 was decided on. The first phrase is five bars long because the
+phrase length is what decides which bar lengths the harmony can speak for at
+all: an even phrase supports two bars, a phrase in threes supports three, and
+one of five supports neither.
 
 `blues-shuffle-e-84` and `blues-compound-e-126` carry the same twelve-bar grid,
 the same seed and the same counted-beat rate, and differ in whether the middle

@@ -275,12 +275,35 @@ class MeterEstimationTest {
             // Every shuffle in the corpus divides its pulse in three and is
             // barred in four by its own cycle (#701). Since #712 the harmony no
             // longer refuses on their supported four, so the whole guard is the
-            // floor: the strongest triple division any of them reaches is below
-            // it, and tools/MeterSweep.java prints the room either side.
-            assertThat(MeterEstimator.decide(reading(400, 1, 40, 1, 0.56, 0.1)).pulsesPerBar())
+            // floor; tools/MeterSweep.java prints the room either side of it.
+            assertThat(MeterEstimator.decide(reading(400, 1, 40, 1, 0.64, 0.1)).pulsesPerBar())
                     .isEqualTo(4);
             assertThat(MeterEstimator.decide(reading(400, 1, 40, 1, 0.65, 0.1)).pulsesPerBar())
                     .isEqualTo(2);
+        }
+
+        @Test
+        @DisplayName("a three the harmony nearly supports still refuses, if it leads")
+        void anUnsupportedThreeStillRefusesWhenItLeads() {
+            // The veto is two things, and this is the half that is not the
+            // support level: a three under it is still a rival where it outscores
+            // every length two divides, and stops being one when it does not.
+            assertThat(MeterEstimator.decide(reading(3, 4.9, 1, 1, 0.9, 0.1)).pulsesPerBar())
+                    .isEqualTo(4);
+            assertThat(MeterEstimator.decide(reading(5, 4.9, 1, 1, 0.9, 0.1)).pulsesPerBar())
+                    .isEqualTo(2);
+        }
+
+        @Test
+        @DisplayName("a six-pulse bar that beat the prior is not shortened to two")
+        void aWinningSixKeepsItsBar() {
+            // Two divides six, so the veto sees no rival -- but the six won the
+            // ranking outright, and a two-pulse bar taken over it would bar the
+            // music at a third of its length.
+            MeterEstimator.Estimate estimate =
+                    MeterEstimator.decide(reading(1, 1, 1, 60, 0.9, 0.1));
+
+            assertThat(estimate.pulsesPerBar()).isEqualTo(6);
         }
 
         @Test
