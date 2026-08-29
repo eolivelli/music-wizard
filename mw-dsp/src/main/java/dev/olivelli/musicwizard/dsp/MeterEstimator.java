@@ -46,9 +46,10 @@ import java.util.Objects;
  * that repeats every six beats carries the same coefficient at three and at two,
  * six being a multiple of both, so where six is comparable it is six that is
  * believed: the shorter reading is implied by the longer and never the other way
- * round. The same relation says which lengths are rivals at all, since a reading
- * the chosen one implies cannot also compete with it. Four neither divides three
- * or six nor is divided by them, so nothing of the kind relates it to either.
+ * round. The same relation limits what a shorter reading may cost a longer one:
+ * being implied by it, the most it can say against it is that the longer is no
+ * stronger than its own shadow. Four neither divides three or six nor is divided
+ * by them, so nothing of the kind relates it to either.
  *
  * <p><b>A bar of two tracked pulses is the one length the harmony may not
  * choose on its own</b> (#707). Harmony moving every two beats of a four-beat
@@ -449,21 +450,28 @@ public final class MeterEstimator {
      * stronger rival therefore reports near the floor, which is the honest
      * reading of an assumption that survived contrary evidence.
      *
-     * <p>A period the chosen length is a multiple of is not a rival to it
-     * (#709): the statistic scores a divisor of a real period as strongly as
-     * the period itself, so the shorter reading there is the chosen one's own
-     * shadow rather than a competing account of the same beats.
+     * <p>A period the chosen length is a multiple of is held to parity instead
+     * of to that margin (#709). The statistic scores a divisor of a real period
+     * as strongly as the period itself, so the shorter reading is the chosen
+     * one's own shadow rather than a competing account of the same beats, and
+     * asking a bar length to beat its shadow by the margin asks the impossible.
+     * What it may still be asked is not to fall below it: a length its own
+     * divisor outscores is carried by what fills it rather than by its own
+     * line, which is what {@link #DIVIDED} admits and this is what it costs.
      */
     private static Confidence confidenceIn(Reading reading, int chosen) {
         double rival = 0;
+        double shadow = 0;
         for (int candidate : CANDIDATES) {
             if (chosen % candidate != 0) {
                 rival = Math.max(rival, reading.at(candidate));
+            } else if (candidate != chosen) {
+                shadow = Math.max(shadow, reading.at(candidate));
             }
         }
         double observed = Math.clamp(reading.at(chosen) / SUPPORTED, 0, 1);
-        double separation = Math.clamp(
-                reading.at(chosen) / (MARGIN * Math.max(rival, SUPPORTED)), 0, 1);
+        double separation = Math.clamp(reading.at(chosen)
+                / Math.max(MARGIN * Math.max(rival, SUPPORTED), shadow), 0, 1);
         return Confidence.clamped(
                 ASSUMED_CONFIDENCE + (CEILING - ASSUMED_CONFIDENCE) * observed * separation);
     }
