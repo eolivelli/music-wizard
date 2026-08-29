@@ -46,10 +46,8 @@ import java.util.Objects;
  * that repeats every six beats carries the same coefficient at three and at two,
  * six being a multiple of both, so where six is comparable it is six that is
  * believed: the shorter reading is implied by the longer and never the other way
- * round. The same relation limits what a shorter reading may cost a longer one:
- * being implied by it, the most it can say against it is that the longer is no
- * stronger than its own shadow. Four neither divides three or six nor is divided
- * by them, so nothing of the kind relates it to either.
+ * round. Four neither divides three or six nor is divided by them, so nothing of
+ * the kind relates it to either.
  *
  * <p><b>A bar of two tracked pulses is the one length the harmony may not
  * choose on its own</b> (#707). Harmony moving every two beats of a four-beat
