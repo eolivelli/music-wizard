@@ -224,7 +224,7 @@ def short_changes(workspace: Path) -> tuple[float, float] | None:
     the pulse the grid records or, where it records none, `beatUnitQuarters` --
     so one counted beat comes to exactly the mean of the intervals within a
     fifth of the median, whatever the meter. A grid that records its own pulse
-    is checked for below rather than converted.
+    is not measured rather than converted.
 
     **`STEADY_BAND` below is a copy of `BeatGrid`'s and nothing checks it.** It
     is reproduced because the only precise statement of the chart's axis lives in
@@ -299,12 +299,15 @@ def short_changes(workspace: Path) -> tuple[float, float] | None:
         sys.exit(f"{workspace.name}: a supplied --tempo makes the chart's beat something "
                  f"other than the tracked rate; this measure does not model that.")
     # A grid that measured its own pulse converts through that instead of
-    # through the meter, so `counted` above would be the wrong beat. Only a
-    # supplied tempo produces one today, which the previous check already
-    # refuses -- this one does not depend on that staying true.
+    # through the meter, so `counted` above would be the wrong beat. Since #700
+    # a meter read off the recording produces one wherever the tracker landed on
+    # a compound bar's subdivision, so this is an ordinary state of two
+    # benchmarks rather than an argument the run should stop on -- and it is
+    # this column alone that cannot be measured, the bar columns above being
+    # read off the engraved chart. Converting instead would put a second
+    # definition of `TimeSignature.beatUnitQuarters` in this file.
     if doc.get("beatGrid", {}).get("pulseQuarters") is not None:
-        sys.exit(f"{workspace.name}: the beat grid records its own pulse, so a tracked "
-                 f"pulse is not a counted beat; this measure does not model that.")
+        return None
     if provenances <= {"UNKNOWN"}:
         sys.exit(f"{workspace.name}: the tempo map records no provenance, so "
                  f"estimatedTempo() may prefer a stated constant over the beat grid; "

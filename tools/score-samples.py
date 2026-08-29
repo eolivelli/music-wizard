@@ -14,6 +14,11 @@ cannot tell the two apart. The best phase a row names is an oracle -- the known
 cycle picks it -- so it explains a row that moved and is never a figure the tool
 could have produced.
 
+It then reports the meter each file was barred in, against the meter its
+samples/list.txt entry states -- so a wrong meter on a 4/4 recording is a
+visible row rather than a silent drop in the columns above, which is what it
+was until the meter was read at all (#700).
+
 It then reports the key each file was named with, against the key expected for
 it -- see KEYS below for where each of those comes from, which is not the same
 for every row. That table covers every file the chord table does, and the ones
@@ -37,6 +42,7 @@ Usage:  python3 tools/score-samples.py [--jar mw-cli/target/mw.jar]
 
 import argparse
 import json
+import re
 import subprocess
 import sys
 import tempfile
@@ -151,6 +157,40 @@ KEYS = {
     "footprints-200.mp3": "C minor",
     "pop-c-g-am-f-120.mp3": "C major",
     "pop-am-f-c-g-144.mp3": "A minor",
+}
+
+# The meter each file is in, from samples/list.txt: an entry names its meter
+# only where it is not four, so the rows below that say 4/4 are the entries
+# that say nothing and whose grids are written in bars of four.
+#
+# One row is weaker than the rest and it is worth knowing which. bm-blues-slow
+# was read rather than heard -- its list.txt entry records the argument, which
+# is that its confirmed twelve-bar cycle aligns when the recording is barred
+# every six tracked pulses and does not when it is barred in four -- and its
+# entry is where a row of this kind says so.
+#
+# The shuffles are the guard this column exists for. Their swing is a triple
+# subdivision of the pulse, and they are barred in four by their own confirmed
+# cycles, so a reading that names one of them a compound meter is wrong by the
+# corpus's own truth however plausible the subdivision looks.
+METERS = {
+    "blues-a-90bpm.mp3": "4/4",
+    "blues-shuffle-a-106bpm.mp3": "4/4",
+    "blues-e-90bpm.mp3": "4/4",
+    "slow-68-40.mp3": "6/8",
+    "g-blues-shuffle-cc.mp3": "4/4",
+    "fm7-vamp-110.mp3": "4/4",
+    "eb7-vamp-130.mp3": "4/4",
+    "bossa-cm.mp3": "4/4",
+    "bm-blues-slow.mp3": "6/8",
+    "cm-blues-68-95.mp3": "6/8",
+    "waltz-am-e7-160.mp3": "3/4",
+    "f-blues-swing-170.mp3": "4/4",
+    "jazz-251-c-140.mp3": "4/4",
+    "ballad-wine-roses-65.mp3": "4/4",
+    "footprints-200.mp3": "3/4",
+    "pop-c-g-am-f-120.mp3": "4/4",
+    "pop-am-f-c-g-144.mp3": "4/4",
 }
 
 # Recordings a musician has confirmed hold no minor chord anywhere, with where
@@ -294,10 +334,6 @@ def chord_of(span) -> tuple[int, str] | None:
     pc = (LETTER_SEMITONE.get(root.get("letter", "C")[0], 0)
           + ACCIDENTAL.get(root.get("accidental", "NONE"), 0)) % 12
     return pc, quality
-
-
-def analyze(jar: Path, mp3: Path) -> dict:
-    return analyze_with_output(jar, mp3)[0]
 
 
 def analyze_with_output(jar: Path, mp3: Path) -> tuple[dict, str]:
@@ -497,6 +533,60 @@ def score_phase(mp3: Path, doc: dict, truth: str) -> None:
           f"  best beat {best} at {scores[best]:.1f}%")
 
 
+#: `analyze`'s meter line, which is the only place the reading's confidence is
+#: written down: the meter itself reaches score.json and its confidence does
+#: not, MeterChange carrying no provenance (#703).
+METER_LINE = re.compile(r"^meter \S+ \((\d+)% confidence\), [\d.]+ beats/min$")
+
+
+def printed_meter_confidence(printed: str) -> int | None:
+    """What the run said the meter was worth, or None where it read none.
+
+    None is the honest answer for a run given `--time-signature`: nothing was
+    read, so there is nothing to be confident about. No row here supplies one.
+    """
+    for line in printed.splitlines():
+        found = METER_LINE.match(line.strip())
+        if found:
+            return int(found.group(1))
+    return None
+
+
+def barred_meter(doc: dict) -> str | None:
+    """The meter a run barred a recording in, spelled as list.txt spells one.
+
+    Shared with the synthetic harness, which asks the same question of a spec
+    header, so that the two cannot come to read one meter two ways.
+    """
+    changes = doc.get("tempoMap", {}).get("meterChanges", [])
+    if not changes:
+        return None
+    meter = changes[0]["timeSignature"]
+    return f"{meter['numerator']}/{meter['denominator']}"
+
+
+def score_meter(mp3: Path, doc: dict, printed: str, want: str) -> None:
+    """The meter the run barred the recording in, against the stated one.
+
+    The tracked pulses in a bar are printed beside it because they are a second
+    fact the meter does not carry: a tracker on the eighths of a compound bar
+    fills it with six of them where the meter counts two, and a row whose meter
+    is right and whose pulse count is wrong bars the music at a third of the
+    right length.
+    """
+    written = barred_meter(doc)
+    if written is None:
+        print(f"  meter {mp3.name}: none recorded  want {want}  WRONG")
+        return
+    positions = [b.get("positionInBar") for b in doc.get("beatGrid", {}).get("beats", [])]
+    pulses = max(positions) + 1 if positions and None not in positions else 0
+    confidence = printed_meter_confidence(printed)
+    print(f"  meter {mp3.name}: {written} at"
+          f" {'none' if confidence is None else str(confidence) + '%'}"
+          f"  pulses/bar {pulses}"
+          f"  want {want}  {'OK' if written == want else 'WRONG'}")
+
+
 def score_key(mp3: Path, doc: dict, want: str) -> None:
     """The key the run named, against the one expected for the file."""
     keys = doc.get("keys", [])
@@ -620,11 +710,20 @@ def main() -> None:
     # nothing until it is over looks hung both here and in the CI job log.
     analysed = {}
 
-    def doc_for(name: str, where: str = "samples") -> dict | None:
+    def run_for(name: str, where: str = "samples") -> tuple[dict, str] | None:
+        """One analysis and everything it said, or None where the file is absent.
+
+        Both halves are kept because the two are not interchangeable: the meter
+        reaches score.json and the confidence in it is only ever printed.
+        """
         mp3 = REPO / where / name
         if mp3 not in analysed:
-            analysed[mp3] = analyze(jar, mp3) if mp3.exists() else None
+            analysed[mp3] = analyze_with_output(jar, mp3) if mp3.exists() else None
         return analysed[mp3]
+
+    def doc_for(name: str, where: str = "samples") -> dict | None:
+        run = run_for(name, where)
+        return run[0] if run else None
 
     print("samples with known ground truth:")
     missing = []
@@ -648,6 +747,17 @@ def main() -> None:
             score_phase(REPO / "samples" / name, doc, truth)
     for name in missing:
         print(missing_line(f"phase {name}"))
+
+    print("meters, against the meter each samples/list.txt entry states:")
+    missing = []
+    for name, want in METERS.items():
+        run = run_for(name)
+        if run is None:
+            missing.append(name)
+        else:
+            score_meter(REPO / "samples" / name, run[0], run[1], want)
+    for name in missing:
+        print(missing_line(f"meter {name}"))
 
     print("keys, against the expected key for each file:")
     missing = []

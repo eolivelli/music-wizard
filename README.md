@@ -23,9 +23,10 @@ drive, and read by the pipeline unaided.
 
 ## What it does today
 
-- **Beats and tempo** tracked from the audio — the meter is assumed 4/4
-  unless `--time-signature` says otherwise — with the corrections that
-  matter most exposed as flags (`--tempo`, `--first-downbeat`), because beat
+- **Beats, tempo and meter** tracked from the audio — 4/4, 3/4 and 6/8, with
+  4/4 the prior a reading has to clear a margin to leave — with the
+  corrections that matter most exposed as flags (`--tempo`,
+  `--first-downbeat`, `--time-signature`, which wins outright), because beat
   tracking is the least reliable stage and everything downstream hangs on
   it.
 - **Key**, reported with separate confidences for the signature and for which

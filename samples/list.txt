@@ -12,6 +12,11 @@
 # syllable counts. Its words are licensed separately from its recording and
 # both must be clear — docs/phone-to-corpus.md carries the rule.
 #
+# Every grid is written in bars of the recording's own meter, and an entry
+# names that meter only where it is not four. tools/score-samples.py scores the
+# meter MW reads against what these entries state, so a meter added here is
+# ground truth in the same sense the chords are.
+#
 # Chords are lead-sheet shorthand, spelled as the tool spells them: 7 dominant,
 # m7 minor seventh, maj7 major seventh, 6 major sixth, m6 minor sixth,
 # m7b5 half-diminished, dim diminished, a plain letter a major triad. One
@@ -41,9 +46,15 @@ C7 C7 G7 G7
 D7 C7 G7 D7
 
 bm-blues-slow.mp3   (CC-BY, Guitar Improvisation, https://www.youtube.com/watch?v=hLeDkqjxWtw)
-Slow B minor blues. A minor key that stays minor, which is what a corpus of
-dominant sevenths cannot ask: here a major third on the tonic is an error
-rather than the answer.
+Slow B minor blues, in 6/8. A minor key that stays minor, which is what a
+corpus of dominant sevenths cannot ask: here a major third on the tonic is an
+error rather than the answer.
+
+The meter here was read rather than heard, which no other entry above says of
+itself. The argument is the cycle below: barred every six tracked pulses it
+aligns, and barred in four it does not, by the margin
+tools/baselines/score-samples.txt carries. The tracker lands on the eighth, so
+six of its pulses fill a bar the meter counts in two.
 
 Bm Bm Bm Bm
 Em Em Bm Bm

@@ -540,9 +540,10 @@ public final class BeatTracker {
      * downbeat. Prefer {@link #toBeatGrid(Result, DownbeatEstimator.Estimate)}
      * with a chroma-based estimate.
      *
-     * <p>The meter is not inferred here or anywhere else — 4/4 is assumed, since
-     * it covers the large majority of the material this tool targets and
-     * guessing wrong is far more damaging than not guessing.
+     * <p>The meter is not inferred here: this overload bars whatever it is
+     * told to. {@link MeterEstimator} reads one, and keeps 4/4 as the prior
+     * for the reason this class had for never guessing — a wrong meter moves
+     * every bar line.
      */
     public static BeatGrid toBeatGrid(Result result, OnsetEnvelope envelope, int beatsPerBar) {
         Objects.requireNonNull(result, "result");

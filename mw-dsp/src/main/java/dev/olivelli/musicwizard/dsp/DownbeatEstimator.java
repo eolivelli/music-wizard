@@ -44,7 +44,8 @@ import java.util.Objects;
  * harmony a beat early and this agrees with the anticipation, unanimously —
  * nothing in the chroma separates the two readings (#48,
  * {@link #HARMONIC_PHASE_CEILING}); the bass evidence that would is #42. The
- * meter is assumed, never inferred; see {@link BeatTracker#toBeatGrid}.
+ * bar length is an input here and is read by {@link MeterEstimator}, off the
+ * same novelty this scores phases with.
  */
 public final class DownbeatEstimator {
 
@@ -193,7 +194,8 @@ public final class DownbeatEstimator {
      *                    same onset fallback as too few beats rather than being
      *                    rejected
      * @param envelope    the onset envelope the beats were tracked from
-     * @param beatsPerBar the assumed bar length; not inferred
+     * @param beatsPerBar the bar length to phase against; read by
+     *                    {@link MeterEstimator}, not by this
      */
     public static Estimate estimate(List<Double> beatTimes, Chroma chroma,
                                     OnsetEnvelope envelope, int beatsPerBar) {
