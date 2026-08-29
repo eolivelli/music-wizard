@@ -63,11 +63,17 @@ import java.util.Objects;
  * bar</b>: a shuffle divides its pulse in three and is barred in four by its own
  * ground-truth cycle, so the division may admit a two-pulse bar and may not
  * promote a four-pulse one, and 12/8 and 3/8 stay with {@code --time-signature}
- * (#701). And <b>the accent is not asked
- * about the bar length</b>: its strongest periodicity on ordinary drum material
- * is the backbeat (#70), which argues for a two-beat bar on most of the corpus
- * and prefers four to three on material whose harmony names three
- * unambiguously.
+ * (#701). Not for want of a sharper statistic: the position a compound sounds
+ * and a shuffle leaves out is {@code tools/MeterSweep.java}'s {@code mid}
+ * column, and a shuffle the corpus confirms in four carries more of it than
+ * either the 12/8 that is compound by construction or a compound recording
+ * whose tracked pulse is its counted beat. What it measures is the middle of a
+ * pulse against the beat itself, and the corpus holds that independent of the
+ * meter. And
+ * <b>the accent is not asked about the bar length</b>: its strongest periodicity
+ * on ordinary drum material is the backbeat (#70), which argues for a two-beat
+ * bar on most of the corpus and prefers four to three on material whose harmony
+ * names three unambiguously.
  *
  * <p>{@code tools/MeterSweep.java} prints the readings behind every constant
  * here, for the committed benchmarks and the local-only ones alike; read it

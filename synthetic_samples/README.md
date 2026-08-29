@@ -190,7 +190,15 @@ the same seed and the same counted-beat rate, and differ in whether the middle
 eighth of each beat sounds — the one thing a musician tells a shuffle from a
 compound bar by, and the one thing #701 says nothing in the corpus isolated.
 Their tempo headers differ by the dotted quarter, which is what puts every
-event of the shuffle at the same instant in both.
+event of the shuffle at the same instant in both. Isolated, it still does not
+separate the two: `tools/MeterSweep.java`'s `mid` column is that position, and a
+shuffle the corpus confirms in four carries more of it than this compound does,
+and more than a confirmed compound recording does. What that column reads is the
+middle of a pulse against the beat itself, which the corpus holds independent of
+the meter: the two 6/8 packages above strike their eighths at one weight and
+carry much of it, while this one accents its counted beats as a shuffle's
+pattern does and carries less of it than a shuffle can — though it sounds all
+three subdivisions exactly as they do.
 
 Two of the five are expected to read their meter wrong, and their issues say
 which and why: a four-pulse bar is not promoted to 12/8 on subdivision evidence

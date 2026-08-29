@@ -9,8 +9,7 @@ melody: none
 bars:
 # Counted in two. The tempo header is quarter beats, as everything downstream of
 # the beat grid is, so the counted dotted quarter runs at two thirds of it. All
-# six eighths are struck, by the broken chord and by the hat, which is the
-# evidence a compound bar carries and a shuffle does not (#701).
+# six eighths are struck, by the broken chord and by the hat, evenly.
 #
 # i-iv-i-v-i, a chord to a bar, in a phrase of five. Five because the phrase
 # length is what decides which bar lengths the harmony can speak for: an even
