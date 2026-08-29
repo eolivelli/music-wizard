@@ -32,7 +32,7 @@ meters, against the meter each samples/list.txt entry states:
   meter blues-a-90bpm.mp3: 4/4 at 90%  pulses/bar 4  want 4/4  OK
   meter blues-shuffle-a-106bpm.mp3: 4/4 at 84%  pulses/bar 4  want 4/4  OK
   meter blues-e-90bpm.mp3: 4/4 at 90%  pulses/bar 4  want 4/4  OK
-  meter slow-68-40.mp3: 6/8 at 76%  pulses/bar 6  want 6/8  OK
+  meter slow-68-40.mp3: 6/8 at 90%  pulses/bar 6  want 6/8  OK
   meter g-blues-shuffle-cc.mp3: 4/4 at 90%  pulses/bar 4  want 4/4  OK
   meter fm7-vamp-110.mp3: 4/4 at 63%  pulses/bar 4  want 4/4  OK
   meter eb7-vamp-130.mp3: 4/4 at 90%  pulses/bar 4  want 4/4  OK

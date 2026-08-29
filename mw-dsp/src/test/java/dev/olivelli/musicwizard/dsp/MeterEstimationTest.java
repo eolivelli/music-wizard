@@ -262,6 +262,47 @@ class MeterEstimationTest {
         }
 
         @Test
+        @DisplayName("period three does not count against the six-pulse bar it divides")
+        void threeIsNotARivalToSix() {
+            // Novelty that repeats every six beats scores period three exactly
+            // as strongly, three dividing six -- one reading seen twice, not two
+            // readings competing -- so a six-pulse bar must report what it would
+            // report beside a three that says nothing. Both sit below the
+            // ceiling, so the equality is between numbers still carrying
+            // information.
+            double shadowed = MeterEstimator.decide(reading(0, 10, 1, 10)).confidence().value();
+            double alone = MeterEstimator.decide(reading(0, 0, 1, 10)).confidence().value();
+
+            assertThat(shadowed).isEqualTo(alone).isLessThan(0.9);
+        }
+
+        @Test
+        @DisplayName("a six-pulse bar its own three outscores reports less than one it does not")
+        void aSixWeakerThanItsShadow() {
+            // The shadow is held to parity rather than to the margin, which is
+            // not the same as being ignored: a six the three outscores is a bar
+            // carried by what fills it rather than by its own line, and DIVIDED
+            // admits it. A margin no six-pulse bar could clear would instead
+            // make every admitted one report the ceiling.
+            double outscored = MeterEstimator.decide(reading(0, 40, 1, 21)).confidence().value();
+            double matched = MeterEstimator.decide(reading(0, 21, 1, 21)).confidence().value();
+
+            assertThat(outscored).isLessThan(matched);
+        }
+
+        @Test
+        @DisplayName("period six does count against the three-pulse bar it does not divide")
+        void sixIsStillARivalToThree() {
+            // The relation is one-way: nothing about a three-pulse bar produces
+            // a reading at six, so a six that nearly took the bar is a rival and
+            // has to cost the three.
+            double contested = MeterEstimator.decide(reading(1, 40, 5, 19)).confidence().value();
+            double uncontested = MeterEstimator.decide(reading(1, 40, 5, 1)).confidence().value();
+
+            assertThat(contested).isLessThan(uncontested);
+        }
+
+        @Test
         @DisplayName("the division alone never leaves the assumption")
         void theDivisionAloneDoesNotDecide() {
             // The harmony is a veto rather than the evidence, but a veto that
