@@ -1,0 +1,29 @@
+title: Pop waltz in D, three quarter beats to a bar
+genre: pop
+style: pop-ballad
+tempo: 108
+key: D major
+meter: 3/4
+seed: 23
+melody: none
+bars:
+# The first synthetic package that is not in four (#702). Bass on one, chord on
+# two and three, and the hat marks the counted beat and nothing between two
+# beats, so the tracked pulse is the quarter and the bar is three of them.
+#
+# One chord to a bar throughout, so the harmony changes at every bar line and
+# nowhere else: a three-pulse bar is read from that period, and a grid whose
+# chords lasted two bars would state six.
+# I-vi-IV-V, half cadence at each pass
+D Bm G A
+D Bm G A
+D Bm G A
+D Bm G A
+D Bm G A
+D Bm G A
+# IV-V-I, an authentic cadence mid-form, then back onto the loop
+G A D Bm
+D Bm G A
+D Bm G A
+# Close: IV-V-I onto the tonic, which the last bar holds
+G A D D

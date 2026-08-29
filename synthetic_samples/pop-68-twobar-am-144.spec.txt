@@ -1,0 +1,22 @@
+title: 6/8 pop vamp in A minor, a chord to two bars
+genre: pop
+style: pop-ballad
+tempo: 144
+key: A minor
+meter: 6/8
+seed: 31
+melody: none
+bars:
+# pop-68-vamp-am-144's phrase with every chord held for two bars and nothing
+# else changed: same key, tempo, seed, style, length and chords. The harmony now
+# moves every four tracked pulses, so four is supported on its own and the
+# two-pulse bar is refused however the pulse divides -- which is the cost #712
+# records, stated here by construction.
+Am Am Dm Dm Am Am Em Em
+Am Am Am Am Dm Dm Am Am
+Em Em Am Am Am Am Dm Dm
+Am Am Em Em Am Am Am Am
+Dm Dm Am Am Em Em Am Am
+Am Am Dm Dm Am Am Em Em
+Am Am Am Am Dm Dm Am Am
+Em Em Am Am Am Am Dm Dm

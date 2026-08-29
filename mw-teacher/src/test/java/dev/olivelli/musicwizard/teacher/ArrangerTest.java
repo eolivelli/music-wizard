@@ -155,23 +155,132 @@ class ArrangerTest {
                 .hasMessageContaining("drop2");
     }
 
+    private static final String METER_GRID = """
+            title: t
+            style: %s
+            tempo: 120
+            key: C major
+            meter: %s
+            seed: 1
+            %s
+            bars:
+            C F G C
+            C F G C
+            """;
+
     @Test
-    void compoundMeterIsRefusedNotMangled() {
-        assertThatThrownBy(() -> Arranger.arrange(SpecParser.parse("""
-                title: t
-                style: pop-rock
-                tempo: 120
-                key: C major
-                meter: 6/8
-                seed: 1
-                bars:
-                C F G C
-                """)))
+    void aMeterAStyleHasNoPatternsForIsRefusedNotMangled() {
+        assertThatThrownBy(() -> Arranger.arrange(SpecParser.parse(
+                METER_GRID.formatted("pop-rock", "6/8", "melody: none"))))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("4/4");
+                .hasMessageContaining("pop-rock")
+                .hasMessageContaining("6/8");
+    }
+
+    @Test
+    void aMelodyOutsideFourFourIsRefused() {
+        // MelodyGenerator's templates are bars of four, so a 3/4 package with a
+        // melody would carry notes past its own bar line (#715).
+        assertThatThrownBy(() -> Arranger.arrange(SpecParser.parse(
+                METER_GRID.formatted("pop-ballad", "3/4", "melody: flute"))))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("melody");
+    }
+
+    @Test
+    void theWaltzLeavesBeatOneToTheBass() {
+        Sequence sequence = Arranger.arrange(SpecParser.parse(
+                METER_GRID.formatted("pop-ballad", "3/4", "melody: none")));
+        assertThat(offsetsInBar(sequence.getTracks()[1], THREE_QUARTER_BAR))
+                .containsExactly(480L, 960L);
+        assertThat(offsetsInBar(sequence.getTracks()[2], THREE_QUARTER_BAR))
+                .containsExactly(0L);
+        assertThat(offsetsInBar(sequence.getTracks()[3], THREE_QUARTER_BAR))
+                .containsExactly(0L, 480L, 960L);
+    }
+
+    @Test
+    void everyEighthOfACompoundBarIsStruck() {
+        Sequence sequence = Arranger.arrange(SpecParser.parse(
+                METER_GRID.formatted("pop-ballad", "6/8", "melody: none")));
+        List<Long> eighths = List.of(0L, 240L, 480L, 720L, 960L, 1200L);
+        // Comp and drums, so the harmony and the kit both state the division
+        // the two-pulse bar is read from (#701).
+        assertThat(offsetsInBar(sequence.getTracks()[1], THREE_QUARTER_BAR)).isEqualTo(eighths);
+        assertThat(offsetsInBar(sequence.getTracks()[3], THREE_QUARTER_BAR)).isEqualTo(eighths);
+        // The bass marks the two counted beats and nothing between them.
+        assertThat(offsetsInBar(sequence.getTracks()[2], THREE_QUARTER_BAR))
+                .containsExactly(0L, 720L);
+    }
+
+    private static final String SHUFFLE_GRID = """
+            title: t
+            style: rocknroll-shuffle
+            tempo: %d
+            key: E major
+            meter: %s
+            seed: 41
+            melody: none
+            bars:
+            E7 E7 A7 E7
+            B7 A7 E7 E7
+            """;
+
+    @Test
+    void theCompoundShuffleAddsTheMiddleEighthAndNothingElse() {
+        // The pair #701 asks for, in miniature: the same grid at the same
+        // counted-beat rate, one swung and one compound. Offsets are taken as
+        // fractions of the counted beat, which differs between the two, so what
+        // is compared is where in the beat something is struck.
+        Sequence swung = Arranger.arrange(SpecParser.parse(SHUFFLE_GRID.formatted(84, "4/4")));
+        Sequence compound =
+                Arranger.arrange(SpecParser.parse(SHUFFLE_GRID.formatted(126, "12/8")));
+        for (int track : new int[] {1, 2, 3}) {
+            assertThat(inBeatFractions(swung.getTracks()[track], 480))
+                    .as("swung track %d", track)
+                    .isSubsetOf(inBeatFractions(compound.getTracks()[track], 720));
+        }
+        assertThat(inBeatFractions(compound.getTracks()[1], 720))
+                .containsExactly("0.0000", "0.3333", "0.6667");
+        assertThat(inBeatFractions(swung.getTracks()[1], 480))
+                .containsExactly("0.0000", "0.6667");
     }
 
     private static final long BAR_TICKS = 4L * 480;
+
+    /** Three quarter beats, which is a bar of 3/4 and a bar of 6/8 alike. */
+    private static final long THREE_QUARTER_BAR = 3L * 480;
+
+    /** Distinct tick offsets from the bar line at which a track is struck. */
+    private static List<Long> offsetsInBar(Track track, long barTicks) {
+        return onsetTicks(track).stream()
+                .map(tick -> tick % barTicks)
+                .distinct()
+                .sorted()
+                .toList();
+    }
+
+    /** Where in a counted beat a track is struck, as a fraction of the beat. */
+    private static List<String> inBeatFractions(Track track, long beatTicks) {
+        return onsetTicks(track).stream()
+                .map(tick -> String.format("%.4f", (tick % beatTicks) / (double) beatTicks))
+                .distinct()
+                .sorted()
+                .toList();
+    }
+
+    private static List<Long> onsetTicks(Track track) {
+        List<Long> ticks = new ArrayList<>();
+        for (int i = 0; i < track.size(); i++) {
+            MidiEvent event = track.get(i);
+            if (event.getMessage() instanceof ShortMessage message
+                    && message.getCommand() == ShortMessage.NOTE_ON) {
+                ticks.add(event.getTick());
+            }
+        }
+        return ticks;
+    }
+
 
     /** Every note-on of a track as tick, pitch and velocity, in order. */
     private static List<String> events(Track track) {

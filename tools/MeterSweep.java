@@ -100,14 +100,23 @@ public final class MeterSweep {
             new Job("pop-c-g-am-f-120.mp3", "4/4"),
             new Job("pop-am-f-c-g-144.mp3", "4/4"),
             new Job("ballad-wine-roses-65.mp3", "4/4"),
-            // Synthetic, where the spec compiled the MIDI: 4/4 by construction,
-            // since the arranger writes nothing else (#702).
+            // Synthetic, where the spec compiled the MIDI, so the meter is
+            // truth by construction rather than by ear.
             new Job("synthetic_samples", "pop-axis-g-116.mp3", "4/4"),
             new Job("synthetic_samples", "pop-deceptive-f-72.mp3", "4/4"),
             new Job("synthetic_samples", "rocknroll-12bar-a-168.mp3", "4/4"),
             // Commercial, local-only, is added from the directory rather than
             // named here; see localJobs.
-            new Job("synthetic_samples", "hiphop-m7vamp-bbm-90.mp3", "4/4"));
+            new Job("synthetic_samples", "hiphop-m7vamp-bbm-90.mp3", "4/4"),
+            // The meters #702 built, each isolating one case. The two 6/8
+            // packages differ in their harmonic rate alone and the two blues in
+            // whether the middle eighth of each beat sounds, so a column that
+            // moves between a pair is that one difference and nothing else.
+            new Job("synthetic_samples", "pop-waltz-d-108.mp3", "3/4"),
+            new Job("synthetic_samples", "pop-68-vamp-am-144.mp3", "6/8"),
+            new Job("synthetic_samples", "pop-68-twobar-am-144.mp3", "6/8"),
+            new Job("synthetic_samples", "blues-shuffle-e-84.mp3", "4/4"),
+            new Job("synthetic_samples", "blues-compound-e-126.mp3", "12/8"));
 
     /**
      * Every recording under {@code uncommitted/}, which states no meter and is

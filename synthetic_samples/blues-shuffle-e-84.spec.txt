@@ -1,0 +1,25 @@
+title: Shuffle blues in E, four beats to a bar
+genre: blues
+style: rocknroll-shuffle
+tempo: 84
+key: E major
+meter: 4/4
+seed: 41
+melody: none
+bars:
+# The straight half of the pair #701 asks for. Its twin blues-compound-e-126
+# carries this grid, this seed and this counted-beat rate, and differs in one
+# thing: whether the middle eighth of each beat sounds. Here it does not -- the
+# boogie comp and the ride strike the first and last third of every beat, which
+# is a swung eighth and is barred in four.
+# 12-bar blues, three choruses, dominant sevenths throughout; the last chorus
+# ends on the tonic rather than a turnaround.
+E7 E7 E7 E7
+A7 A7 E7 E7
+B7 A7 E7 B7
+E7 E7 E7 E7
+A7 A7 E7 E7
+B7 A7 E7 B7
+E7 E7 E7 E7
+A7 A7 E7 E7
+B7 A7 E7 E7
