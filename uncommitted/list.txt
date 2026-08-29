@@ -456,3 +456,165 @@ both qualities in one song, which is the found-vs-reported discrimination a
 maj7 benchmark needs (#273). Nothing here is confirmed by ear yet: the full
 grid, the D-vs-Dmaj7 distinction, and the modulation all wait on Enrico
 before any fact is scored.
+
+balorda-nostalgia.mp3
+
+"Balorda nostalgia" (Olly), official video, Sanremo 2025, 3:24. Fetch
+locally (the default android vr / https client returned 403 on this video;
+the older `android` client format worked):
+  yt-dlp -x --audio-format mp3 --audio-quality 0 \
+    --extractor-args "youtube:player_client=android" \
+    -o uncommitted/balorda-nostalgia.mp3 \
+    https://www.youtube.com/watch?v=guIQwWgjATY
+Downloaded duration 203.8 s, matching the stated 3:24. This is the ORIGINAL
+recording; a cover in a different key is being analysed separately elsewhere
+and is not this file. No remembered chords supplied for this run — nothing
+here is confirmed by ear.
+
+Run 2026-08-24. MW read Db major (signature 56%, tonic-over-relative 67%),
+110 BPM, 4/4 — plausible for this mid-tempo pop ballad. 83 chord spans,
+rendered to a 23-bar chart (out/chords.txt, out/chords.ly, out/chords.pdf;
+LilyPond was available and engraving succeeded). Vocabulary is diatonic to
+Db major and stays that way for the whole chart: Db (I, ~32% of the chart's
+duration), Ab (V, ~16%), Gb (IV, ~12%), Bbm7 (vi7, ~13%), Ebm7 (ii7, ~11%),
+plus secondary dominants Ab7, Eb7 and F7 (V7/vi resolving into Bbm7) and a
+few Dbmaj7/Gbm6 colour chords. No long N.C. span (#185 not reproduced): the
+only "N.C." in the chart is a 3-beat pickup rest before the first sung
+chord (bar 1, beat 4), which is a real anacrusis, not a dropped span — the
+raw chord list has zero null-root spans. The beat grid runs cleanly and
+evenly (~0.55 s/beat) through 196.3 s, then jumps once to a single final
+downbeat at 199.97 s (a ~3.7 s gap, versus the steady spacing everywhere
+else) and stops there, about 3.8 s before the file's 203.8 s end — read as
+the tracker losing the beat over the song's final fade/tail rather than a
+mid-song defect; the chart's last four bars are held on a single Db, which
+covers that stretch without leaving a chord gap. No remembered chords were
+supplied for this run, so the progression above is reported, not checked
+against recollection.
+
+balorda-nostalgia-olly-cover-sylvia.mp3
+
+"Balorda Nostalgia" (Olly, cover by Sylvia, prod. Puresound), 3:24 (203.96 s
+per ffprobe, matching the requested duration). Fetch locally:
+  yt-dlp -x --audio-format mp3 --audio-quality 0 \
+    -o uncommitted/balorda-nostalgia-olly-cover-sylvia.mp3 \
+    https://www.youtube.com/watch?v=69r0NxWi0b4
+No remembered chords supplied for this run. What matters for this run is the
+key MW reports: this cover is stated to require a specific key ("in questa
+tonalità") for a deliverable, so the detected key is the primary fact being
+checked, not a chord-by-chord recollection.
+
+del-verde.mp3
+
+"Del Verde" (Calcutta, Bomba Dischi channel), 3:54. Fetch locally:
+  yt-dlp -x --audio-format mp3 --audio-quality 0 \
+    -o uncommitted/del-verde.mp3 \
+    https://www.youtube.com/watch?v=VgcVK3okQ88
+Downloaded duration 234.2 s, matching the stated 3:54. This is the ORIGINAL
+recording; a cover in a different key exists and is being analysed
+separately elsewhere and is not this file. No remembered chords supplied for
+this run — nothing here is confirmed by ear.
+
+Run 2026-08-24. MW read 73.1 BPM in 4/4 and C major (signature 60%, tonic
+over its relative 87%) -- a confident major reading, not the Am/C
+relative-minor coin-flip seen elsewhere. The beat grid is unusually steady
+for this corpus: 279 beats, mean interval 0.821 s, stdev 0.033 s, no gaps or
+jumps anywhere including the last ten beats -- but both scalar confidences
+attached to it are low (beatConfidence 0.28, downbeatConfidence 0.10 for the
+whole track), so which beat the tracker calls "1" is uncertain even though
+the pulse itself is rock solid; the chord content per bar would not move if
+bar 1 shifted by a beat, only which beat each chord lands on.
+85 chord spans, rendered to a 70-bar chart (out/chords.txt, out/chords.ly,
+out/chords.pdf; LilyPond was available and engraving succeeded, one page).
+Vocabulary by total duration: C (50.0%), G7 (11.4%), G (10.8%), Fmaj7
+(9.1%), Em (8.7%), F (5.0%), plus small amounts of Am7, C7, Fm, Gmaj7,
+Cmaj7 and Dm as passing/colour chords -- a diatonic C-major I-V-IV-vi loop
+(C-F-G-Em) with G alternating between plain triad and dominant seventh, a
+coherent and common pop shape. No N.C. span in the underlying chord data
+(zero null-root spans); the printed chart shows "N.C." only as a sub-beat
+filler before the first sung chord (0.0-0.35 s), matching the harmless
+pattern seen on every other entry here, not the #185 pathology.
+The chart runs cleanly bar to bar with no chromatic fade-out noise. It does
+thin out at the very end, though: the last chord the estimator found is a
+0.84 s G7 at very low confidence (0.08, 227.82-228.66 s) that the chart
+writer dropped rather than printing as its own bar -- the printed chart's
+last bar is an Am7 ending at 227.82 s. The tracked beat grid itself stops at
+228.66 s, about 5.5 s before the file's own 234.17 s duration (ffprobe), so
+there is a short untracked tail at the very end (fade-out or trailing
+silence) that carries no beats and no chords at all, rather than the
+chromatic-noise degradation seen on some other entries. No remembered
+chords were supplied for this run, so the progression above is reported,
+not checked against recollection.
+
+del-verde-live-ricciotti.mp3
+
+"LUDOVICA RICCIOTTI - 'Del verde' cover LIVE" (PM School - Pianeta Musica
+channel), the song "Del verde" by Calcutta, 3:01 stated / 180.9 s per
+ffprobe, matching. This is the cover referenced in the del-verde.mp3 entry
+above — a solo live performance (voice plus piano/guitar accompaniment),
+not the studio original. Fetch locally:
+  yt-dlp -x --audio-format mp3 --audio-quality 0 \
+    -o uncommitted/del-verde-live-ricciotti.mp3 \
+    https://www.youtube.com/watch?v=AkDKI5l4xXE
+(yt-dlp 2026.07.04 returned HTTP 403 on this URL; upgrading via `brew upgrade
+yt-dlp` to 2026.08.19 fixed it on the first retry.)
+No remembered chords supplied for this run. What matters here is the key MW
+reports: this cover is stated to require a specific key ("in questa
+tonalità") for a deliverable, so the detected key is the primary fact being
+checked, not a chord-by-chord recollection. For context only, not ground
+truth: a separate MW run on the studio original (del-verde.mp3, see above)
+reads it in C major at 73 BPM.
+
+Run 2026-08-24. MW read **C major** (signature confidence 33%, tonic-over-
+relative confidence 77%), 74.3 BPM, 4/4, 68 chord spans over 54 printed
+bars. That agrees with the key the studio original reads to (also C major,
+73 BPM) — same key, same rough tempo, so this live solo cover is not
+transposed from the original. The chart is dominated by a diatonic C-F-G-C
+(I-IV-V-I) turnaround alternating with an Em-G (vi-V of vi) stretch, plus
+occasional Dm and a handful of Fmaj7/Cmaj7/G7 colour tones — a clean,
+plausible pop-ballad vocabulary with no chord foreign to C major appearing
+in the printed chart.
+
+Only one N.C. span, and it is not #185's failure mode: it is a genuine
+10.6 s instrumental/rubato intro (0.28-10.87 s) at confidence 1.0, well
+short of a runaway span. Two short low-confidence garbled patches sit either
+side of that clean stretch and both are exactly where the instructions said
+to expect trouble: immediately after the intro (10.87-12.83 s: F#maj7,
+A#m6, D#7 in quick succession, confidence 0.04-0.50, all foreign to C
+major) while the tracker's tempo is still swinging from a 215 BPM first
+estimate down to its settled ~91 BPM, and again in the outro (148-175 s:
+Fmaj7, C#m7, G, Cmaj7, F#m6 at confidences from 0.00 to 0.39) as the
+tracked beat rate collapses — the tempo map's last measured beat interval
+implies under 7 BPM, essentially the tracker giving up. The beat grid
+itself only extends to 165.18 s of a 180.9 s file; the chart's last bars
+(ending on an 11.35 s G7 at confidence 0.204) run past the last tracked
+beat on extrapolation, and the final ~5.9 s of audio (175-180.9 s) is not
+represented in the bar chart at all — a rubato/held ending or fade-out
+that the grid could not follow, truncated rather than misbarred. This
+matches the documented weakness (bar lines are only as good as the grid,
+and the grid is what degrades at endings), not a new defect. No remembered
+chords were supplied to check the chart against.
+
+Run 2026-08-24. MW read 55 BPM in 4/4 (tempoMap segments hover 46-65 BPM
+beat-to-beat but average to the printed figure; the beat grid's own spacing
+does not drift near the end, unlike some other tracks in this file) and named
+the key **G major**, signature confidence 50%, tonic-over-relative-minor
+confidence 67% (the two-part reading of #275: which signature, and which of
+G/Em is home). The chord vocabulary backs that reading strongly — the chart
+is dominated by G, C, D, Em7 and Am7, with a B7 (V7/vi, resolving into the
+Em7 that follows it) in bar 1 and occasional colour (Cmaj7, Gmaj7, D7, Am6)
+— a diatonic G-major set with no chord outside its scale/relative-minor
+pair, so the signature-vs-relative ambiguity the low-ish 50% signature figure
+might suggest is not visible in the chart itself. Only one N.C. span, one
+beat long at the very start (bar 1 beat 1) — not the long #185 failure mode.
+The chart runs 47 bars gaplessly to the recording's end with no fade-out
+degradation into chromatic noise; the last chords (Am6-D, G, G held to the
+end) look like a clean plagal/authentic close rather than drift. Rendered
+end to end: chords.txt, chords.ly and chords.pdf all written, LilyPond ran
+with no warnings in the workspace logs. Note: downbeatConfidence is a single
+low scalar (0.068) for the whole track, so which beat of the bar MW calls
+"1" is uncertain even though the beat pulse itself holds steady — the bar
+lines could plausibly sit a beat or two off from where a musician would put
+them, though the chord content per bar would be unaffected by that shift.
+No remembered chords were supplied for this run, so this is a report of what
+MW read, not a check against recollection; the required key for the
+deliverable is what this run was run to confirm, and MW's answer is G major.
