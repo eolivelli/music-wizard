@@ -30,6 +30,7 @@ import javax.sound.midi.ShortMessage;
 import javax.sound.midi.Track;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.EnumSource;
 
 class ArrangerTest {
@@ -226,24 +227,67 @@ class ArrangerTest {
             B7 A7 E7 E7
             """;
 
+    private static final String FIRST_THIRD = "0.0000";
+    private static final String MIDDLE_THIRD = "0.3333";
+    private static final String LAST_THIRD = "0.6667";
+
+    /** The ride cymbal, which is the drum the two feels state their beat on. */
+    private static final int RIDE = 51;
+
     @Test
     void theCompoundShuffleAddsTheMiddleEighthAndNothingElse() {
         // The pair #701 asks for, in miniature: the same grid at the same
         // counted-beat rate, one swung and one compound. Offsets are taken as
-        // fractions of the counted beat, which differs between the two, so what
-        // is compared is where in the beat something is struck.
+        // fractions of the counted beat, which is a quarter in one and a dotted
+        // quarter in the other, so what is compared is where in the beat
+        // something is struck rather than when.
         Sequence swung = Arranger.arrange(SpecParser.parse(SHUFFLE_GRID.formatted(84, "4/4")));
         Sequence compound =
                 Arranger.arrange(SpecParser.parse(SHUFFLE_GRID.formatted(126, "12/8")));
-        for (int track : new int[] {1, 2, 3}) {
-            assertThat(inBeatFractions(swung.getTracks()[track], 480))
-                    .as("swung track %d", track)
-                    .isSubsetOf(inBeatFractions(compound.getTracks()[track], 720));
-        }
-        assertThat(inBeatFractions(compound.getTracks()[1], 720))
-                .containsExactly("0.0000", "0.3333", "0.6667");
+        // The comp and the ride gain the middle third and nothing else.
         assertThat(inBeatFractions(swung.getTracks()[1], 480))
-                .containsExactly("0.0000", "0.6667");
+                .containsExactly(FIRST_THIRD, LAST_THIRD);
+        assertThat(inBeatFractions(compound.getTracks()[1], 720))
+                .containsExactly(FIRST_THIRD, MIDDLE_THIRD, LAST_THIRD);
+        assertThat(ridePositions(swung.getTracks()[3], 480))
+                .containsExactly(FIRST_THIRD, LAST_THIRD);
+        assertThat(ridePositions(compound.getTracks()[3], 720))
+                .containsExactly(FIRST_THIRD, MIDDLE_THIRD, LAST_THIRD);
+        // The bass keeps the beat to itself in both.
+        assertThat(inBeatFractions(compound.getTracks()[2], 720))
+                .isEqualTo(inBeatFractions(swung.getTracks()[2], 480))
+                .containsExactly(FIRST_THIRD);
+    }
+
+    @ParameterizedTest
+    @CsvSource({"4/4, 84", "12/8, 126"})
+    void theRideIsNeverStruckBeforeItsOwnNoteOff(String meter, int tempo) {
+        // The ride is one voice, and the compound feel strikes it three times a
+        // beat where the swung one strikes twice, so a hit that rang for half a
+        // beat would still be sounding when the next arrived.
+        Sequence sequence =
+                Arranger.arrange(SpecParser.parse(SHUFFLE_GRID.formatted(tempo, meter)));
+        long sounding = -1;
+        for (Note hit : notes(sequence.getTracks()[3], RIDE)) {
+            assertThat(hit.onset()).isGreaterThanOrEqualTo(sounding);
+            sounding = hit.end();
+        }
+    }
+
+    @ParameterizedTest
+    @CsvSource({"pop-ballad, 3/4, 1440", "pop-ballad, 6/8, 1440",
+                "rocknroll-shuffle, 12/8, 2880"})
+    void everyNoteOfANewMeterFillsItsOwnBarAndNoMore(String style, String meter, long barTicks) {
+        Sequence sequence = Arranger.arrange(SpecParser.parse(
+                METER_GRID.formatted(style, meter, "melody: none")));
+        for (Track track : sequence.getTracks()) {
+            for (Note note : notes(track)) {
+                assertThat(note.end()).isLessThanOrEqualTo(8 * barTicks);
+                assertThat(note.end())
+                        .as("a note struck at %d in a bar of %d", note.onset(), barTicks)
+                        .isLessThanOrEqualTo((note.onset() / barTicks + 1) * barTicks);
+            }
+        }
     }
 
     private static final long BAR_TICKS = 4L * 480;
@@ -262,11 +306,49 @@ class ArrangerTest {
 
     /** Where in a counted beat a track is struck, as a fraction of the beat. */
     private static List<String> inBeatFractions(Track track, long beatTicks) {
-        return onsetTicks(track).stream()
+        return fractions(onsetTicks(track), beatTicks);
+    }
+
+    /** The same for one drum alone, the kit's tracks holding several. */
+    private static List<String> ridePositions(Track track, long beatTicks) {
+        return fractions(notes(track, RIDE).stream().map(Note::onset).toList(), beatTicks);
+    }
+
+    private static List<String> fractions(List<Long> ticks, long beatTicks) {
+        return ticks.stream()
                 .map(tick -> String.format("%.4f", (tick % beatTicks) / (double) beatTicks))
                 .distinct()
                 .sorted()
                 .toList();
+    }
+
+    /** A note-on and the tick its note-off is at. */
+    private record Note(long onset, long end) { }
+
+    private static List<Note> notes(Track track) {
+        return notes(track, -1);
+    }
+
+    /** Every note of a track, or of one pitch of it where {@code pitch} is not negative. */
+    private static List<Note> notes(Track track, int pitch) {
+        List<Note> out = new ArrayList<>();
+        for (int i = 0; i < track.size(); i++) {
+            MidiEvent event = track.get(i);
+            if (!(event.getMessage() instanceof ShortMessage on)
+                    || on.getCommand() != ShortMessage.NOTE_ON
+                    || (pitch >= 0 && on.getData1() != pitch)) {
+                continue;
+            }
+            for (int j = i + 1; j < track.size(); j++) {
+                if (track.get(j).getMessage() instanceof ShortMessage off
+                        && off.getCommand() == ShortMessage.NOTE_OFF
+                        && off.getData1() == on.getData1()) {
+                    out.add(new Note(event.getTick(), track.get(j).getTick()));
+                    break;
+                }
+            }
+        }
+        return out;
     }
 
     private static List<Long> onsetTicks(Track track) {

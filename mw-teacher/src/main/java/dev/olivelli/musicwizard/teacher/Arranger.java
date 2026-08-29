@@ -98,9 +98,9 @@ public final class Arranger {
     /**
      * The style and meter pairs that have patterns written for them.
      *
-     * <p>Each of the three beyond 4/4 exists for a benchmark that has to be true
-     * by construction: the waltz for a three-pulse bar, the compound ballad for
-     * a bar whose every subdivision sounds, and the compound shuffle so that
+     * <p>Each pair beyond 4/4 exists for a benchmark that has to be true by
+     * construction: the waltz for a three-pulse bar, the compound ballad for a
+     * bar whose every subdivision sounds, and the compound shuffle so that
      * #701's pair differs in one thing.
      */
     private static boolean isArranged(SampleSpec.Style style, TimeSignature meter) {
@@ -283,11 +283,7 @@ public final class Arranger {
 
     // ------------------------------------------------------------- pop waltz
 
-    /**
-     * The waltz's afterbeats: the chord on two and on three, beat one left to
-     * the bass. Voiced per beat rather than per bar, so a split bar changes
-     * chord where the half-bar falls, as everything else here does.
-     */
+    /** The waltz's afterbeats: the chord on two and on three, beat one the bass's. */
     private void waltzComp(int bar) {
         double start = barStart(bar);
         for (int beat = 1; beat < spec.meter().numerator(); beat++) {
@@ -327,9 +323,9 @@ public final class Arranger {
 
     /**
      * Every subdivision of every counted beat, struck: the broken chord runs
-     * through all six eighths of the bar, and the hat below doubles them. That
-     * is the whole point of the compound packages — a bar counted in two whose
-     * pulse audibly divides in three (#701, #712).
+     * through the eighths of the bar and the hat below doubles them evenly.
+     * That is the whole point of the compound packages — a bar counted in two
+     * whose pulse audibly divides in three (#701, #712).
      */
     private void compoundComp(int bar) {
         double start = barStart(bar);
@@ -367,8 +363,7 @@ public final class Arranger {
         }
         double eighth = spec.meter().beatUnitQuarters() / COMPOUND_DIVISION;
         for (int position = 0; position < spec.meter().numerator(); position++) {
-            drums.note(start + position * eighth, 0.25, CLOSED_HAT,
-                    humanize(position % COMPOUND_DIVISION == 0 ? 46 : 40, 5));
+            drums.note(start + position * eighth, 0.25, CLOSED_HAT, humanize(44, 5));
         }
         drums.note(start, 0.5, KICK, humanize(78, 4));
         drums.note(start + spec.meter().beatUnitQuarters(), 0.5, SIDE_STICK, humanize(60, 4));
@@ -546,8 +541,11 @@ public final class Arranger {
                 if (i > 0 && fillBar && beat == beats - 1) {
                     break; // the fill owns the last beat
                 }
+                // Half a beat, or to the next strike where that comes first:
+                // the ride is one voice, and the same pitch struck again before
+                // its own note-off leaves the file's note pairing ambiguous.
                 drums.note(start + beat * beatQuarters + subdivisions[i][0] * beatQuarters,
-                        i == 0 ? beatQuarters / 2 : subdivisions[i][1] * beatQuarters,
+                        Math.min(beatQuarters / 2, subdivisions[i][1] * beatQuarters),
                         RIDE, humanize(i == 0 ? 74 : 56, 5));
             }
         }
