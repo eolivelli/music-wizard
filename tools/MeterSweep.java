@@ -28,6 +28,8 @@ import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Stream;
@@ -39,16 +41,29 @@ import java.util.stream.Stream;
  *   java -cp mw-cli/target/mw.jar tools/MeterSweep.java
  * </pre>
  *
- * <p>Every column is one of the estimator's own statistics rather than a
- * reproduction of them, so the constants in that class can be re-derived from
- * this output: {@code p2 p3 p4 p6} are the harmonic periodicity at each period
- * it reads, on a null whose expectation is one, and {@code in3} and {@code in2}
- * are how much of the onset envelope's periodicity at the pulse a triple and an
- * even division of it carry, over the {@code pulse} column, which is how much of
- * the envelope's energy sits at the pulse for them to be shares of.
- * {@code meter} is what the estimator decides and {@code want} what
- * {@code samples/list.txt} states; a row where they differ is the reading to
- * explain.
+ * <p>{@code p2 p3 p4 p6}, {@code pulse}, {@code in3} and {@code in2} are the
+ * estimator's own statistics rather than a reproduction of them, so the
+ * constants in that class can be re-derived from this output: {@code p2 p3 p4
+ * p6} are the harmonic periodicity at each period it reads, on a null whose
+ * expectation is one, and {@code in3} and {@code in2} are how much of the onset
+ * envelope's periodicity at the pulse a triple and an even division of it carry,
+ * over the {@code pulse} column, which is how much of the envelope's energy sits
+ * at the pulse for them to be shares of. {@code meter} is what the estimator
+ * decides and {@code want} what {@code samples/list.txt} states; a row where
+ * they differ is the reading to explain.
+ *
+ * <p>{@code mid} is none of those and nothing decides on it: it is what #701
+ * asks whether a four-pulse bar may be promoted to 12/8 on. See
+ * {@link #middleOfThePulse}.
+ *
+ * <p><b>Read {@code bpm} before {@code in3}, {@code in2} or {@code mid}.</b>
+ * Each of those divides the tracked pulse, so on a recording the tracker took at
+ * a multiple or a fraction of the counted beat they divide something the music
+ * is not counted in — a swung eighth can land where a triple division of two
+ * counted beats is looked for, and print as a division in three. Nothing else in
+ * the row says which pulse was tracked; this does. It reproduces the estimator's
+ * own median interval rather than reading it, so a change to how that class
+ * derives its pulse leaves this printing the old one.
  *
  * <p><b>Every recording under {@code uncommitted/} is swept</b>, listed from the
  * directory rather than by name, because a claim about what real mixes do is
@@ -142,9 +157,9 @@ public final class MeterSweep {
     }
 
     public static void main(String[] args) {
-        System.out.printf("%-38s %8s %8s %8s %8s %7s %7s %7s  %-5s %-5s %s%n",
-                "file", "p2", "p3", "p4", "p6", "pulse", "in3", "in2", "meter", "want",
-                "pulses/bar, confidence");
+        System.out.printf("%-38s %8s %8s %8s %8s %7s %7s %7s %7s %7s  %-5s %-5s %s%n",
+                "file", "p2", "p3", "p4", "p6", "bpm", "pulse", "in3", "in2", "mid", "meter",
+                "want", "pulses/bar, confidence");
         List<Job> jobs = new ArrayList<>(JOBS);
         jobs.addAll(localJobs());
         for (Job job : jobs) {
@@ -175,11 +190,95 @@ public final class MeterSweep {
         MeterEstimator.Estimate estimate = MeterEstimator.decide(reading);
         String meter = estimate.meter().toString();
         System.out.printf(
-                "%-38s %8.2f %8.2f %8.2f %8.2f %7.2f %7.2f %7.2f  %-5s %-5s %d, %.2f %s%n",
+                "%-38s %8.2f %8.2f %8.2f %8.2f %7.1f %7.2f %7.2f %7.2f %7.2f"
+                        + "  %-5s %-5s %d, %.2f %s%n",
                 job.file(), reading.atTwo(), reading.atThree(), reading.atFour(),
-                reading.atSix(), reading.onThePulse(), reading.inThree(), reading.inTwo(), meter,
+                reading.atSix(), trackedPulseRate(beatTimes), reading.onThePulse(),
+                reading.inThree(), reading.inTwo(),
+                middleOfThePulse(envelope, beatTimes), meter,
                 job.want().isEmpty() ? "-" : job.want(),
                 estimate.pulsesPerBar(), estimate.confidence().value(),
                 job.want().isEmpty() || job.want().equals(meter) ? "" : "MISMATCH");
+    }
+
+    /** Positions the pulse is folded into, divisible by both two and three. */
+    private static final int POSITIONS = 12;
+
+    /**
+     * Tracked pulses a minute, from the middle interval between beats — the
+     * pulse the columns beside it are shares of, and the one thing that says
+     * whether they are shares of the counted beat.
+     */
+    private static double trackedPulseRate(List<Double> beatTimes) {
+        List<Double> intervals = new ArrayList<>(Math.max(0, beatTimes.size() - 1));
+        for (int beat = 1; beat < beatTimes.size(); beat++) {
+            intervals.add(beatTimes.get(beat) - beatTimes.get(beat - 1));
+        }
+        if (intervals.isEmpty()) {
+            return 0;
+        }
+        Collections.sort(intervals);
+        double middle = intervals.get(intervals.size() / 2);
+        return middle > 0 ? 60 / middle : 0;
+    }
+
+    /**
+     * What the onset envelope carries at the middle of a triple division of the
+     * tracked pulse, as a share of what it carries at the pulse itself.
+     *
+     * <p>The question #701 turns on, and the one column here the estimator does
+     * not read. A compound bar sounds all three of its subdivisions and a
+     * shuffle leaves the middle one out, so that middle position is where the
+     * two differ; {@link MeterEstimator.Reading#inThree()} cannot say it,
+     * being the stronger of the two lags a triple division peaks at, which a
+     * shuffle striking two of three positions reaches as readily as a compound
+     * striking three.
+     */
+    private static double middleOfThePulse(OnsetEnvelope envelope, List<Double> beatTimes) {
+        double[] fold = foldOntoThePulse(envelope, beatTimes);
+        double floor = Arrays.stream(fold).min().orElse(0);
+        double atThePulse = fold[0] - floor;
+        return atThePulse > 0 ? (fold[POSITIONS / 3] - floor) / atThePulse : 0;
+    }
+
+    /**
+     * The onset envelope averaged over the tracked pulse's own phase.
+     *
+     * <p>Folded over each pulse's measured length rather than a mean one: a
+     * fold that drifts against the beat smears the positions it exists to keep
+     * apart. Each position takes the strongest frame within half a position of
+     * it, because a division of the pulse is played by hand and lands near its
+     * arithmetic position rather than on it — or nothing at all, the envelope
+     * being centred, where the window only falls.
+     */
+    private static double[] foldOntoThePulse(OnsetEnvelope envelope, List<Double> beatTimes) {
+        double[] strength = envelope.strength();
+        double[] fold = new double[POSITIONS];
+        int pulses = 0;
+        for (int beat = 0; beat + 1 < beatTimes.size(); beat++) {
+            double from = beatTimes.get(beat);
+            double span = beatTimes.get(beat + 1) - from;
+            if (!(span > 0)) {
+                continue;
+            }
+            double framesPerPosition = span * envelope.frameRate() / POSITIONS;
+            for (int position = 0; position < POSITIONS; position++) {
+                double centre = from * envelope.frameRate() + position * framesPerPosition;
+                double strongest = 0;
+                int first = (int) Math.round(centre - framesPerPosition / 2);
+                int last = (int) Math.round(centre + framesPerPosition / 2);
+                for (int frame = first; frame <= last; frame++) {
+                    if (frame >= 0 && frame < strength.length) {
+                        strongest = Math.max(strongest, strength[frame]);
+                    }
+                }
+                fold[position] += strongest;
+            }
+            pulses++;
+        }
+        for (int position = 0; pulses > 0 && position < POSITIONS; position++) {
+            fold[position] /= pulses;
+        }
+        return fold;
     }
 }

@@ -479,8 +479,8 @@ public final class Arranger {
 
     /**
      * The same beat with its middle third sounding. It is the one thing that
-     * separates the compound package from the shuffle one, which is what #701
-     * needs to tell a swung eighth from a compound bar.
+     * separates the compound package from the shuffle one, and whether that
+     * difference is legible over the corpus's shuffles is #701.
      */
     private static final double[][] COMPOUND_BEAT = {
             {0, 1.0 / 3}, {1.0 / 3, 1.0 / 3}, {2.0 / 3, 1.0 / 3}};
