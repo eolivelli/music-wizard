@@ -46,8 +46,9 @@ import java.util.Objects;
  * that repeats every six beats carries the same coefficient at three and at two,
  * six being a multiple of both, so where six is comparable it is six that is
  * believed: the shorter reading is implied by the longer and never the other way
- * round. Four is coprime with three and with six, so nothing of the kind relates
- * it to either.
+ * round. The same relation says which lengths are rivals at all, since a reading
+ * the chosen one implies cannot also compete with it. Four neither divides three
+ * or six nor is divided by them, so nothing of the kind relates it to either.
  *
  * <p><b>A bar of two tracked pulses is the one length the harmony may not
  * choose on its own</b> (#707). Harmony moving every two beats of a four-beat
@@ -443,15 +444,20 @@ public final class MeterEstimator {
      *
      * <p>Two things have to hold and they fail separately: the length has to
      * carry periodicity at all, and it has to carry more of it than the best of
-     * the others by the margin leaving the prior costs. Multiplied, so that
+     * its rivals by the margin leaving the prior costs. Multiplied, so that
      * either failing brings the number down. A four-beat bar held against a
      * stronger rival therefore reports near the floor, which is the honest
      * reading of an assumption that survived contrary evidence.
+     *
+     * <p>A period the chosen length is a multiple of is not a rival to it
+     * (#709): the statistic scores a divisor of a real period as strongly as
+     * the period itself, so the shorter reading there is the chosen one's own
+     * shadow rather than a competing account of the same beats.
      */
     private static Confidence confidenceIn(Reading reading, int chosen) {
         double rival = 0;
         for (int candidate : CANDIDATES) {
-            if (candidate != chosen) {
+            if (chosen % candidate != 0) {
                 rival = Math.max(rival, reading.at(candidate));
             }
         }

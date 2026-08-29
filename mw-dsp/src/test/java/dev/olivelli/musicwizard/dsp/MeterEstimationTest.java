@@ -262,6 +262,31 @@ class MeterEstimationTest {
         }
 
         @Test
+        @DisplayName("period three does not count against the six-pulse bar it divides")
+        void threeIsNotARivalToSix() {
+            // Novelty that repeats every six beats scores period three exactly
+            // as strongly, three dividing six -- one reading seen twice, not two
+            // readings competing -- so a six-pulse bar must report what it would
+            // report beside a three that says nothing.
+            double shadowed = MeterEstimator.decide(reading(50, 50, 1, 50)).confidence().value();
+            double alone = MeterEstimator.decide(reading(50, 0, 1, 50)).confidence().value();
+
+            assertThat(shadowed).isEqualTo(alone);
+        }
+
+        @Test
+        @DisplayName("period six does count against the three-pulse bar it does not divide")
+        void sixIsStillARivalToThree() {
+            // The relation is one-way: nothing about a three-pulse bar produces
+            // a reading at six, so a six that nearly took the bar is a rival and
+            // has to cost the three.
+            double contested = MeterEstimator.decide(reading(1, 40, 5, 19)).confidence().value();
+            double uncontested = MeterEstimator.decide(reading(1, 40, 5, 1)).confidence().value();
+
+            assertThat(contested).isLessThan(uncontested);
+        }
+
+        @Test
         @DisplayName("the division alone never leaves the assumption")
         void theDivisionAloneDoesNotDecide() {
             // The harmony is a veto rather than the evidence, but a veto that
