@@ -14,10 +14,10 @@ cannot tell the two apart. The best phase a row names is an oracle -- the known
 cycle picks it -- so it explains a row that moved and is never a figure the tool
 could have produced.
 
-It then reports the meter each file was barred in, against the meter its
-samples/list.txt entry states -- so a wrong meter on a 4/4 recording is a
-visible row rather than a silent drop in the columns above, which is what it
-was until the meter was read at all (#700).
+It then reports the meter each file was barred in, against the meter its own
+list.txt entry states -- so a wrong meter on a 4/4 recording is a visible row
+rather than a silent drop in the columns above, which is what it was until the
+meter was read at all (#700).
 
 It then reports the key each file was named with, against the key expected for
 it -- see KEYS below for where each of those comes from, which is not the same
@@ -159,9 +159,9 @@ KEYS = {
     "pop-am-f-c-g-144.mp3": "A minor",
 }
 
-# The meter each file is in, from samples/list.txt: an entry names its meter
-# where it is not four, so the rows below that say 4/4 are the entries that say
-# nothing and whose grids are written in bars of four.
+# The meter each file is in: an entry names its meter where it is not four, so
+# the rows below that say 4/4 are the entries that say nothing and whose grids
+# are written in bars of four.
 #
 # Two files the KEYS table covers are deliberately absent. bm-blues-slow and
 # footprints-200 have a bar length that was read rather than heard and a

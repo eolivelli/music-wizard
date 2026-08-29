@@ -49,8 +49,8 @@ import java.util.stream.Stream;
  * envelope's periodicity at the pulse a triple and an even division of it carry,
  * over the {@code pulse} column, which is how much of the envelope's energy sits
  * at the pulse for them to be shares of. {@code meter} is what the estimator
- * decides and {@code want} what {@code samples/list.txt} states; a row where
- * they differ is the reading to explain.
+ * decides and {@code want} what a recording's own {@code list.txt} entry
+ * states; a row where they differ is the reading to explain.
  *
  * <p>{@code mid} is none of those and nothing decides on it: it is what #701
  * asks whether a four-pulse bar may be promoted to 12/8 on. See
