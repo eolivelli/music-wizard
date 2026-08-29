@@ -59,6 +59,25 @@ What is now top of the bar axis is which grids to believe: the veto that decides
 it catches a tracker that lost the beat and says nothing about one that is
 merely jittery (#429).
 
+**The meter is read now, not assumed** (#700). It was 4/4 unless typed, and the
+corpus's 3/4 and 6/8 benchmarks were scored on bars of four. `MeterEstimator`
+reads the bar length from the period harmonic change repeats at, with a
+statistic comparable across lengths and 4/4 as a prior the others must clear
+by a margin (#704): the waltz reads 3/4, and the recordings whose bar is six
+tracked pulses long read it so and went from about half their bars right to
+most of them. The bar the harmony cannot choose is two
+pulses — 6/8 counted on the dotted quarter, where a listener taps — since
+two-beat comping in 4/4 scores the same; it rests on how the pulse divides,
+read from the onset envelope (#708), and the harmony may veto it only with a
+length two does not divide (#712), the counter-example being a 6/8 with an
+ordinary two-bar chord loop, built by construction (#702). What stays typed:
+12/8, because a shuffle divides its pulse as a compound bar does and every
+shuffle in the corpus is barred in four by its confirmed cycle — measured
+against a constructed pair and closed on the measurement (#701) — and 3/8.
+The meter column of `tools/baselines/score-samples.txt` and
+`score-synthetic.txt` carries the readings; `tools/MeterSweep.java` the
+statistics behind them.
+
 Then: the residual gate of #543 admitted the minor sixth and the
 half-diminished (#547), and the major seventh (#588) — which had to go into the
 *decoder* rather than beside them, because on the recordings whose truth holds
@@ -206,5 +225,5 @@ NNLS chroma (#3) and the Ellis-penalty correction (#196) have landed;
 measurement of what they are worth, with baselines under `tools/baselines/`.
 
 `mw-core` passed round 4 once its three blockers landed, but see the open
-`design-gap` issues before treating it as frozen — especially #4 (no beat unit,
-so compound meters mis-bar) and #5 (notation-facing gaps).
+`design-gap` issues before treating it as frozen — #703 among them (a read
+meter carries no provenance into the score).

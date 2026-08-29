@@ -23,12 +23,13 @@ drive, and read by the pipeline unaided.
 
 ## What it does today
 
-- **Beats, tempo and meter** tracked from the audio — 4/4, 3/4 and 6/8, with
-  4/4 the prior a reading has to clear a margin to leave — with the
-  corrections that matter most exposed as flags (`--tempo`,
-  `--first-downbeat`, `--time-signature`, which wins outright), because beat
-  tracking is the least reliable stage and everything downstream hangs on
-  it.
+- **Beats, tempo and meter** tracked from the audio. The meter is read
+  between 4/4, 3/4 and 6/8 — 6/8 whether the tracker sits on the eighth or on
+  the dotted quarter — with 4/4 the prior a reading has to clear a margin to
+  leave; 12/8, 3/8 and irregular meters are typed, not read. The corrections
+  that matter most are flags (`--tempo`, `--first-downbeat`,
+  `--time-signature`, which wins outright), because beat tracking is the
+  least reliable stage and everything downstream hangs on it.
 - **Key**, reported with separate confidences for the signature and for which
   of a relative pair is home.
 - **Chords** from the full mix — triads, dominant and minor sevenths — behind
@@ -63,7 +64,7 @@ correct the tempo or the first downbeat.
 ## How it works
 
 [docs/pipeline.md](docs/pipeline.md) is the map, and each stage has a page of
-its own: [tempo and beats](docs/tempo-detection.md),
+its own: [tempo, beats and meter](docs/tempo-detection.md),
 [harmony](docs/harmony-detection.md), [melody](docs/melody-detection.md),
 [lyrics](docs/lyrics-detection.md). The corpus MW is measured on lives in
 `samples/`, its current readings in `tools/baselines/`, and the loop that

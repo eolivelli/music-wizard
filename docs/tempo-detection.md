@@ -1,7 +1,7 @@
-# How MW detects tempo, beats and bars
+# How MW detects tempo, beats, meter and bars
 
-The chain is: onset envelope → tempo estimate → beat tracking → downbeats →
-`TempoMap`. Each link exists to fix a way the previous one fails on real
+The chain is: onset envelope → tempo estimate → beat tracking → meter →
+downbeats → `TempoMap`. Each link exists to fix a way the previous one fails on real
 recordings.
 
 ## The onset envelope (`OnsetEnvelope`)
@@ -76,6 +76,74 @@ and each contributes its first half.
   error — at the published weight it follows its seed — so the seed is the
   only place it can be fixed.
 
+## Meter (`MeterEstimator`)
+
+The tracker says where the pulses are and the downbeat estimator which of
+them begin bars — given a bar length. The bar length is read here, from the
+same harmonic change: chords change preferentially at bar lines, so the bar
+is the period that change repeats at. Each candidate is scored by one Fourier
+coefficient of the per-beat novelty over the novelty's own energy, a
+statistic with the same expectation at every period under a null of
+independent beats. That is what makes bar lengths comparable at all; the
+per-phase means the downbeat estimator uses are not, since the best of four
+phases beats the best of three by chance.
+
+**4/4 is the prior and nothing leaves it cheaply.** A wrong meter moves every
+bar line, so the gates are asymmetric: a bar of three or six tracked pulses
+has to be supported on its own *and* clear the four-beat bar by a margin, and
+a reading that does not is reported as 4/4 at the confidence the evidence
+gave it rather than hidden — unless the two-pulse evidence below admits a
+shorter bar. The statistic cannot prefer a period over its own
+divisors — novelty repeating every six beats scores the same at three — so
+where six is comparable to three, six is believed: the shorter reading is
+implied by the longer, never the reverse.
+
+What is read, and from what:
+
+- **3/4** — three tracked pulses to a bar, from harmony.
+- **6/8 with the tracker on the eighth** — six pulses to a bar, from harmony;
+  the estimate carries the pulse count beside the signature, and the tempo is
+  printed on the dotted quarter.
+- **A bar of two pulses, named 6/8** — the dotted quarter is the pulse,
+  which is where a listener taps, and the bar is two of them. Harmony cannot
+  choose this one: comping that moves every two beats of a 4/4 bar scores at
+  period two exactly as a compound bar counted in two does. So the two-pulse
+  bar is admitted only where the pulse also **divides in three**, read from
+  the onset envelope's own periodicity at a third and two thirds of the pulse
+  — the one thing the envelope is asked. Harmony can refuse it only on a
+  length two does not divide, or by saying nothing at any length two
+  divides: a two-bar chord loop is periodic at four pulses whether the bar
+  is two of them or four, so
+  a supported four is a length the shorter bar tiles, not a rival account of
+  it (#712). What is read there is the length; the signature is given, since
+  a bar of two dotted-quarter pulses is 3/4 as much as it is 6/8 and nothing
+  measured separates them (#728).
+
+What is not read, and why:
+
+- **12/8.** A swung 4/4 divides its pulse in three exactly as a compound bar
+  does, and every shuffle in the corpus is barred in four by its own confirmed
+  cycle; the position a compound sounds and a shuffle leaves out does not
+  separate them either (`tools/MeterSweep.java`'s `mid` column, #701). So the
+  division may admit a two-pulse bar and may not promote a four-pulse one.
+  `--time-signature 12/8` works end to end.
+- **3/8.** One pulse to a bar leaves the downbeat estimator no phase to
+  choose (#701).
+- **2/4**; **5/4, 7/8 and the other irregular meters** (#62); and **a meter
+  that changes** within a recording: one meter per run.
+- **Accent** is not evidence for the bar length. On ordinary drum material
+  its strongest periodicity is the backbeat (#70), which argues for a two-beat
+  bar across the corpus and for four over three on its waltz.
+
+The reading is printed on `analyze`'s meter line with its confidence, and on
+the chart header; the run log's beats stage carries the same fact. The score
+file records the meter but not yet whether it was read, typed or assumed
+(#703). `tools/MeterSweep.java` prints the readings behind every constant,
+for the committed benchmarks and the local-only recordings alike, and the
+chord harnesses (`tools/score-samples.py`, `tools/score-synthetic.py`) carry a
+meter column against each recording's stated meter — read `tools/baselines/`
+for what it is worth today rather than any figure in prose.
+
 ## Downbeats (`DownbeatEstimator`)
 
 The beats say where the pulse is, not where the bar starts. The phase is
@@ -117,9 +185,8 @@ length hung on the phase the downbeats agree on (#233).
   *seconds* snapped to the nearest tracked beat; the estimator is not run,
   because a human who counted the bars outranks harmonic novelty.
 - `--time-signature` states the meter and wins outright: the estimator is
-  not run at all, as with `--first-downbeat`. Untyped, the meter is read from
-  the recording between 4/4, 3/4 and 6/8, with 4/4 as the prior — see
-  `MeterEstimator`, whose readings `tools/MeterSweep.java` prints.
+  not run at all, as with `--first-downbeat`. It is also the only route to
+  12/8, 3/8 and the irregular meters.
 
 `--tempo` is read in the meter's *counted* beats per minute — what a
 metronome shows — which differs from quarter notes in compound time, and which
