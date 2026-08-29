@@ -92,7 +92,8 @@ phases beats the best of three by chance.
 bar line, so the gates are asymmetric: a bar of three or six tracked pulses
 has to be supported on its own *and* clear the four-beat bar by a margin, and
 a reading that does not is reported as 4/4 at the confidence the evidence
-gave it rather than hidden. The statistic cannot prefer a period over its own
+gave it rather than hidden — unless the two-pulse evidence below admits a
+shorter bar. The statistic cannot prefer a period over its own
 divisors — novelty repeating every six beats scores the same at three — so
 where six is comparable to three, six is believed: the shorter reading is
 implied by the longer, never the reverse.
@@ -103,17 +104,20 @@ What is read, and from what:
 - **6/8 with the tracker on the eighth** — six pulses to a bar, from harmony;
   the estimate carries the pulse count beside the signature, and the tempo is
   printed on the dotted quarter.
-- **6/8 counted in two** — the dotted quarter is the pulse, which is where a
-  listener taps and where the tracker lands on most 6/8 pop, and the bar is
-  two of them. Harmony cannot choose this one: comping that moves every two
-  beats of a 4/4 bar scores at period two exactly as a compound bar counted
-  in two does. So the two-pulse bar is admitted only where the pulse also
-  **divides in three**, read from the onset envelope's own periodicity at a
-  third and two thirds of the pulse — the one thing the envelope is asked.
-  Harmony may veto it only with a supported bar length that two does not
-  divide (three): a two-bar chord loop is periodic at four pulses whether the
-  bar is two of them or four, so a supported four is a length the shorter bar
-  tiles, not a rival account of it (#712).
+- **A bar of two pulses, named 6/8** — the dotted quarter is the pulse,
+  which is where a listener taps, and the bar is two of them. Harmony cannot
+  choose this one: comping that moves every two beats of a 4/4 bar scores at
+  period two exactly as a compound bar counted in two does. So the two-pulse
+  bar is admitted only where the pulse also **divides in three**, read from
+  the onset envelope's own periodicity at a third and two thirds of the pulse
+  — the one thing the envelope is asked. Harmony can refuse it only on a
+  length two does not divide (a three that leads the lengths two does
+  divide) or by saying nothing at any length two divides: a two-bar chord
+  loop is periodic at four pulses whether the bar is two of them or four, so
+  a supported four is a length the shorter bar tiles, not a rival account of
+  it (#712). What is read there is the length; the signature is given, since
+  a bar of two dotted-quarter pulses is 3/4 as much as it is 6/8 and nothing
+  measured separates them (#728).
 
 What is not read, and why:
 
@@ -125,11 +129,11 @@ What is not read, and why:
   `--time-signature 12/8` works end to end.
 - **3/8.** One pulse to a bar leaves the downbeat estimator no phase to
   choose (#701).
-- **2/4, 5/4, 7/8 and the other irregular meters** (#62), and **a meter that
-  changes** within a recording: one meter per run.
+- **2/4**; **5/4, 7/8 and the other irregular meters** (#62); and **a meter
+  that changes** within a recording: one meter per run.
 - **Accent** is not evidence for the bar length. On ordinary drum material
   its strongest periodicity is the backbeat (#70), which argues for a two-beat
-  bar on most recordings and for four over three on a waltz.
+  bar across the corpus and for four over three on its waltz.
 
 The reading is printed on `analyze`'s meter line with its confidence, and on
 the chart header; the run log's beats stage carries the same fact. The score

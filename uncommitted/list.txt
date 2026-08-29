@@ -646,21 +646,22 @@ Not in four: Enrico's ear, and the one thing he remembers of it — the chords,
 the key and the words are reported below, not checked. Corroborated outside
 MW's prior (.claude/skills/verify-tempo): the tracked pulse is confirmed by
 both Essentia trackers, and the prior-free tempogram's strongest peak is at
-three halves of it with the half next — the eighth and the bar of a 6/8
+three halves of it with the half next — the quarter and the bar of a 6/8
 counted on the dotted quarter, not the subdivision of a 4/4.
 
 It was the first real exam of the meter detector (#700/#704) and the
 acceptance case for the two-pulse bar (#707/#708). Three runs on 2026-08-29,
 each `analyze --lyrics il-filo-rosso.lrc --lyrics-language it --melody` and
 `render --parts chords,lyrics,playable`:
-- il-filo-rosso.mwz, at #704 with nothing typed: 4/4 at the floor — the prior
-  with no candidate cleared, the two-pulse lag leading the sweep — so the
-  chart was one bar long where the song has two, with the hook on its "beat 3".
+- il-filo-rosso.mwz, at #704 with nothing typed: 4/4 barely above the
+  assumption floor — the prior with no candidate cleared, the two-pulse lag
+  leading the sweep — so the chart was one bar long where the song has two,
+  with the hook on its "beat 3".
 - il-filo-rosso-68.mwz, forced `--time-signature 6/8`: the playable part
   Enrico called pretty good, and the target for #707.
 - il-filo-rosso-final.mwz, at #708 with nothing typed: 6/8, two tracked pulses
   to a bar, E major, the tempo printed on the dotted quarter; chords.txt,
   chords-lyrics.txt and all three .ly sources byte-identical to the forced run.
-Chord vocabulary E, F#, G#7, Amaj7, C#m7, B, B7, F#m, Am. Only short N.C.
-spans; the grid loses the beat for a few seconds in the fade and recovers.
+Only short N.C. spans; the grid loses the beat for a few seconds in the fade
+and recovers.
 
