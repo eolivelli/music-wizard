@@ -78,11 +78,14 @@ public final class MeterEstimator {
     /**
      * The periodicity at which a bar length counts as supported by the harmony.
      *
-     * <p>A significance level, not a tuning: the statistic has expectation one
-     * under a null of independent beats and is distributed about that null like
-     * a squared pair of Gaussians, so this is roughly the one-percent point. A
-     * candidate below it is not distinguishable from a recording whose harmony
-     * has no period at all.
+     * <p>A significance level rather than a tuning: the statistic has
+     * expectation one under a null of independent beats whatever the period, so
+     * a point in that null's tail means the same thing at every candidate. It
+     * does not mean it equally strongly — the coefficient at a period of two is
+     * real where the others are complex, so its tail is the fatter of the two —
+     * which is one more reason the two-pulse reading carries gates the others
+     * do not. Below this a candidate is not distinguishable from a recording
+     * whose harmony has no period at all.
      */
     private static final double SUPPORTED = 5.0;
 
@@ -91,9 +94,8 @@ public final class MeterEstimator {
      *
      * <p>A ratio, since the two are the same statistic on the same series. It
      * is the margin {@link BeatTracker#toBeatGrid}'s refusal to guess is being
-     * traded for, so it is deliberately wide: on the corpus every bar length
-     * that is right clears it several times over, and the readings sit nowhere
-     * near it.
+     * traded for, so it is deliberately wide: every bar length the corpus
+     * states clears it, and {@code tools/MeterSweep.java} prints by how much.
      */
     private static final double MARGIN = 4.0;
 
@@ -130,6 +132,15 @@ public final class MeterEstimator {
     private static final int BARS_FOR_A_READING = 4;
 
     private MeterEstimator() {
+    }
+
+    /** The longest bar a reading may name, which sets how long a reading needs. */
+    private static int longestCandidate() {
+        int longest = 0;
+        for (int candidate : CANDIDATES) {
+            longest = Math.max(longest, candidate);
+        }
+        return longest;
     }
 
     /**
@@ -232,8 +243,7 @@ public final class MeterEstimator {
         int firstBeat = 1;
         int lastBeat = beatTimes.size() - 2;
         int usable = lastBeat - firstBeat + 1;
-        if (usable < BARS_FOR_A_READING * CANDIDATES[CANDIDATES.length - 1]
-                || chroma.frameCount() == 0) {
+        if (usable < BARS_FOR_A_READING * longestCandidate() || chroma.frameCount() == 0) {
             return new Reading(0, 0, 0, 0, 0, 0, Math.max(0, usable));
         }
         if (!chroma.isBeatSynchronous() || chroma.frameCount() != beatTimes.size() - 1) {
