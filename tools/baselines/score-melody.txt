@@ -2,12 +2,16 @@ Melody, note by note against each package's own MIDI melody track
 (seconds throughout: the beat grid is scored by the chart harnesses)
 (a package with a band under the melody is a control, not a target:
  the tracker is monophonic and reads the loudest periodic line)
+  blues-compound-e-126: no melody track; not scored
+  blues-shuffle-e-84: no melody track; not scored
   hiphop-m7vamp-bbm-90: notes=137/99  F1@50ms 0.0%  F1@100ms 0.0%  pitch 0.0%  voiced 30.9%
   melody-level1-c-96: notes=96/96  F1@50ms 88.5%  F1@100ms 100.0%  pitch 96.0%  voiced 99.2%
   melody-level2-g-84: notes=112/113  F1@50ms 88.0%  F1@100ms 99.6%  pitch 96.9%  voiced 99.6%
   melody-level2pad-g-84: notes=133/113  F1@50ms 72.4%  F1@100ms 87.0%  pitch 91.6%  voiced 98.5%
   melody-level3-am-108: notes=74/74  F1@50ms 97.3%  F1@100ms 100.0%  pitch 97.6%  voiced 99.7%
   melody-level4-f-126: notes=94/95  F1@50ms 94.2%  F1@100ms 98.4%  pitch 95.8%  voiced 98.9%
+  pop-68-twobar-am-144: no melody track; not scored
+  pop-68-vamp-am-144: no melody track; not scored
   pop-add9-g-96: no melody track; not scored
   pop-add9-triads-g-96: no melody track; not scored
   pop-axis-g-116: notes=151/135  F1@50ms 0.0%  F1@100ms 3.5%  pitch 2.7%  voiced 46.0%
@@ -19,4 +23,5 @@ Melody, note by note against each package's own MIDI melody track
   pop-sus-a-104: no melody track; not scored
   pop-sus-triads-a-104: no melody track; not scored
   pop-threechord-c-108: notes=94/88  F1@50ms 0.0%  F1@100ms 2.2%  pitch 1.9%  voiced 39.4%
+  pop-waltz-d-108: no melody track; not scored
   rocknroll-12bar-a-168: notes=23/180  F1@50ms 0.0%  F1@100ms 0.0%  pitch 0.0%  voiced 8.4%
