@@ -5,7 +5,7 @@ samples with known ground truth:
   slow-68-40.mp3: bars=121  root 117.0/121 (96.7%)  root+quality 99.0/121 (81.8%)  split 2  N.C. 0.0% of 372s
   g-blues-shuffle-cc.mp3: bars=136  root 131.0/136 (96.3%)  root+quality 100.0/136 (73.5%)  split 0  N.C. 0.5% of 316s
   bm-blues-slow.mp3: bars=124  root 115.0/124 (92.7%)  root+quality 95.0/124 (76.6%)  split 4  N.C. 0.1% of 336s
-  cm-blues-68-95.mp3: bars=91  root 31.0/91 (34.1%)  root+quality 23.0/91 (25.3%)  split 0  N.C. 1.4% of 347s
+  cm-blues-68-95.mp3: bars=183  root 72.0/183 (39.3%)  root+quality 59.5/183 (32.5%)  split 10  N.C. 1.4% of 347s
   waltz-am-e7-160.mp3: bars=278  root 140.0/278 (50.4%)  root+quality 140.0/278 (50.4%)  split 0  N.C. 0.4% of 319s
   f-blues-swing-170.mp3: bars=111  root 24.5/111 (22.1%)  root+quality 14.0/111 (12.6%)  split 7  N.C. 0.7% of 316s
   jazz-251-c-140.mp3: bars=175  root 68.5/175 (39.1%)  root+quality 53.0/175 (30.3%)  split 5  N.C. 0.3% of 304s
@@ -20,7 +20,7 @@ bar phase the rows above rest on, at the estimator's own confidence in it (a pha
   phase slow-68-40.mp3: beat 0 of 6 at 0.3733  root 96.7%  best beat 5 at 99.2%
   phase g-blues-shuffle-cc.mp3: beat 0 of 4 at 0.3827  root 96.3%  best beat 3 at 97.1%
   phase bm-blues-slow.mp3: beat 5 of 6 at 0.3500  root 92.7%  best beat 2 at 99.2%
-  phase cm-blues-68-95.mp3: beat 0 of 4 at 0.3500  root 34.1%  best beat 1 at 41.8%
+  phase cm-blues-68-95.mp3: beat 0 of 2 at 0.4088  root 39.3%  best beat 0 at 39.3%
   phase waltz-am-e7-160.mp3: beat 0 of 3 at 0.4216  root 50.4%  best beat 1 at 50.5%
   phase f-blues-swing-170.mp3: beat 0 of 4 at 0.3757  root 22.1%  best beat 3 at 25.9%
   phase jazz-251-c-140.mp3: beat 2 of 4 at 0.3532  root 39.1%  best beat 1 at 43.2%
@@ -29,20 +29,20 @@ bar phase the rows above rest on, at the estimator's own confidence in it (a pha
   phase bossa-cm.mp3: beat 0 of 4 at 0.3500  root 24.5%  best beat 2 at 27.8%
   phase pop-c-g-am-f-120.mp3: beat 0 of 4 at 0.4299  root 100.0%  best beat 0 at 100.0%
 meters, against the meter each samples/list.txt entry states:
-  meter blues-a-90bpm.mp3: 4/4 at 90%  pulses/bar 4  want 4/4  OK
+  meter blues-a-90bpm.mp3: 4/4 at 55%  pulses/bar 4  want 4/4  OK
   meter blues-shuffle-a-106bpm.mp3: 4/4 at 84%  pulses/bar 4  want 4/4  OK
-  meter blues-e-90bpm.mp3: 4/4 at 90%  pulses/bar 4  want 4/4  OK
+  meter blues-e-90bpm.mp3: 4/4 at 67%  pulses/bar 4  want 4/4  OK
   meter slow-68-40.mp3: 6/8 at 76%  pulses/bar 6  want 6/8  OK
   meter g-blues-shuffle-cc.mp3: 4/4 at 90%  pulses/bar 4  want 4/4  OK
-  meter fm7-vamp-110.mp3: 4/4 at 63%  pulses/bar 4  want 4/4  OK
-  meter eb7-vamp-130.mp3: 4/4 at 90%  pulses/bar 4  want 4/4  OK
+  meter fm7-vamp-110.mp3: 4/4 at 50%  pulses/bar 4  want 4/4  OK
+  meter eb7-vamp-130.mp3: 4/4 at 53%  pulses/bar 4  want 4/4  OK
   meter bossa-cm.mp3: 4/4 at 59%  pulses/bar 4  want 4/4  OK
-  meter cm-blues-68-95.mp3: 4/4 at 53%  pulses/bar 4  want 6/8  WRONG
+  meter cm-blues-68-95.mp3: 6/8 at 90%  pulses/bar 2  want 6/8  OK
   meter waltz-am-e7-160.mp3: 3/4 at 90%  pulses/bar 3  want 3/4  OK
-  meter f-blues-swing-170.mp3: 4/4 at 71%  pulses/bar 4  want 4/4  OK
+  meter f-blues-swing-170.mp3: 4/4 at 53%  pulses/bar 4  want 4/4  OK
   meter jazz-251-c-140.mp3: 4/4 at 61%  pulses/bar 4  want 4/4  OK
-  meter ballad-wine-roses-65.mp3: 4/4 at 81%  pulses/bar 4  want 4/4  OK
-  meter pop-c-g-am-f-120.mp3: 4/4 at 90%  pulses/bar 4  want 4/4  OK
+  meter ballad-wine-roses-65.mp3: 4/4 at 52%  pulses/bar 4  want 4/4  OK
+  meter pop-c-g-am-f-120.mp3: 4/4 at 89%  pulses/bar 4  want 4/4  OK
   meter pop-am-f-c-g-144.mp3: 4/4 at 90%  pulses/bar 4  want 4/4  OK
 keys, against the expected key for each file:
   key blues-a-90bpm.mp3: A major at 64%  want A major  OK
