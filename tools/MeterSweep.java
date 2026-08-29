@@ -144,8 +144,9 @@ public final class MeterSweep {
      * {@code tools/score-samples.py} scores the same truth, which is what makes
      * a regression here fail a gate rather than only print differently.
      */
-    private static final List<Job> LOCAL_METERS =
-            List.of(new Job(LOCAL, "balorda-nostalgia.mp3", "6/8"));
+    private static final List<Job> LOCAL_METERS = List.of(
+            new Job(LOCAL, "balorda-nostalgia.mp3", "6/8"),
+            new Job(LOCAL, "il-filo-rosso.mp3", "6/8"));
 
     /**
      * Every recording under {@code uncommitted/}, present only on the machine
@@ -159,18 +160,26 @@ public final class MeterSweep {
      */
     private static List<Job> localJobs() {
         Path corpus = Path.of(LOCAL);
-        if (!Files.isDirectory(corpus)) {
-            return List.of();
+        List<Job> jobs = new ArrayList<>();
+        if (Files.isDirectory(corpus)) {
+            try (Stream<Path> files = Files.list(corpus)) {
+                files.filter(file -> file.getFileName().toString().endsWith(".mp3"))
+                        .sorted(Comparator.comparing(Path::getFileName))
+                        .map(file -> new Job(LOCAL, file.getFileName().toString(),
+                                confirmedMeter(file.getFileName().toString())))
+                        .forEach(jobs::add);
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
+            }
         }
-        try (Stream<Path> files = Files.list(corpus)) {
-            return files.filter(file -> file.getFileName().toString().endsWith(".mp3"))
-                    .sorted(Comparator.comparing(Path::getFileName))
-                    .map(file -> new Job(LOCAL, file.getFileName().toString(),
-                            confirmedMeter(file.getFileName().toString())))
-                    .toList();
-        } catch (IOException e) {
-            throw new UncheckedIOException(e);
-        }
+        // A stated meter whose file the listing did not turn up is a row this
+        // sweep owes, so it is added here to be reported as absent. Leaving the
+        // join one-directional would answer a mistyped name and an unfetched
+        // recording with the silence of a corpus that states nothing.
+        LOCAL_METERS.stream()
+                .filter(stated -> jobs.stream().noneMatch(job -> job.file().equals(stated.file())))
+                .forEach(jobs::add);
+        return jobs;
     }
 
     /** The meter confirmed for a local recording, or none. */

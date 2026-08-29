@@ -174,10 +174,7 @@ KEYS = {
 # cycles, so a reading that names one of them a compound meter is wrong by the
 # corpus's own truth however plausible the subdivision looks.
 #
-# Each carries where its recording lives, as the two tables below do: a meter
-# confirmed by ear for commercial audio is truth this file may hold while the
-# recording itself stays in uncommitted/ (CLAUDE.md), and a real mix is what
-# the column is ultimately a claim about.
+# Each carries where its recording lives, as the two tables below do.
 METERS = {
     "blues-a-90bpm.mp3": ("samples", "4/4"),
     "blues-shuffle-a-106bpm.mp3": ("samples", "4/4"),
@@ -195,6 +192,7 @@ METERS = {
     "pop-c-g-am-f-120.mp3": ("samples", "4/4"),
     "pop-am-f-c-g-144.mp3": ("samples", "4/4"),
     "balorda-nostalgia.mp3": ("uncommitted", "6/8"),
+    "il-filo-rosso.mp3": ("uncommitted", "6/8"),
 }
 
 # Recordings a musician has confirmed hold no minor chord anywhere, with where

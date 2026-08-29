@@ -975,6 +975,29 @@ class VttConversion(unittest.TestCase):
             vtt.convert(text, set()))
 
 
+class ConfirmedMeters(unittest.TestCase):
+    """The meter a musician confirmed for a local recording is written twice --
+    in score-samples.py, which gates it, and in tools/MeterSweep.java, which is
+    the instrument the estimator's constants are read from. A fact in two files
+    is a fact that can disagree with itself, so they are held to each other
+    here rather than to a third careful edit (#725 round 2)."""
+
+    SWEEP_ROW = re.compile(r'new\s+Job\(\s*LOCAL\s*,\s*"([^"]+)"\s*,\s*"([^"]*)"\s*\)')
+
+    def sweep_table(self) -> dict[str, str]:
+        source = java_source("tools/MeterSweep.java")
+        body = re.search(r"LOCAL_METERS\s*=(.*?);", source, re.DOTALL)
+        self.assertIsNotNone(body, "no LOCAL_METERS in MeterSweep.java")
+        rows = self.SWEEP_ROW.findall(body.group(1))
+        self.assertTrue(rows, "LOCAL_METERS holds no row this shape can read")
+        return dict(rows)
+
+    def test_the_two_tables_state_the_same_meters(self):
+        scored = {name: want for name, (where, want) in samples.METERS.items()
+                  if where == "uncommitted"}
+        self.assertEqual(scored, self.sweep_table())
+
+
 class Keying(unittest.TestCase):
     """The gate keys each line on the text before its first colon, and reads
     a line as a row when it carries '.mp3:' or is an indented '  name: '. Both

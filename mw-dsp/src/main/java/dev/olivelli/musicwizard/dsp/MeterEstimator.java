@@ -448,9 +448,8 @@ public final class MeterEstimator {
      * <p>Three pulses is 3/4. Six is the tracker on a subdivision rather than on
      * the counted beat, and which meter that is comes from how the six group —
      * in two threes, which is 6/8, or in three twos, which is 3/4 — read from the
-     * same harmonic statistic, there being nothing below the pulse left to hear.
-     * Both divide six, so a bar that marks nothing inside itself scores them
-     * alike. Nothing about the bar lines turns on it: 3/4 and 6/8 hold the same
+     * same harmonic statistic. Both divide six, so a bar that marks nothing
+     * inside itself scores them alike. Nothing about the bar lines turns on it: 3/4 and 6/8 hold the same
      * three quarter notes, so at six pulses to a bar they agree on every bar
      * line and on the pulse, and differ only in what is printed.
      */
