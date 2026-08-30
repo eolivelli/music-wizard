@@ -64,6 +64,8 @@ keys, against the expected key for each file:
   key footprints-200.mp3: C minor at 23%  want C minor  OK
   key pop-c-g-am-f-120.mp3: C major at 16%  want C major  OK
   key pop-am-f-c-g-144.mp3: C major at 10%  want A minor  WRONG
+  key la-canzone-del-sole.mp3: A major at 9%  want A major  OK
+  key la-canzone-del-sole-ab.mp3: Ab major at 19%  want Ab major  OK
 minor-quality seconds where a musician confirms the recording holds no minor chord (want zero):
   minor la-canzone-del-sole.mp3: 19.9s of 325s (6.1%)  spans 26/302  m 14.3s, m7 4.7s, m6 0.6s, m7b5 0.3s
   minor johnny-b-goode.mp3: 3.2s of 160s (2.0%)  spans 5/88  m7 2.9s, m7b5 0.3s

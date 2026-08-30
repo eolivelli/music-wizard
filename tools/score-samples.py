@@ -114,9 +114,11 @@ BENCHMARKS = {
         "C G Am F",
 }
 
-# The key each file is in, from samples/list.txt -- read off what it states,
-# which for some files is a key and for others the chords and the framing. Where
-# it names no mode the reading is #275's.
+# The key each file is in, from its own list.txt -- read off what that entry
+# states, which for some files is a key and for others the chords and the
+# framing. Where it names no mode the reading is #275's. Each carries where its
+# recording lives, as the tables below do, so a key an ear confirmed for a
+# commercial recording reaches a row instead of being unreachable here (#729).
 #
 # Two of these rows are weaker than the rest and it is worth knowing which. The
 # one-chord vamps cannot fail for a recording the estimator hears as one chord,
@@ -126,48 +128,57 @@ BENCHMARKS = {
 # how far off it is. And the twelve-bar blues rows are one shape transposed, so
 # they are several readings of one question rather than several questions.
 #
-# The last two are the pair that is the point of the exercise: the same four
-# chords framed on C and framed on A minor. They share every note, so nothing
-# in the harmony separates them and only where the loop begins and ends does --
-# which is the least reliable thing on a recording. Expect the estimator to say
-# so in its confidence rather than to get both.
+# The two pop-*-120 and -144 rows are the pair that is the point of the
+# exercise: the same four chords framed on C and framed on A minor. They share
+# every note, so nothing in the harmony separates them and only where the loop
+# begins and ends does -- which is the least reliable thing on a recording.
+# Expect the estimator to say so in its confidence rather than to get both.
 #
 # That is the shape of most rows the committed baseline reads WRONG: they name
 # the relative of the key wanted and report a low confidence for it, so the
 # signature is right and which of the pair is home is not, which is #277 rather
-# than a defect in the table. It is not the shape of all of them. bossa-cm reads
-# F minor against C minor -- four flats against three, so the signature itself
-# is wrong, and its signature confidence says so where its tonic confidence does
-# not. A row that reads WRONG has to be looked at before it is filed under #277.
+# than a defect in the table. It is not the only shape a WRONG row takes -- a
+# signature can itself be wrong, and a dominant can be named as the tonic -- so
+# a row that reads WRONG is looked at before it is filed under #277.
+#
+# The local rows are one Battisti performance from two uploads, each with a
+# tonic confirmed by ear against a piano. #376 is open on them: the key came
+# back a fifth from home on the original and on its tonic on the transposed
+# upload, one performance read two ways, so the pair is a control on the
+# estimator rather than two recordings. What a reading of the transposed upload
+# is a fact about is that upload, never the song.
 KEYS = {
-    "blues-a-90bpm.mp3": "A major",
-    "blues-shuffle-a-106bpm.mp3": "A major",
-    "blues-e-90bpm.mp3": "E major",
-    "slow-68-40.mp3": "A major",
-    "g-blues-shuffle-cc.mp3": "G major",
-    "fm7-vamp-110.mp3": "F minor",
-    "eb7-vamp-130.mp3": "Eb major",
-    "bossa-cm.mp3": "C minor",
-    "bm-blues-slow.mp3": "B minor",
-    "cm-blues-68-95.mp3": "C minor",
-    "waltz-am-e7-160.mp3": "A minor",
-    "f-blues-swing-170.mp3": "F major",
-    "jazz-251-c-140.mp3": "C major",
-    "ballad-wine-roses-65.mp3": "F major",
-    "footprints-200.mp3": "C minor",
-    "pop-c-g-am-f-120.mp3": "C major",
-    "pop-am-f-c-g-144.mp3": "A minor",
+    "blues-a-90bpm.mp3": ("samples", "A major"),
+    "blues-shuffle-a-106bpm.mp3": ("samples", "A major"),
+    "blues-e-90bpm.mp3": ("samples", "E major"),
+    "slow-68-40.mp3": ("samples", "A major"),
+    "g-blues-shuffle-cc.mp3": ("samples", "G major"),
+    "fm7-vamp-110.mp3": ("samples", "F minor"),
+    "eb7-vamp-130.mp3": ("samples", "Eb major"),
+    "bossa-cm.mp3": ("samples", "C minor"),
+    "bm-blues-slow.mp3": ("samples", "B minor"),
+    "cm-blues-68-95.mp3": ("samples", "C minor"),
+    "waltz-am-e7-160.mp3": ("samples", "A minor"),
+    "f-blues-swing-170.mp3": ("samples", "F major"),
+    "jazz-251-c-140.mp3": ("samples", "C major"),
+    "ballad-wine-roses-65.mp3": ("samples", "F major"),
+    "footprints-200.mp3": ("samples", "C minor"),
+    "pop-c-g-am-f-120.mp3": ("samples", "C major"),
+    "pop-am-f-c-g-144.mp3": ("samples", "A minor"),
+    "la-canzone-del-sole.mp3": ("uncommitted", "A major"),
+    "la-canzone-del-sole-ab.mp3": ("uncommitted", "Ab major"),
 }
 
 # The meter each file is in: an entry names its meter where it is not four, so
 # the rows below that say 4/4 are the entries that say nothing and whose grids
 # are written in bars of four.
 #
-# Two files the KEYS table covers are deliberately absent. bm-blues-slow and
-# footprints-200 have a bar length that was read rather than heard and a
-# signature that was not: 3/4 and 6/8 bar the same three quarter notes, and
-# "in three" does not choose between 3/4 and 6/4, so scoring either would be
-# scoring MW against its own reading. Their entries say so.
+# A file the KEYS table covers is absent here wherever its entry states no
+# meter an ear confirmed. On bm-blues-slow and footprints-200 that is a
+# decision rather than a silence: they have a bar length that was read rather
+# than heard and a signature that was not, since 3/4 and 6/8 bar the same three
+# quarter notes and "in three" does not choose between 3/4 and 6/4, so scoring
+# either would be scoring MW against its own reading. Their entries say so.
 #
 # The shuffles are the guard this column exists for. Their swing is a triple
 # subdivision of the pulse, and they are barred in four by their own confirmed
@@ -764,14 +775,14 @@ def main() -> None:
 
     print("keys, against the expected key for each file:")
     missing = []
-    for name, want in KEYS.items():
-        doc = doc_for(name)
+    for name, (where, want) in KEYS.items():
+        doc = doc_for(name, where)
         if doc is None:
-            missing.append(name)
+            missing.append((name, where))
         else:
-            score_key(REPO / "samples" / name, doc, want)
-    for name in missing:
-        print(missing_line(f"key {name}"))
+            score_key(REPO / where / name, doc, want)
+    for name, where in missing:
+        print(missing_line(f"key {name}", where))
 
     print("minor-quality seconds where a musician confirms the recording holds"
           " no minor chord (want zero):")
