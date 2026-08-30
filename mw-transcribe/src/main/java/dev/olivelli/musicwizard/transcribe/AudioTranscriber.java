@@ -730,8 +730,8 @@ public final class AudioTranscriber {
      * <p>The relations a beat is actually divided or multiplied by, for the
      * reason {@link BeatTracker}'s own table gives: a rate that is no whole
      * subdivision of the beat is not a rate the music has. Those entries plus
-     * {@code 1}, which is the answer that records nothing, and its tolerance and
-     * relative-distance rule unchanged. A second copy of a musical fact; #371.
+     * {@code 1}, and its tolerance and relative-distance rule unchanged. A
+     * second copy of a musical fact; #371.
      */
     private static final double[] PULSE_RELATIONS =
             {1.0 / 4, 1.0 / 3, 1.0 / 2, 2.0 / 3, 1.0, 3.0 / 2, 2.0, 3.0, 4.0};
@@ -740,15 +740,14 @@ public final class AudioTranscriber {
     private static final double RELATION_TOLERANCE = 0.05;
 
     /**
-     * How many tracked pulses fill a bar, where a supplied tempo settles it —
-     * the only measurement there is, since the tracker cannot know it landed
-     * on a sub-multiple (#353); the ratio of corrected rate to kept pulses is
-     * the pulse (#139). Empty unless the ratio is a musical relation (a nudge
-     * from 105 to 106 is not an octave error) <em>and</em> a whole number of
-     * such pulses fills a bar — the two ways a tempo leaves the question open
-     * for the meter reading to answer (#736). A bar count rather than a pulse, so no rounding step sits between
-     * two figures that must agree exactly. Package-private for the ratios a
-     * recording cannot easily be made to produce.
+     * How many tracked pulses fill a bar, where a supplied tempo settles it:
+     * the ratio of corrected rate to kept pulses is the pulse (#139). Empty
+     * unless the ratio is a musical relation (a nudge from 105 to 106 is not
+     * an octave error) <em>and</em> a whole number of such pulses fills a bar
+     * — the two ways a tempo leaves the question open for the meter reading to
+     * answer (#736). A bar count rather than a pulse, so no rounding step sits
+     * between two figures that must agree exactly. Package-private for the
+     * ratios a recording cannot easily be made to produce.
      */
     static OptionalInt trackedPulsesPerBar(
             Double tempoOverride, List<Double> beatTimes, TimeSignature meter) {

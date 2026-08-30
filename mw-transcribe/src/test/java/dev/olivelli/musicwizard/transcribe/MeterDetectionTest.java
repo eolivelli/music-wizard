@@ -295,12 +295,12 @@ class MeterDetectionTest {
     }
 
     @Test
-    @DisplayName("a supplied tempo decides the pulse count alone, and the two axes agree")
-    void aSuppliedTempoDecidesAlone() {
-        // The tempo says the pulse is the counted beat -- the ratio of one that
-        // trackedPulsesPerBar reports as nothing to record -- and the reading
-        // says the bar holds six of them. Letting the reading answer over it
-        // barred the grid at the reading's length and the map at the tempo's.
+    @DisplayName("a supplied tempo decides the pulse count, and the two axes agree")
+    void aSuppliedTempoDecidesTheCount() {
+        // The tempo names the counted beat and the reading says the bar holds
+        // six pulses; both cannot bar one file. The tempo decides, being a
+        // correction rather than an estimate, and what that has to leave behind
+        // is one bar length -- the grid's bar lines and the map's.
         AudioBuffer audio = clickTrackWithBarsOf(6);
         Score score = new AudioTranscriber().transcribe(audio,
                 new AudioTranscriber.Options(120.0, TimeSignature.THREE_FOUR, null));
@@ -316,8 +316,7 @@ class MeterDetectionTest {
         // A correction of a tenth is no relation a pulse and a counted beat
         // stand in, so the tempo says nothing about how the bar is filled and
         // the reading's own count still fills it. This is the ordinary shape of
-        // a tempo correction, and reading it as the counted beat barred the
-        // recording at a fraction of its length with nothing typed at all.
+        // a tempo correction, and the reading is all there is to bar it with.
         AudioBuffer audio = clickTrackWithBarsOf(6);
         Score read = new AudioTranscriber().transcribe(audio, AudioTranscriber.Options.defaults());
         double nudged = 1.1 * read.tempoMap().initialTimeSignature()

@@ -191,8 +191,7 @@ length hung on the phase the downbeats agree on (#233).
   typed and only the name on the page changes (#736). A typed bar of another
   length takes its own counted beat for the pulse, as before; where that drops
   a reading that had put the tracker below the counted beat, the run says so.
-  `--tempo` is what states the pulse where the reading has it wrong, and it is
-  read alone: a tempo and a reading never decide this together.
+  `--tempo` is what states the pulse where the reading has it wrong.
   `--time-signature` is also the only route to 12/8, 3/8 and the irregular
   meters.
 
