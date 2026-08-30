@@ -1056,9 +1056,8 @@ class ConfirmedMeters(unittest.TestCase):
 
 
 class MeterReadingRow(unittest.TestCase):
-    """#703: the reading's confidence comes off the score file now, not off
-    `analyze`'s printed line, so this pins what the file has to hold and how
-    the figure is rounded."""
+    """#703: the reading's confidence comes off the score file, so this pins
+    what the file has to hold and how the figure is rounded."""
 
     @staticmethod
     def doc(change: dict | None) -> dict:

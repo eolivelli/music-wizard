@@ -2103,7 +2103,7 @@ final class ReportPhases {
             case MEASURED -> "measured from the signal";
             case DECLARED -> "declared by the source file";
             case SUPPLIED -> "supplied by the user";
-            case ASSUMED -> "assumed, because nothing stated or measured one";
+            case ASSUMED -> "assumed, a documented default";
             case DERIVED -> "derived from other facts in the score";
             case UNKNOWN -> "of unrecorded origin";
         };

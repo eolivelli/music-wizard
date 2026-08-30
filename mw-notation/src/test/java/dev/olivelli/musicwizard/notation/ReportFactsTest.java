@@ -219,7 +219,7 @@ class ReportFactsTest {
         Score score = Score.empty(TempoMap.constant(
                 120, TimeSignature.FOUR_FOUR, Provenance.ASSUMED), 4);
         assertThat(AnalysisReport.toHtml(score, AnalysisReport.Recording.unknown()))
-                .contains("assumed, because nothing stated or measured one");
+                .contains("assumed, a documented default");
     }
 
     private static NoteTrack track(Note... notes) {

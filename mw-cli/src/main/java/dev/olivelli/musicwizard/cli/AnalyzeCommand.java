@@ -89,13 +89,14 @@ final class AnalyzeCommand implements Callable<Integer> {
     /**
      * What the MIDI path's figures are, exactly. The heading names both
      * sources because {@link MidiTranscriber} substitutes the MIDI defaults
-     * where a file declares nothing. Which of the two a row is comes from the
-     * value's own {@link Provenance} now that the tempo (#120) and the meter
-     * (#119) both carry one, so every row under the heading says for itself
-     * which source it came from.
+     * for whatever the file leaves it without -- including a declaration the
+     * model cannot express, which is why neither the heading nor a row states
+     * a reason for the substitution. Which of the two a row is comes from the
+     * value's own {@link Provenance}, now that the tempo (#120) and the meter
+     * (#119) both carry one.
      */
     private static final String DECLARED_HEADING =
-            "From the file, or the MIDI default where it declares nothing:";
+            "From the file, or the MIDI default:";
 
     /** How many part names to print before summarising the rest. */
     private static final int MAX_LISTED_PARTS = 6;
