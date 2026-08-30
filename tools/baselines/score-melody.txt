@@ -10,6 +10,7 @@ Melody, note by note against each package's own MIDI melody track
   melody-level2pad-g-84: notes=133/113  F1@50ms 72.4%  F1@100ms 87.0%  pitch 91.6%  voiced 98.5%
   melody-level3-am-108: notes=74/74  F1@50ms 97.3%  F1@100ms 100.0%  pitch 97.6%  voiced 99.7%
   melody-level4-f-126: notes=94/95  F1@50ms 94.2%  F1@100ms 98.4%  pitch 95.8%  voiced 98.9%
+  pop-68-threebar-am-144: no melody track; not scored
   pop-68-twobar-am-144: no melody track; not scored
   pop-68-vamp-am-144: no melody track; not scored
   pop-add9-g-96: no melody track; not scored
