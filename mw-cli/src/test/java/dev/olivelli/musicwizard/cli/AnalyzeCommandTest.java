@@ -189,4 +189,36 @@ class AnalyzeCommandTest {
             }
         }
     }
+
+    /**
+     * That the unit is stated where the option is reached for.
+     *
+     * <p>The wording is not the contract and these substrings are not a golden
+     * file; what is asserted is that a user reading only {@code --help} is told
+     * which meter counts the figure they are about to type, and that MW may have
+     * chosen that meter (#705). Rendered rather than read off the option model,
+     * because a description that never reaches the usage says nothing.
+     */
+    @Nested
+    @DisplayName("the corrections' help")
+    class CorrectionHelp {
+
+        /** The usage as one line: picocli wraps, and a claim can straddle a wrap. */
+        private String usage() {
+            return CliRunner.run("analyze", "--help").all().replaceAll("\\s+", " ");
+        }
+
+        @Test
+        @DisplayName("--tempo says whose beat it is counted in, and that MW may have picked it")
+        void tempoNamesTheMeterThatCountsIt() {
+            assertThat(usage()).contains("Which meter counts it is what --time-signature says,"
+                    + " or what MW read off the recording when nothing was typed");
+        }
+
+        @Test
+        @DisplayName("--time-signature says it pins that unit")
+        void meterSaysItPinsTheUnit() {
+            assertThat(usage()).contains("Also pins the beat --tempo is counted in.");
+        }
+    }
 }

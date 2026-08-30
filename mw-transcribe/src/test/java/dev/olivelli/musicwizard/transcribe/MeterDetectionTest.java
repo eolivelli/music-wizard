@@ -17,6 +17,7 @@
 package dev.olivelli.musicwizard.transcribe;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.withinPercentage;
 
 import dev.olivelli.musicwizard.audio.AudioBuffer;
 import dev.olivelli.musicwizard.core.model.BeatGrid;
@@ -63,6 +64,12 @@ class MeterDetectionTest {
             }
         }
         return seen;
+    }
+
+    /** Seconds one bar lasts according to the map. */
+    private static double barSeconds(Score score) {
+        return score.tempoMap().beatsToSeconds(
+                score.tempoMap().initialTimeSignature().quarterBeatsPerBar());
     }
 
     @Test
@@ -129,6 +136,31 @@ class MeterDetectionTest {
         String counted = String.format(Locale.ROOT, ", %.1f beats/min",
                 score.tempoMap().initialTimeSignature().countedTempo(score.estimatedTempo()));
         assertThat(said).anyMatch(line -> line.startsWith("meter ") && line.endsWith(counted));
+    }
+
+    @Test
+    @DisplayName("the rate a read meter is printed in is the rate that types back")
+    void thePrintedRateTypesBack() {
+        // What --tempo's help promises (#705): the unit follows the meter even
+        // when MW chose the meter itself, so the figure the run showed
+        // reproduces the run. This fixture is the case where that could go
+        // wrong -- the tracker is on the eighth, so the pulse rate and the
+        // counted rate are different numbers and only one of them types back.
+        Score read = new AudioTranscriber()
+                .transcribe(clickTrackWithBarsOf(6), AudioTranscriber.Options.defaults());
+        TimeSignature meter = read.tempoMap().initialTimeSignature();
+        double printed = meter.countedTempo(read.estimatedTempo());
+
+        Score typed = new AudioTranscriber().transcribe(clickTrackWithBarsOf(6),
+                new AudioTranscriber.Options(printed, null, null));
+
+        assertThat(typed.tempoMap().initialTimeSignature()).isEqualTo(meter);
+        assertThat(positions(typed)).containsExactlyElementsOf(positions(read));
+        // Read as quarter notes instead, the same figure would stretch the bar
+        // by half again, which this tolerance is nowhere near admitting. It is
+        // not zero because the read map carries a lead-in the constant one does
+        // not.
+        assertThat(barSeconds(typed)).isCloseTo(barSeconds(read), withinPercentage(5.0));
     }
 
     @Test

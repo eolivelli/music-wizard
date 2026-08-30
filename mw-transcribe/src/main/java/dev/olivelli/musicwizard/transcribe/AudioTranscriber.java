@@ -96,8 +96,11 @@ public final class AudioTranscriber {
     /**
      * Optional overrides for the stages that most often need correcting.
      *
-     * @param tempoOverride       tempo in the meter's <em>counted</em> beats per
-     *                            minute -- dotted quarters in 6/8, not quarters.
+     * @param tempoOverride       tempo in the <em>counted</em> beats per minute of
+     *                            whichever meter {@code timeSignature} leaves in
+     *                            force -- dotted quarters in 6/8, not quarters, and
+     *                            a meter read from the recording counts it exactly
+     *                            as a supplied one does (#705).
      *                            The same unit a metronome and this class's own
      *                            progress output use, and the same one
      *                            {@link TempoMap#constantPulse} takes. Reading it

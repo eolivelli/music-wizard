@@ -105,14 +105,19 @@ final class AnalyzeCommand implements Callable<Integer> {
     Path workspaceDirectory;
 
     @Option(names = "--tempo", paramLabel = "BPM",
-            description = "Force a tempo instead of tracking it, in counted beats "
-                    + "per minute (dotted quarters in 6/8, not quarters). Audio only: "
-                    + "a MIDI file states its own tempo.")
+            description = "Force a tempo instead of tracking it, in the beat its meter "
+                    + "is counted in (dotted quarters in 6/8, not quarters). Which meter "
+                    + "counts it is what --time-signature says, or what MW read off the "
+                    + "recording when nothing was typed, so pin the meter to pin the "
+                    + "unit. The run's meter line prints the rate in that same beat, so "
+                    + "the figure to type back is the one it showed. Audio only: a MIDI "
+                    + "file states its own tempo.")
     Double tempo;
 
     @Option(names = "--time-signature", paramLabel = "N/D",
-            description = "Force a time signature, e.g. 4/4 or 6/8. Audio only: "
-                    + "a MIDI file states its own meter.")
+            description = "Force a time signature, e.g. 4/4 or 6/8, instead of reading "
+                    + "one off the recording. Also pins the beat --tempo is counted in. "
+                    + "Audio only: a MIDI file states its own meter.")
     String timeSignature;
 
     @Option(names = "--first-downbeat", paramLabel = "SECONDS",
