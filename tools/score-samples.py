@@ -543,8 +543,9 @@ METER_LINE = re.compile(r"^meter \S+ \((\d+)% confidence\), [\d.]+ beats/min$")
 def printed_meter_confidence(printed: str) -> int | None:
     """What the run said the meter was worth, or None where it read none.
 
-    None is the honest answer for a run given `--time-signature`: nothing was
-    read, so there is nothing to be confident about. No row here supplies one.
+    None is the honest answer for a run given `--time-signature`: the meter is
+    the user's, so the line prints no confidence and there is none to report.
+    No row here supplies one.
     """
     for line in printed.splitlines():
         found = METER_LINE.match(line.strip())
