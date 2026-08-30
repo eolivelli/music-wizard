@@ -86,7 +86,6 @@ class MidiInputTest {
         return out.substring(start);
     }
 
-    /** Imports a fixture and returns its workspace directory. */
     private static void meta(Track track, long tick, int type, byte[] data) {
         try {
             track.add(new MidiEvent(new MetaMessage(type, data, data.length), tick));
@@ -95,6 +94,7 @@ class MidiInputTest {
         }
     }
 
+    /** Imports a fixture and returns its workspace directory. */
     private Path imported(Sequence sequence, String name) {
         Path source = fixture(sequence, name + ".mid");
         CliRunner.Result init = CliRunner.run(

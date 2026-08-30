@@ -94,9 +94,8 @@ public enum Provenance {
 
     /**
      * A documented default substituted where nothing usable was stated and
-     * nothing measured: the MIDI defaults, for a file that declares neither or
-     * declares one the model cannot express, and the tempo and meter of a run
-     * whose beat tracking found nothing to measure.
+     * nothing measured. Per value, not per input: a file that declares a tempo
+     * and no meter produces one of each.
      *
      * <p>Distinct from {@link #DECLARED} on purpose: a file that declares the
      * default value and a file that declares nothing produce the same number,
