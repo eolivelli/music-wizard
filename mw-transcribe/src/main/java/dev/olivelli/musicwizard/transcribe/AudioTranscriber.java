@@ -363,13 +363,14 @@ public final class AudioTranscriber {
 
         // The meter, read from the same beat-synchronous chroma the phase is
         // read from — and from the mix's own onset envelope, which is where how
-        // the pulse divides is read. Only where nothing was typed: a supplied
-        // meter is an instruction and wins outright, as a supplied downbeat does.
-        MeterEstimator.Estimate detected = settings.timeSignature() != null
-                ? null
-                : MeterEstimator.estimate(beatTimes, chroma, envelope);
-        TimeSignature meter = detected != null
-                ? detected.meter() : settings.timeSignatureOrDefault();
+        // the pulse divides is read. Read even where a meter was typed: the
+        // signature is an instruction and wins outright, as a supplied downbeat
+        // does, but the same reading carries how many tracked pulses fill a bar,
+        // and that is a fact about where the tracker landed rather than a rival
+        // signature (#736).
+        MeterEstimator.Estimate reading = MeterEstimator.estimate(beatTimes, chroma, envelope);
+        boolean suppliedMeter = settings.timeSignature() != null;
+        TimeSignature meter = suppliedMeter ? settings.timeSignature() : reading.meter();
 
         // How the tracked pulses bar the music where the pulse is not the
         // meter's counted beat. Two producers, and they are not the same
@@ -380,14 +381,26 @@ public final class AudioTranscriber {
         // map, whose lead-in is measured in tracked pulses too.
         OptionalInt correctedPulsesPerBar =
                 trackedPulsesPerBar(settings.tempoOverride(), beatTimes, meter);
+        int pulsesPerBar;
         if (correctedPulsesPerBar.isPresent()) {
+            pulsesPerBar = correctedPulsesPerBar.getAsInt();
             progress.accept(String.format(Locale.ROOT,
                     "the supplied tempo puts %d tracked beat%s in a bar, not %d",
-                    correctedPulsesPerBar.getAsInt(),
-                    correctedPulsesPerBar.getAsInt() == 1 ? "" : "s", meter.beatsPerBar()));
+                    pulsesPerBar, pulsesPerBar == 1 ? "" : "s", meter.beatsPerBar()));
+        } else {
+            OptionalInt readCount = readPulsesPerBar(reading, meter);
+            if (readCount.isEmpty() && !reading.pulseIsCountedBeat()) {
+                // The refusal, said rather than silent: a signature that cannot
+                // be counted in the pulses the recording bars itself in leaves
+                // the bar lines where the counted beat puts them, which is a
+                // worse answer than the reading and only the user can settle.
+                progress.accept(String.format(Locale.ROOT,
+                        "the recording bars in %d tracked beats, which a bar of %s cannot count;"
+                                + " barring in %d",
+                        reading.pulsesPerBar(), meter, meter.beatsPerBar()));
+            }
+            pulsesPerBar = readCount.orElse(meter.beatsPerBar());
         }
-        int pulsesPerBar = correctedPulsesPerBar
-                .orElseGet(() -> detected != null ? detected.pulsesPerBar() : meter.beatsPerBar());
         // Derived from the pair rather than from which producer spoke, so that
         // a bar can never be tiled by a pulse length no reader agrees with.
         OptionalDouble pulseQuarters = pulsesPerBar == meter.beatsPerBar()
@@ -402,10 +415,10 @@ public final class AudioTranscriber {
         // cases print the same facts and differ only in where the meter came
         // from.
         progress.accept(String.format(Locale.ROOT, "meter %s %s, %.1f beats/min", meter,
-                detected == null
+                suppliedMeter
                         ? "as supplied"
                         : String.format(Locale.ROOT, "(%.0f%% confidence)",
-                                100 * detected.confidence().value()),
+                                100 * reading.confidence().value()),
                 beatTimes.size() >= 2
                         ? BeatGrid.steadyPulseRate(beatTimes)
                                 * pulseQuarters.orElse(meter.beatUnitQuarters())
@@ -460,7 +473,7 @@ public final class AudioTranscriber {
                     downbeat.phase(), pulsesPerBar);
         }
 
-        recordBeats(beats, meter, pulsesPerBar, detected);
+        recordBeats(beats, meter, pulsesPerBar, suppliedMeter ? null : reading);
 
         progress.accept("estimating chords");
         ChordEstimator.Decoded decoded =
@@ -752,6 +765,26 @@ public final class AudioTranscriber {
                     : OptionalInt.empty();
         }
         return OptionalInt.empty();
+    }
+
+    /**
+     * How many tracked pulses the meter reading puts in a bar of the meter in
+     * force, where it says something that meter can be barred by.
+     *
+     * <p>The reading makes two claims and a typed signature overrules only one
+     * of them (#736). Which signature to write is the instruction's; how many
+     * tracked pulses a bar spans is a measurement of where the tracker landed,
+     * and it stays true under any signature those pulses can count. So the
+     * count is kept where the reading found the tracker on a subdivision — one
+     * that found it on the counted beat is restating the prior rather than
+     * measuring — and where the signature's own beats divide that count, a
+     * pulse that is no division of the counted beat being no pulse the music
+     * has.
+     */
+    static OptionalInt readPulsesPerBar(MeterEstimator.Estimate reading, TimeSignature meter) {
+        return !reading.pulseIsCountedBeat() && reading.pulsesPerBar() % meter.beatsPerBar() == 0
+                ? OptionalInt.of(reading.pulsesPerBar())
+                : OptionalInt.empty();
     }
 
     /**

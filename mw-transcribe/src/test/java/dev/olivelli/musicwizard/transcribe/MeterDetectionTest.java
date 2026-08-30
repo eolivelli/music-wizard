@@ -190,6 +190,80 @@ class MeterDetectionTest {
     }
 
     @Test
+    @DisplayName("a typed signature keeps the pulse count the recording was read to hold")
+    void aTypedMeterKeepsTheReadPulseCount() {
+        // The three ways of #736, on the fixture the tracker sits on the eighth
+        // of: a signature is an instruction about the signature, and the pulse
+        // count travels with neither it nor the tempo. Before this the middle
+        // row barred in two and was a third of the others' length.
+        AudioBuffer audio = clickTrackAfterSilence(6, 0.3);
+        Score read = new AudioTranscriber().transcribe(audio, AudioTranscriber.Options.defaults());
+        TimeSignature meter = read.tempoMap().initialTimeSignature();
+
+        Score typed = new AudioTranscriber()
+                .transcribe(audio, new AudioTranscriber.Options(null, meter, null));
+        Score typedWithTempo = new AudioTranscriber().transcribe(audio,
+                new AudioTranscriber.Options(
+                        meter.countedTempo(read.estimatedTempo()), meter, null));
+
+        assertThat(positions(read)).containsExactly(0, 1, 2, 3, 4, 5);
+        assertThat(positions(typed)).containsExactlyElementsOf(positions(read));
+        assertThat(positions(typedWithTempo)).containsExactlyElementsOf(positions(read));
+        assertThat(steadyBarSeconds(typed))
+                .isCloseTo(steadyBarSeconds(read), withinPercentage(1.0));
+        assertThat(steadyBarSeconds(typedWithTempo))
+                .isCloseTo(steadyBarSeconds(read), withinPercentage(1.0));
+    }
+
+    @Test
+    @DisplayName("the pulse count travels to any signature those pulses can count")
+    void theCountTravelsToAnotherSignature() {
+        // 3/4 and 6/8 hold the same three quarter notes, so the six eighths the
+        // recording bars itself in fill either -- what the instruction decides
+        // is which is written, and it does not touch where the bar lines fall.
+        AudioBuffer audio = clickTrackWithBarsOf(6);
+        Score read = new AudioTranscriber().transcribe(audio, AudioTranscriber.Options.defaults());
+
+        Score typed = new AudioTranscriber().transcribe(audio,
+                new AudioTranscriber.Options(null, TimeSignature.THREE_FOUR, null));
+
+        assertThat(typed.tempoMap().initialTimeSignature()).isEqualTo(TimeSignature.THREE_FOUR);
+        assertThat(positions(typed)).containsExactlyElementsOf(positions(read));
+        assertThat(steadyBarSeconds(typed))
+                .isCloseTo(steadyBarSeconds(read), withinPercentage(1.0));
+    }
+
+    @Test
+    @DisplayName("a pulse count the typed signature cannot count is refused, and said")
+    void aCountTheTypedSignatureCannotBar() {
+        List<String> said = new ArrayList<>();
+
+        Score score = new AudioTranscriber(said::add).transcribe(clickTrackWithBarsOf(6),
+                new AudioTranscriber.Options(null, TimeSignature.FOUR_FOUR, null));
+
+        // Four counted beats do not divide six tracked ones, so the pulse the
+        // count implies is no division of 4/4's beat and the bar stays on the
+        // counted beat.
+        assertThat(positions(score)).containsExactlyInAnyOrder(0, 1, 2, 3);
+        assertThat(said).anyMatch(line -> line.startsWith("the recording bars in 6 tracked beats"));
+    }
+
+    @Test
+    @DisplayName("a typed signature does not take the assumed bar length for a pulse count")
+    void theAssumptionIsNotAPulseCount() {
+        List<String> said = new ArrayList<>();
+
+        // Harmony every fourth beat reads as the four-pulse prior, which says
+        // the tracker is on the counted beat: nothing measured says otherwise,
+        // so 6/8 is barred in the two dotted quarters it counts.
+        Score score = new AudioTranscriber(said::add).transcribe(clickTrackWithBarsOf(4),
+                new AudioTranscriber.Options(null, TimeSignature.SIX_EIGHT, null));
+
+        assertThat(positions(score)).containsExactlyInAnyOrder(0, 1);
+        assertThat(said).noneMatch(line -> line.startsWith("the recording bars in"));
+    }
+
+    @Test
     @DisplayName("a typed meter is not reported as a reading")
     void aTypedMeterIsNotAReading() {
         List<String> said = new ArrayList<>();

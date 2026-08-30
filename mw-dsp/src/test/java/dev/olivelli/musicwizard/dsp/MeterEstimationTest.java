@@ -444,6 +444,36 @@ class MeterEstimationTest {
         }
 
         @Test
+        @DisplayName("every reading counts its own meter in whole beats")
+        void everyReadingBarsItsOwnMeter() {
+            double[] levels = {0, 0.4, 1, 3, 6, 40};
+            double[] divisions = {0, 0.5, 0.7, 1};
+            for (double atTwo : levels) {
+                for (double atThree : levels) {
+                    for (double atFour : levels) {
+                        for (double atSix : levels) {
+                            for (double inThree : divisions) {
+                                for (double inTwo : divisions) {
+                                    MeterEstimator.Estimate estimate = MeterEstimator.decide(
+                                            reading(atTwo, atThree, atFour, atSix,
+                                                    inThree, inTwo));
+                                    // A pulse count is only a count of a
+                                    // subdivision of the counted beat, which is
+                                    // what lets AudioTranscriber carry it under
+                                    // a signature the user typed (#736) -- and
+                                    // what keeps a run with nothing typed on the
+                                    // reading's own count whatever that rule is.
+                                    assertThat(estimate.pulsesPerBar()
+                                            % estimate.meter().beatsPerBar()).isZero();
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        @Test
         @DisplayName("a period outside the four this reads is not a question it answers")
         void unknownPeriod() {
             assertThatThrownBy(() -> reading(1, 1, 1, 1).at(5))
