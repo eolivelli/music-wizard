@@ -169,19 +169,26 @@ than of history. Each package's own row stands, and what these four were built
 to show is per package anyway: every suspended and every added-ninth bar is
 named as its plain triad.
 
-**Five packages carry a meter other than 4/4** (#702), and they are here for
+**Six packages carry a meter other than 4/4** (#702), and they are here for
 the meter detector rather than for the harmony stages. `pop-waltz-d-108` is the
 three-pulse bar on its own: bass on one, chord on two and three, and the hat on
-the counted beat and nothing between two beats. The other four are two pairs,
-and as with the pairs above the pairing is what they are for.
+the counted beat and nothing between two beats. The rest are a set of three and
+a pair, and as with the pairs above the grouping is what they are for.
 
-`pop-68-vamp-am-144` and `pop-68-twobar-am-144` are one 6/8 phrase at two
-harmonic rates — a chord to a bar, and the same chords each held for two bars —
-with key, tempo, seed, style, length and chords otherwise identical. The pair
-is what #712 was decided on. The first phrase is five bars long because the
-phrase length is what decides which bar lengths the harmony can speak for at
-all: an even phrase supports two bars, a phrase in threes supports three, and
-one of five supports neither.
+`pop-68-vamp-am-144`, `pop-68-twobar-am-144` and `pop-68-threebar-am-144` are
+one 6/8 phrase at three harmonic rates — a chord to a bar, the same chords each
+held for two bars, and each held for three — with key, tempo, seed, style and
+chords otherwise identical. The first two are what #712 was decided on. The
+first phrase is five bars long because the phrase length is what decides which
+bar lengths the harmony can speak for at all: an even phrase supports two bars,
+a phrase in threes supports three, and one of five supports neither.
+
+`pop-68-threebar-am-144` is what settled #727, and it is the one of the three
+whose bar count is not the others': three has to divide it, so it is sixty-three
+bars rather than sixty-four. Its chords move every six tracked pulses, which is
+the length a bar of six would also claim, and the two claims cannot both be
+right — a package stating one of them by construction is what the corpus had
+none of. The reading it forced is in `tools/MeterSweep.java`'s row for it.
 
 `blues-shuffle-e-84` and `blues-compound-e-126` carry the same twelve-bar grid,
 the same seed and the same counted-beat rate, and differ in whether the middle
@@ -193,12 +200,12 @@ separate the two: `tools/MeterSweep.java`'s `mid` column is that position, and a
 shuffle the corpus confirms in four carries more of it than this compound does,
 and more than a confirmed compound recording does. What that column reads is the
 middle of a pulse against the beat itself, which the corpus holds independent of
-the meter: the two 6/8 packages above strike their eighths at one weight and
+the meter: the 6/8 packages above strike their eighths at one weight and
 carry much of it, while this one accents its counted beats as a shuffle's
 pattern does and carries less of it than a shuffle can — though it sounds all
 three subdivisions exactly as they do.
 
-One of the five is expected to read its meter wrong, and its issue says why: a
+One of the six is expected to read its meter wrong, and its issue says why: a
 four-pulse bar is not promoted to 12/8 on subdivision evidence (#701). Stating
 that by construction is what it was built for, so that row is evidence rather
 than a regression.

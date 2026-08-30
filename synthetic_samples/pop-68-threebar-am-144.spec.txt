@@ -1,0 +1,21 @@
+title: 6/8 pop vamp in A minor, a chord to three bars
+genre: pop
+style: pop-ballad
+tempo: 144
+key: A minor
+meter: 6/8
+seed: 31
+melody: none
+bars:
+# pop-68-vamp-am-144's phrase with every chord held for three bars and nothing
+# else changed: same key, tempo, seed, style and chords. The harmony now moves
+# every six tracked pulses, which is where a two-pulse bar and a six-pulse bar
+# read the same beats differently -- the region #727 says the corpus was empty
+# in. Sixty-three bars because three has to divide the bar count.
+Am Am Am Dm Dm Dm Am Am Am
+Em Em Em Am Am Am Am Am Am
+Dm Dm Dm Am Am Am Em Em Em
+Am Am Am Am Am Am Dm Dm Dm
+Am Am Am Em Em Em Am Am Am
+Am Am Am Dm Dm Dm Am Am Am
+Em Em Em Am Am Am Am Am Am
