@@ -108,9 +108,12 @@ public final class AudioTranscriber {
      *                            compound time. It corrects the rate; the phase
      *                            comes from the tracked pulses either way.
      * @param timeSignature       the meter to use, read from the recording when
-     *                            null. Supplied, it wins outright and the
-     *                            estimator is not run, exactly as a supplied
-     *                            downbeat replaces the phase estimate (#700).
+     *                            null. Supplied, it decides the signature
+     *                            outright, exactly as a supplied downbeat
+     *                            replaces the phase estimate (#700) -- but not
+     *                            how many tracked pulses fill a bar, which is
+     *                            read either way and kept wherever this
+     *                            signature can be counted in them (#736).
      * @param firstDownbeatSeconds when a bar starts, in seconds. Chooses the
      *                            phase of the bar grid outright rather than
      *                            contributing to it: the estimator is not run at

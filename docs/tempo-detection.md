@@ -184,9 +184,13 @@ length hung on the phase the downbeats agree on (#233).
 - `--first-downbeat` chooses the bar phase outright, as a time in
   *seconds* snapped to the nearest tracked beat; the estimator is not run,
   because a human who counted the bars outranks harmonic novelty.
-- `--time-signature` states the meter and wins outright: the estimator is
-  not run at all, as with `--first-downbeat`. It is also the only route to
-  12/8, 3/8 and the irregular meters.
+- `--time-signature` states the meter and wins outright on the *signature*.
+  The reading is still taken, for its other half: how many tracked pulses fill
+  a bar is a measurement of where the tracker landed, and it is kept wherever
+  the typed signature can be counted in those pulses — so a compound recording
+  tracked on its eighths is barred alike whether its meter was typed or read
+  (#736). Where it cannot be, the run says so and bars on the counted beat.
+  This is also the only route to 12/8, 3/8 and the irregular meters.
 
 `--tempo` is read in the meter's *counted* beats per minute — what a
 metronome shows — which differs from quarter notes in compound time, and which
