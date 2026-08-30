@@ -109,8 +109,8 @@ final class AnalyzeCommand implements Callable<Integer> {
                     + "is counted in (dotted quarters in 6/8, not quarters). Which meter "
                     + "counts it is what --time-signature says, or what MW read off the "
                     + "recording when nothing was typed. Where MW read it, the meter line "
-                    + "reports the rate in that same beat, so the figure to type back is "
-                    + "the one it showed. Audio only: a MIDI file states its own tempo.")
+                    + "reports the rate in that same beat. Audio only: a MIDI file states "
+                    + "its own tempo.")
     Double tempo;
 
     @Option(names = "--time-signature", paramLabel = "N/D",

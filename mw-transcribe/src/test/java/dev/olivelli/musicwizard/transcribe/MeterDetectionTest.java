@@ -69,18 +69,9 @@ class MeterDetectionTest {
     /**
      * The same clicks after a little silence, so the first tracked pulse is not
      * at the origin.
-     *
-     * <p>A map anchored at the origin has no lead-in to stretch, which makes
-     * every tempo agree over the first bar whatever it was read in; the fixture
-     * below would then agree with a misreading of its own unit.
      */
     private static AudioBuffer clickTrackAfterSilence(int beatsPerBar, double silenceSeconds) {
-        float[] music = SignalFactory.clickTrackWithChords(120, new double[][] {
-                SignalFactory.majorTriad(60),
-                SignalFactory.majorTriad(67),
-                SignalFactory.minorTriad(69),
-                SignalFactory.majorTriad(65),
-        }, beatsPerBar, SECONDS, RATE);
+        float[] music = clickTrackWithBarsOf(beatsPerBar).samples();
         float[] padded = new float[music.length + (int) Math.round(silenceSeconds * RATE)];
         System.arraycopy(music, 0, padded, padded.length - music.length, music.length);
         return new AudioBuffer(padded, RATE);
