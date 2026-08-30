@@ -295,15 +295,54 @@ class MeterEstimationTest {
         }
 
         @Test
-        @DisplayName("a six-pulse bar that beat the prior is not shortened to two")
-        void aWinningSixKeepsItsBar() {
-            // Two divides six, so the veto sees no rival -- but the six won the
-            // ranking outright, and a two-pulse bar taken over it would bar the
-            // music at a third of its length.
+        @DisplayName("a six the harmony won over a dotted quarter is a chord loop, not a bar")
+        void aWinningSixOverADottedQuarterIsNotABar() {
+            // Six pulses that each divide in three are not a bar anyone writes:
+            // both meters six can name hold three quarter notes, so a six-pulse
+            // bar counts the pulse an eighth, and this pulse is a dotted
+            // quarter. What is six pulses long is the chord loop.
             MeterEstimator.Estimate estimate =
                     MeterEstimator.decide(reading(1, 1, 1, 60, 0.9, 0.1));
 
+            assertThat(estimate.pulsesPerBar()).isEqualTo(2);
+            assertThat(estimate.meter()).isEqualTo(TimeSignature.SIX_EIGHT);
+            assertThat(estimate.pulseQuarters()).isEqualTo(1.5);
+        }
+
+        @Test
+        @DisplayName("a six-pulse bar keeps its bar where the pulse does not divide in three")
+        void aWinningSixOverAnEighthKeepsItsBar() {
+            // The same harmony over a pulse the envelope divides evenly: an
+            // eighth, six of which are the bar the harmony spoke for.
+            MeterEstimator.Estimate estimate =
+                    MeterEstimator.decide(reading(1, 1, 1, 60, 0.1, 0.9));
+
             assertThat(estimate.pulsesPerBar()).isEqualTo(6);
+            assertThat(estimate.pulseQuarters()).isEqualTo(0.5);
+        }
+
+        @Test
+        @DisplayName("a three a supported six accounts for does not refuse the division")
+        void aThreeThatIsSixesShadowIsNotContrary() {
+            // The shape a 6/8 with a three-bar chord loop reads: the harmony is
+            // periodic at six pulses and states the three it divides almost as
+            // strongly. That three is the six seen again, and six is a length
+            // two divides, so neither may veto the two-pulse bar.
+            assertThat(MeterEstimator.decide(reading(12, 13, 0, 16, 0.9, 0.1)).pulsesPerBar())
+                    .isEqualTo(2);
+        }
+
+        @Test
+        @DisplayName("a three the six does not account for still refuses the division")
+        void aThreeBeyondSixesReachStillRefuses() {
+            // Both halves of what makes the three a shadow, failed one at a
+            // time: a six below the support level accounts for nothing, and a
+            // six far behind its own three is the three's shadow rather than
+            // the other way round.
+            assertThat(MeterEstimator.decide(reading(12, 13, 0, 3, 0.9, 0.1)).pulsesPerBar())
+                    .isEqualTo(3);
+            assertThat(MeterEstimator.decide(reading(12, 100, 0, 6, 0.9, 0.1)).pulsesPerBar())
+                    .isEqualTo(3);
         }
 
         @Test

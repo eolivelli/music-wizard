@@ -372,12 +372,22 @@ public final class MeterEstimator {
      *
      * <p>One winner and one fallback: a bar length that fails a gate returns the
      * assumption rather than the next candidate down, because a candidate that
-     * only wins once the winner is disqualified was never the evidence. The
-     * two-pulse bar is read where that fallback is reached, so it displaces the
-     * assumption and never a bar length the harmony won outright.
+     * only wins once the winner is disqualified was never the evidence.
+     *
+     * <p>{@link #barsInTwo} is answered first, so the division of the pulse
+     * outranks a bar length the harmony won (#727). What it takes precedence
+     * over is only ever a six, a winning three refusing the two-pulse bar
+     * outright; and six pulses that each divide in three are not a bar anyone
+     * writes, both meters {@link #meterAt} names for six holding three quarter
+     * notes and so counting the pulse an eighth. So where the envelope says the
+     * pulse is a dotted quarter, a harmony periodic at six of them is a chord
+     * loop three bars long rather than a bar six pulses long.
      */
     public static Estimate decide(Reading reading) {
         Objects.requireNonNull(reading, "reading");
+        if (barsInTwo(reading)) {
+            return new Estimate(TimeSignature.SIX_EIGHT, IN_TWO, confidenceInTwo(reading));
+        }
         int best = ASSUMED;
         for (int candidate : CANDIDATES) {
             if (reading.at(candidate) > reading.at(best)) {
@@ -390,10 +400,8 @@ public final class MeterEstimator {
             best = 6;
         }
         if (best == ASSUMED || !clearsThePrior(reading, best)) {
-            return barsInTwo(reading)
-                    ? new Estimate(TimeSignature.SIX_EIGHT, IN_TWO, confidenceInTwo(reading))
-                    : new Estimate(TimeSignature.FOUR_FOUR, ASSUMED,
-                            confidenceIn(reading, ASSUMED));
+            return new Estimate(TimeSignature.FOUR_FOUR, ASSUMED,
+                    confidenceIn(reading, ASSUMED));
         }
         return new Estimate(meterAt(reading, best), best, confidenceIn(reading, best));
     }
@@ -411,10 +419,12 @@ public final class MeterEstimator {
      * does not. The division of the pulse decides, and a waltz's three-pulse
      * bar is what the veto still keeps out of its reach.
      *
-     * <p>Asked only where the ranking fell back to the assumption, so a bar
-     * length that beat the prior on its own keeps the reading — including a
-     * six-pulse bar, which two divides and this would otherwise have shortened
-     * to a third of its length.
+     * <p>A three a supported six accounts for is not contrary either (#727).
+     * Three divides six, so novelty that repeats every six beats states the
+     * three as well, and that three is the six seen again rather than a rival
+     * to it — six being a length two divides, its shadow cannot be one. Which
+     * of the two it is, is what {@link #DIVIDED} separates in {@link #decide}
+     * and this asks the same way round.
      */
     private static boolean barsInTwo(Reading reading) {
         double tiled = reading.atTwo();
@@ -422,7 +432,7 @@ public final class MeterEstimator {
         for (int candidate : CANDIDATES) {
             if (candidate % IN_TWO == 0) {
                 tiled = Math.max(tiled, reading.at(candidate));
-            } else {
+            } else if (!shadowOfSix(reading, candidate)) {
                 contrary = Math.max(contrary, reading.at(candidate));
             }
         }
@@ -430,6 +440,15 @@ public final class MeterEstimator {
             return false;
         }
         return reading.inThree() >= DIVIDES_IN_THREE && reading.inThree() > reading.inTwo();
+    }
+
+    /**
+     * Whether a period is one a supported six-pulse periodicity already
+     * accounts for, rather than a reading of its own.
+     */
+    private static boolean shadowOfSix(Reading reading, int period) {
+        return 6 % period == 0 && reading.atSix() >= SUPPORTED
+                && reading.atSix() >= DIVIDED * reading.at(period);
     }
 
     /**
