@@ -419,7 +419,7 @@ public final class MeterEstimator {
      * division of the pulse decides, and a waltz's three-pulse bar is what the
      * veto still keeps out of its reach.
      *
-     * <p>A three a supported six accounts for is not contrary either (#727).
+     * <p>A three a six accounts for is not contrary either (#727).
      * Three divides six, so novelty that repeats every six beats states the
      * three as well, and that three is the six seen again rather than a rival
      * to it — six being a length two divides, its shadow cannot be one. Which

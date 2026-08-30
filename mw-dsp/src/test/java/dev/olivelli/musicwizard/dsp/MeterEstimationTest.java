@@ -322,7 +322,7 @@ class MeterEstimationTest {
         }
 
         @Test
-        @DisplayName("a three a supported six accounts for does not refuse the division")
+        @DisplayName("a three a six accounts for does not refuse the division")
         void aThreeThatIsSixesShadowIsNotContrary() {
             // The shape a 6/8 with a three-bar chord loop reads: the harmony is
             // periodic at six pulses and states the three it divides almost as
@@ -346,10 +346,9 @@ class MeterEstimationTest {
         @Test
         @DisplayName("a three the six does not account for still refuses the division")
         void aThreeBeyondSixesReachStillRefuses() {
-            // Both halves of what makes the three a shadow, failed one at a
-            // time: a six below the support level accounts for nothing, and a
-            // six far behind its own three is the three's shadow rather than
-            // the other way round.
+            // A six below the support level accounts for nothing, and a six
+            // far behind its own three is the three's shadow rather than the
+            // other way round.
             assertThat(MeterEstimator.decide(reading(12, 13, 0, 3, 0.9, 0.1)).pulsesPerBar())
                     .isEqualTo(3);
             assertThat(MeterEstimator.decide(reading(12, 100, 0, 6, 0.9, 0.1)).pulsesPerBar())

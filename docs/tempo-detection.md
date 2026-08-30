@@ -118,8 +118,8 @@ What is read, and from what:
   divides: a two-bar chord loop is periodic at four pulses whether the bar
   is two of them or four, so
   a supported four is a length the shorter bar tiles, not a rival account of
-  it (#712), and a three that a supported six accounts for is that six seen
-  again rather than a refusal (#727). What is read there is the length; the
+  it (#712), and a three that a six accounts for is that six seen again
+  rather than a refusal (#727). What is read there is the length; the
   signature is given, since
   a bar of two dotted-quarter pulses is 3/4 as much as it is 6/8 and nothing
   measured separates them (#728).
