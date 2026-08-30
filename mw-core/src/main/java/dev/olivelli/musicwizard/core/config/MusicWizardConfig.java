@@ -47,12 +47,14 @@ public record MusicWizardConfig(
     /** How the audio should be analysed, including manual overrides. */
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record AnalysisConfig(
-            /* Force a tempo instead of tracking it, in the meter's counted beats
-             * per minute -- dotted quarters in 6/8, not quarters. The single
+            /* Force a tempo instead of tracking it, in the counted beat of
+             * whichever meter is in force -- the one below, or the one MW reads
+             * off the recording when that is null (#705). The single
              * highest-value override: one correct number fixes everything
              * downstream. */
             Double tempoOverride,
-            /* Force a time signature, written as e.g. "4/4". */
+            /* Force a time signature, written as e.g. "4/4". Read from the
+             * recording when null (#700). */
             String timeSignatureOverride,
             /* Force where a bar begins, in seconds. Snapped to the nearest
              * tracked beat, which then begins a bar in the saved beat grid and

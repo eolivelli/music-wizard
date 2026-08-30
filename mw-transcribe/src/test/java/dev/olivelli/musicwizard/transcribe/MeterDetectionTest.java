@@ -66,10 +66,39 @@ class MeterDetectionTest {
         return seen;
     }
 
-    /** Seconds one bar lasts according to the map. */
-    private static double barSeconds(Score score) {
-        return score.tempoMap().beatsToSeconds(
-                score.tempoMap().initialTimeSignature().quarterBeatsPerBar());
+    /**
+     * The same clicks after a little silence, so the first tracked pulse is not
+     * at the origin.
+     *
+     * <p>A map anchored at the origin has no lead-in to stretch, which makes
+     * every tempo agree over the first bar whatever it was read in; the fixture
+     * below would then agree with a misreading of its own unit.
+     */
+    private static AudioBuffer clickTrackAfterSilence(int beatsPerBar, double silenceSeconds) {
+        float[] music = SignalFactory.clickTrackWithChords(120, new double[][] {
+                SignalFactory.majorTriad(60),
+                SignalFactory.majorTriad(67),
+                SignalFactory.minorTriad(69),
+                SignalFactory.majorTriad(65),
+        }, beatsPerBar, SECONDS, RATE);
+        float[] padded = new float[music.length + (int) Math.round(silenceSeconds * RATE)];
+        System.arraycopy(music, 0, padded, padded.length - music.length, music.length);
+        return new AudioBuffer(padded, RATE);
+    }
+
+    /**
+     * Seconds a bar lasts once the music is under way.
+     *
+     * <p>Taken between two bar lines well past the lead-in, never from the
+     * origin: the interval from the origin to the first bar line <em>is</em> the
+     * lead-in, which both a measured and a supplied map stretch to land on the
+     * same tracked pulse, so it is the same number whatever tempo built it.
+     */
+    private static double steadyBarSeconds(Score score) {
+        double quartersPerBar =
+                score.tempoMap().initialTimeSignature().quarterBeatsPerBar();
+        return score.tempoMap().beatsToSeconds(5 * quartersPerBar)
+                - score.tempoMap().beatsToSeconds(4 * quartersPerBar);
     }
 
     @Test
@@ -142,25 +171,31 @@ class MeterDetectionTest {
     @DisplayName("the rate a read meter is printed in is the rate that types back")
     void thePrintedRateTypesBack() {
         // What --tempo's help promises (#705): the unit follows the meter even
-        // when MW chose the meter itself, so the figure the run showed
-        // reproduces the run. This fixture is the case where that could go
-        // wrong -- the tracker is on the eighth, so the pulse rate and the
-        // counted rate are different numbers and only one of them types back.
-        Score read = new AudioTranscriber()
-                .transcribe(clickTrackWithBarsOf(6), AudioTranscriber.Options.defaults());
+        // where MW chose the meter itself, so the figure the run showed
+        // reproduces the run. This fixture is where that could go wrong -- the
+        // tracker is on the eighth, so the pulse rate and the counted rate are
+        // different figures and only one of them types back.
+        AudioBuffer audio = clickTrackAfterSilence(6, 0.3);
+        Score read = new AudioTranscriber().transcribe(audio, AudioTranscriber.Options.defaults());
         TimeSignature meter = read.tempoMap().initialTimeSignature();
         double printed = meter.countedTempo(read.estimatedTempo());
 
-        Score typed = new AudioTranscriber().transcribe(clickTrackWithBarsOf(6),
-                new AudioTranscriber.Options(printed, null, null));
+        Score typed = new AudioTranscriber()
+                .transcribe(audio, new AudioTranscriber.Options(printed, null, null));
 
         assertThat(typed.tempoMap().initialTimeSignature()).isEqualTo(meter);
         assertThat(positions(typed)).containsExactlyElementsOf(positions(read));
-        // Read as quarter notes instead, the same figure would stretch the bar
-        // by half again, which this tolerance is nowhere near admitting. It is
-        // not zero because the read map carries a lead-in the constant one does
-        // not.
-        assertThat(barSeconds(typed)).isCloseTo(barSeconds(read), withinPercentage(5.0));
+        assertThat(steadyBarSeconds(typed))
+                .isCloseTo(steadyBarSeconds(read), withinPercentage(1.0));
+
+        // The same run's quarter-note figure, which is what a user reading the
+        // unit wrongly would type, must not: without this the assertions above
+        // can be satisfied by a map that ignored the unit entirely.
+        Score misread = new AudioTranscriber()
+                .transcribe(audio, new AudioTranscriber.Options(read.estimatedTempo(), null, null));
+
+        assertThat(steadyBarSeconds(misread))
+                .isNotCloseTo(steadyBarSeconds(read), withinPercentage(10.0));
     }
 
     @Test

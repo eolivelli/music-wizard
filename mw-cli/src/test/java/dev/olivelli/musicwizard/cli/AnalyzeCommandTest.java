@@ -191,13 +191,12 @@ class AnalyzeCommandTest {
     }
 
     /**
-     * That the unit is stated where the option is reached for.
+     * That the unit is stated where the option is reached for (#705).
      *
-     * <p>The wording is not the contract and these substrings are not a golden
-     * file; what is asserted is that a user reading only {@code --help} is told
-     * which meter counts the figure they are about to type, and that MW may have
-     * chosen that meter (#705). Rendered rather than read off the option model,
-     * because a description that never reaches the usage says nothing.
+     * <p>Rendered rather than read off picocli's option model, because a
+     * description that never reaches the usage says nothing. Each assertion is
+     * the shortest phrase that carries its claim, so rewording stays cheap and
+     * dropping the claim does not.
      */
     @Nested
     @DisplayName("the corrections' help")
@@ -211,14 +210,15 @@ class AnalyzeCommandTest {
         @Test
         @DisplayName("--tempo says whose beat it is counted in, and that MW may have picked it")
         void tempoNamesTheMeterThatCountsIt() {
-            assertThat(usage()).contains("Which meter counts it is what --time-signature says,"
-                    + " or what MW read off the recording when nothing was typed");
+            assertThat(usage())
+                    .contains("Which meter counts it is what --time-signature says")
+                    .contains("what MW read off the recording");
         }
 
         @Test
         @DisplayName("--time-signature says it pins that unit")
         void meterSaysItPinsTheUnit() {
-            assertThat(usage()).contains("Also pins the beat --tempo is counted in.");
+            assertThat(usage()).contains("pins the beat --tempo is counted in");
         }
     }
 }
