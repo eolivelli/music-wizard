@@ -17,6 +17,7 @@
 package dev.olivelli.musicwizard.transcribe;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.withinPercentage;
 
 import dev.olivelli.musicwizard.audio.AudioBuffer;
 import dev.olivelli.musicwizard.core.model.BeatGrid;
@@ -63,6 +64,32 @@ class MeterDetectionTest {
             }
         }
         return seen;
+    }
+
+    /**
+     * The same clicks after a little silence, so the first tracked pulse is not
+     * at the origin.
+     */
+    private static AudioBuffer clickTrackAfterSilence(int beatsPerBar, double silenceSeconds) {
+        float[] music = clickTrackWithBarsOf(beatsPerBar).samples();
+        float[] padded = new float[music.length + (int) Math.round(silenceSeconds * RATE)];
+        System.arraycopy(music, 0, padded, padded.length - music.length, music.length);
+        return new AudioBuffer(padded, RATE);
+    }
+
+    /**
+     * Seconds a bar lasts once the music is under way.
+     *
+     * <p>Taken between two bar lines well past the lead-in, never from the
+     * origin: the interval from the origin to the first bar line <em>is</em> the
+     * lead-in, which both a measured and a supplied map stretch to land on the
+     * same tracked pulse, so it is the same number whatever tempo built it.
+     */
+    private static double steadyBarSeconds(Score score) {
+        double quartersPerBar =
+                score.tempoMap().initialTimeSignature().quarterBeatsPerBar();
+        return score.tempoMap().beatsToSeconds(5 * quartersPerBar)
+                - score.tempoMap().beatsToSeconds(4 * quartersPerBar);
     }
 
     @Test
@@ -129,6 +156,37 @@ class MeterDetectionTest {
         String counted = String.format(Locale.ROOT, ", %.1f beats/min",
                 score.tempoMap().initialTimeSignature().countedTempo(score.estimatedTempo()));
         assertThat(said).anyMatch(line -> line.startsWith("meter ") && line.endsWith(counted));
+    }
+
+    @Test
+    @DisplayName("the rate a read meter is printed in is the rate that types back")
+    void thePrintedRateTypesBack() {
+        // What --tempo's help promises (#705): the unit follows the meter even
+        // where MW chose the meter itself, so the figure the run showed
+        // reproduces the run. This fixture is where that could go wrong -- the
+        // tracker is on the eighth, so the pulse rate and the counted rate are
+        // different figures and only one of them types back.
+        AudioBuffer audio = clickTrackAfterSilence(6, 0.3);
+        Score read = new AudioTranscriber().transcribe(audio, AudioTranscriber.Options.defaults());
+        TimeSignature meter = read.tempoMap().initialTimeSignature();
+        double printed = meter.countedTempo(read.estimatedTempo());
+
+        Score typed = new AudioTranscriber()
+                .transcribe(audio, new AudioTranscriber.Options(printed, null, null));
+
+        assertThat(typed.tempoMap().initialTimeSignature()).isEqualTo(meter);
+        assertThat(positions(typed)).containsExactlyElementsOf(positions(read));
+        assertThat(steadyBarSeconds(typed))
+                .isCloseTo(steadyBarSeconds(read), withinPercentage(1.0));
+
+        // The same run's quarter-note figure, which is what a user reading the
+        // unit wrongly would type, must not: without this the assertions above
+        // can be satisfied by a map that ignored the unit entirely.
+        Score misread = new AudioTranscriber()
+                .transcribe(audio, new AudioTranscriber.Options(read.estimatedTempo(), null, null));
+
+        assertThat(steadyBarSeconds(misread))
+                .isNotCloseTo(steadyBarSeconds(read), withinPercentage(10.0));
     }
 
     @Test

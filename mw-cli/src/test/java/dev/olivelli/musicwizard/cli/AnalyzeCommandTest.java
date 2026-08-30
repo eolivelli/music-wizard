@@ -189,4 +189,36 @@ class AnalyzeCommandTest {
             }
         }
     }
+
+    /**
+     * That the unit is stated where the option is reached for (#705).
+     *
+     * <p>Rendered rather than read off picocli's option model, because a
+     * description that never reaches the usage says nothing. Each assertion is
+     * the shortest phrase that carries its claim, so rewording stays cheap and
+     * dropping the claim does not.
+     */
+    @Nested
+    @DisplayName("the corrections' help")
+    class CorrectionHelp {
+
+        /** The usage as one line: picocli wraps, and a claim can straddle a wrap. */
+        private String usage() {
+            return CliRunner.run("analyze", "--help").all().replaceAll("\\s+", " ");
+        }
+
+        @Test
+        @DisplayName("--tempo says whose beat it is counted in, and that MW may have picked it")
+        void tempoNamesTheMeterThatCountsIt() {
+            assertThat(usage())
+                    .contains("Which meter counts it is what --time-signature says")
+                    .contains("what MW read off the recording");
+        }
+
+        @Test
+        @DisplayName("--time-signature says it pins that unit")
+        void meterSaysItPinsTheUnit() {
+            assertThat(usage()).contains("pins the beat --tempo is counted in");
+        }
+    }
 }
