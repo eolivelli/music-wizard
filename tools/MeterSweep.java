@@ -146,7 +146,8 @@ public final class MeterSweep {
      * a regression here fail a gate rather than only print differently.
      */
     private static final List<Job> LOCAL_METERS =
-            List.of(new Job(LOCAL, "balorda-nostalgia.mp3", "6/8"));
+            List.of(new Job(LOCAL, "balorda-nostalgia.mp3", "6/8"),
+                    new Job(LOCAL, "il-filo-rosso.mp3", "6/8"));
 
     /**
      * Every recording under {@code uncommitted/}, present only on the machine
