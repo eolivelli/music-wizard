@@ -63,11 +63,13 @@ import java.util.Objects;
  * (#712). A chord loop two bars long is periodic at four tracked pulses
  * whether the bar is two of them or four, so a supported four is a length the
  * shorter bar tiles rather than a rival account of it, and refusing on it puts
- * every ordinary two-bar 6/8 loop out of reach. A supported three is a rival,
- * no number of two-pulse bars making three of them. What the harmony is asked
- * for is that it say something at some length two divides, and nothing louder
- * at one it does not — which leaves the 4/4 prior carried by the division
- * alone, and that is what a shuffle's four-beat bar now survives on.
+ * every ordinary two-bar 6/8 loop out of reach. A supported three is a rival —
+ * no number of two-pulse bars makes three of them — unless a six that would
+ * have taken the reading accounts for it, three dividing six (#727). What the
+ * harmony is asked for is that it say something at some length two divides,
+ * and nothing louder at a three of its own — which leaves the 4/4 prior
+ * carried by the division alone, and that is what a shuffle's four-beat bar
+ * now survives on.
  *
  * <p>Two things this still does not read. <b>A swung eighth is not a compound
  * bar</b>: a shuffle divides its pulse in three and is barred in four by its own
@@ -379,9 +381,7 @@ public final class MeterEstimator {
      * over is only ever a six, a winning three refusing the two-pulse bar
      * outright; and six pulses that each divide in three are not a bar anyone
      * writes, both meters {@link #meterAt} names for six holding three quarter
-     * notes and so counting the pulse an eighth. So where the envelope says the
-     * pulse is a dotted quarter, a harmony periodic at six of them is a chord
-     * loop three bars long rather than a bar six pulses long.
+     * notes and so counting the pulse an eighth.
      */
     public static Estimate decide(Reading reading) {
         Objects.requireNonNull(reading, "reading");
@@ -415,16 +415,15 @@ public final class MeterEstimator {
      * the corpus puts recordings of that kind above the compound ones on the
      * harmonic statistic. So the harmony is asked only not to contradict it, at
      * the lengths where it can: the best it scores at a length two divides
-     * clears {@link #THE_NULL} and leads whatever it scores at a length two
-     * does not. The division of the pulse decides, and a waltz's three-pulse
-     * bar is what the veto still keeps out of its reach.
+     * clears {@link #THE_NULL} and leads whatever a three of its own says. The
+     * division of the pulse decides, and a waltz's three-pulse bar is what the
+     * veto still keeps out of its reach.
      *
      * <p>A three a supported six accounts for is not contrary either (#727).
      * Three divides six, so novelty that repeats every six beats states the
      * three as well, and that three is the six seen again rather than a rival
      * to it — six being a length two divides, its shadow cannot be one. Which
-     * of the two it is, is what {@link #DIVIDED} separates in {@link #decide}
-     * and this asks the same way round.
+     * of the two it is, {@link #shadowOfSix} answers.
      */
     private static boolean barsInTwo(Reading reading) {
         double tiled = reading.atTwo();
@@ -443,11 +442,13 @@ public final class MeterEstimator {
     }
 
     /**
-     * Whether a period is one a supported six-pulse periodicity already
-     * accounts for, rather than a reading of its own.
+     * Whether a period is one a six-pulse reading already accounts for, rather
+     * than a reading of its own. Every gate a six has to clear to be believed,
+     * so a three dismissed here is dismissed by a six that would otherwise have
+     * taken the reading.
      */
     private static boolean shadowOfSix(Reading reading, int period) {
-        return 6 % period == 0 && reading.atSix() >= SUPPORTED
+        return 6 % period == 0 && clearsThePrior(reading, 6)
                 && reading.atSix() >= DIVIDED * reading.at(period);
     }
 

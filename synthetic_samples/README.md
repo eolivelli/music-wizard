@@ -169,8 +169,9 @@ than of history. Each package's own row stands, and what these four were built
 to show is per package anyway: every suspended and every added-ninth bar is
 named as its plain triad.
 
-**Six packages carry a meter other than 4/4** (#702), and they are here for
-the meter detector rather than for the harmony stages. `pop-waltz-d-108` is the
+**One group of packages is here for the meter detector** rather than for the
+harmony stages (#702) — those carrying a meter other than 4/4, and the shuffle
+whose 4/4 is what a compound bar has to be told from. `pop-waltz-d-108` is the
 three-pulse bar on its own: bass on one, chord on two and three, and the hat on
 the counted beat and nothing between two beats. The rest are a set of three and
 a pair, and as with the pairs above the grouping is what they are for.
@@ -205,7 +206,7 @@ carry much of it, while this one accents its counted beats as a shuffle's
 pattern does and carries less of it than a shuffle can — though it sounds all
 three subdivisions exactly as they do.
 
-One of the six is expected to read its meter wrong, and its issue says why: a
+One of them is expected to read its meter wrong, and its issue says why: a
 four-pulse bar is not promoted to 12/8 on subdivision evidence (#701). Stating
 that by construction is what it was built for, so that row is evidence rather
 than a regression.

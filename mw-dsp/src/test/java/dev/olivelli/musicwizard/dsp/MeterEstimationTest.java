@@ -333,6 +333,17 @@ class MeterEstimationTest {
         }
 
         @Test
+        @DisplayName("a six that would not have taken the reading accounts for no three")
+        void aSixThatWouldNotHaveTakenTheReadingCastsNoShadow() {
+            // The six clears the support level and leads its own three, but the
+            // four-beat bar it would have had to beat is right there. A six the
+            // ranking would have refused cannot dismiss the evidence against a
+            // bar a third of its length.
+            assertThat(MeterEstimator.decide(reading(2, 13, 5, 16, 0.9, 0.1)).pulsesPerBar())
+                    .isEqualTo(4);
+        }
+
+        @Test
         @DisplayName("a three the six does not account for still refuses the division")
         void aThreeBeyondSixesReachStillRefuses() {
             // Both halves of what makes the three a shadow, failed one at a
