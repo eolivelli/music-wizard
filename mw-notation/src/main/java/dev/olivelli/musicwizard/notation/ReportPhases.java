@@ -220,6 +220,8 @@ final class ReportPhases {
         });
         table.add(fact("Meter", tempoMap.initialTimeSignature().numerator() + "/"
                 + tempoMap.initialTimeSignature().denominator()));
+        TempoMap.MeterChange opening = tempoMap.meterChanges().get(0);
+        table.add(fact("Meter origin", provenanceName(opening.provenance())));
         table.add(fact("Meter changes", String.valueOf(tempoMap.meterChanges().size() - 1)));
         table.add(fact("Tempo segments", String.valueOf(tempoMap.segments().size())));
         table.add(fact("Tempo at the start",
@@ -228,10 +230,17 @@ final class ReportPhases {
                 ReportTimeline.bpm(tempoMap.averageTempoIgnoringLeadIn(score.durationSeconds()))
                         + " quarter notes a minute"));
         facts(table.toArray(new Fact[0]));
-        confidences(score.beatGrid().map(grid -> List.of(
-                new Reading("Confidence in the beats", grid.beatConfidence()),
-                new Reading("Confidence in the bar phase", grid.downbeatConfidence())))
-                .orElse(List.of()));
+        List<Reading> readings = new ArrayList<>();
+        score.beatGrid().ifPresent(grid -> {
+            readings.add(new Reading("Confidence in the beats", grid.beatConfidence()));
+            readings.add(new Reading("Confidence in the bar phase", grid.downbeatConfidence()));
+        });
+        // Present only where the meter was read, which is what the row above
+        // says: a signature the user typed or the pipeline defaulted to is not
+        // an estimate, so there is no figure to draw a bar for.
+        opening.confidence().ifPresent(
+                read -> readings.add(new Reading("Confidence in the meter", read)));
+        confidences(readings);
         provenance(tempoMap);
         score.beatGrid().ifPresent(this::beatIntervalHistogram);
         Optional<BeatTrace> trace = traces == null
@@ -2094,7 +2103,7 @@ final class ReportPhases {
             case MEASURED -> "measured from the signal";
             case DECLARED -> "declared by the source file";
             case SUPPLIED -> "supplied by the user";
-            case ASSUMED -> "assumed, because nothing stated or measured one";
+            case ASSUMED -> "assumed, a documented default";
             case DERIVED -> "derived from other facts in the score";
             case UNKNOWN -> "of unrecorded origin";
         };

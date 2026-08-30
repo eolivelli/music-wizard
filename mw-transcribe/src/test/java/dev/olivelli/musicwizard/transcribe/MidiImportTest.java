@@ -371,6 +371,28 @@ class MidiImportTest {
     }
 
     @Test
+    @DisplayName("a meter the file states and one it does not are not the same claim")
+    void aDefaultedMeterIsNotReadAsDeclared() {
+        // #119: both files bar the same way, and the score has to say which of
+        // them said so -- a defaulted meter reaches the engraved bar lines.
+        Sequence silent = MidiFixtures.sequence()
+                .tempo(120)
+                .part("Melody", 0).note(2, 1, 60).build();
+        Sequence stated = MidiFixtures.sequence()
+                .tempo(120)
+                .timeSignature(4, 4)
+                .part("Melody", 0).note(2, 1, 60).build();
+
+        assertThat(TRANSCRIBER.transcribe(silent).tempoMap().meterChanges().get(0).provenance())
+                .isEqualTo(Provenance.ASSUMED);
+        assertThat(TRANSCRIBER.transcribe(stated).tempoMap().meterChanges().get(0).provenance())
+                .isEqualTo(Provenance.DECLARED);
+        // Nothing on the MIDI path is an estimate, so no row of it carries one.
+        assertThat(TRANSCRIBER.transcribe(stated).tempoMap().meterChanges().get(0).confidence())
+                .isEmpty();
+    }
+
+    @Test
     @DisplayName("restating the meter is not a meter change")
     void arepeatedTimeSignatureDoesNotSpliceASegment() {
         Sequence repeated = MidiFixtures.sequence()

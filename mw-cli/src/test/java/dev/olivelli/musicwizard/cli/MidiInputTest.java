@@ -36,6 +36,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
+import javax.sound.midi.InvalidMidiDataException;
+import javax.sound.midi.MetaMessage;
 import javax.sound.midi.MidiEvent;
 import javax.sound.midi.MidiSystem;
 import javax.sound.midi.Sequence;
@@ -82,6 +84,14 @@ class MidiInputTest {
         int start = out.indexOf("From the file,");
         assertThat(start).as("no summary block in:\n%s", out).isNotNegative();
         return out.substring(start);
+    }
+
+    private static void meta(Track track, long tick, int type, byte[] data) {
+        try {
+            track.add(new MidiEvent(new MetaMessage(type, data, data.length), tick));
+        } catch (InvalidMidiDataException e) {
+            throw new IllegalStateException(e);
+        }
     }
 
     /** Imports a fixture and returns its workspace directory. */
@@ -165,11 +175,15 @@ class MidiInputTest {
             CliRunner.Result analyze = CliRunner.run("analyze", workspace.toString());
 
             assertThat(analyze.out())
-                    .contains("From the file, or the MIDI default where it declares nothing:")
+                    .contains("From the file, or the MIDI default:")
                     .contains("Tempo   120.0 BPM")
                     .contains("Meter   4/4")
                     .contains("Key     C major")
                     .contains("Parts   Piano, Bass");
+            // This file states its tempo and its meter, so neither row is
+            // marked as a substitution; the test below is the file that is.
+            assertThat(analyze.out())
+                    .doesNotContain("(the MIDI default)");
             // The audio path's vocabulary, which is the thing that must not leak
             // across: every one of these words claims something was measured.
             assertThat(analyze.out())
@@ -284,10 +298,10 @@ class MidiInputTest {
         void aDefaultedTempoIsNotPresentedAsAStatement() {
             // No tempo event and no time signature. MidiTranscriber substitutes
             // 120 and 4/4 -- what the specification says such a file is played at
-            // -- and the TempoMap that comes back cannot be told apart from one
-            // built for a file that declared them (#119). So the heading must not
-            // claim it was read from the file, which the first version of this
-            // command did.
+            // -- and since #119 the score records that it substituted them, so
+            // each row says which of the heading's two sources it came from.
+            // The heading must still not claim the file was read, which the
+            // first version of this command did.
             Sequence silentAboutTempo = MidiFixtures.sequence()
                     .part("Melody", 0)
                     .note(1, 1, 60).note(2, 1, 62)
@@ -298,13 +312,39 @@ class MidiInputTest {
 
             assertThat(analyze.exitCode()).as(analyze.all()).isZero();
             assertThat(analyze.out())
-                    .contains("From the file, or the MIDI default where it declares nothing:")
-                    .contains("Tempo   120.0 BPM")
-                    .contains("Meter   4/4")
+                    .contains("From the file, or the MIDI default:")
+                    .contains("Tempo   120.0 BPM (the MIDI default)")
+                    .contains("Meter   4/4 (the MIDI default)")
                     .contains("Key     not declared by the file");
             assertThat(analyze.out())
                     .as("a default presented as something the file said")
                     .doesNotContain("Read from the file");
+        }
+
+        @Test
+        @DisplayName("a declaration the model cannot express is not reported as no declaration")
+        void aDroppedDeclarationIsNotReportedAsSilence() throws Exception {
+            // The file states a tempo and a signature; the importer can use
+            // neither, and substitutes. Nothing here may say the file declared
+            // nothing -- it did, and the run says so two lines above.
+            Sequence unusable = new Sequence(Sequence.PPQ, 480);
+            Track track = unusable.createTrack();
+            meta(track, 0, 0x58, new byte[] {65, 2, 24, 8});
+            meta(track, 0, 0x51, new byte[] {0x07});
+            track.add(new MidiEvent(
+                    new ShortMessage(ShortMessage.NOTE_ON, 0, 60, 90), 0));
+            track.add(new MidiEvent(
+                    new ShortMessage(ShortMessage.NOTE_OFF, 0, 60, 0), 4 * 480));
+            Path workspace = imported(unusable, "unusable");
+
+            CliRunner.Result analyze = CliRunner.run("analyze", workspace.toString());
+
+            assertThat(analyze.exitCode()).as(analyze.all()).isZero();
+            assertThat(analyze.out())
+                    .contains("Tempo   120.0 BPM (the MIDI default)")
+                    .contains("Meter   4/4 (the MIDI default)")
+                    .doesNotContain("declares nothing")
+                    .doesNotContain("declares none");
         }
 
         @Test

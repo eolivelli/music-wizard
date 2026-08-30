@@ -93,13 +93,14 @@ public enum Provenance {
     SUPPLIED,
 
     /**
-     * A documented default substituted because nothing stated the value and
-     * nothing measured it -- 120 BPM and 4/4 where a MIDI file declares neither,
-     * or where beat tracking found nothing to measure.
+     * A documented default substituted where nothing usable was stated and
+     * nothing measured. Per value, not per input: a file that declares a tempo
+     * and no meter produces one of each.
      *
-     * <p>Distinct from {@link #DECLARED} on purpose: a file that declares 120
-     * and a file that declares nothing produce the same number, and reporting
-     * both as read from the file states a fact the file does not contain.
+     * <p>Distinct from {@link #DECLARED} on purpose: a file that declares the
+     * default value and a file that declares nothing produce the same number,
+     * and reporting both as read from the file states a fact the file does not
+     * contain.
      */
     ASSUMED,
 

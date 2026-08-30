@@ -141,10 +141,11 @@ What is not read, and why:
   bar across the corpus and for four over three on its waltz.
 
 The reading is printed on `analyze`'s meter line with its confidence, and on
-the chart header; the run log's beats stage carries the same fact. The score
-file records the meter but not yet whether it was read, typed or assumed
-(#703). `tools/MeterSweep.java` prints the readings behind every constant,
-for the committed benchmarks and the local-only recordings alike, and the
+the chart header; the run log's beats stage carries the same fact. The meter
+change in the score file records it too: whether the signature was read, typed
+or assumed, and what the reading was worth where it is one.
+`tools/MeterSweep.java` prints the readings behind every constant, for the
+committed benchmarks and the local-only recordings alike, and the
 chord harnesses (`tools/score-samples.py`, `tools/score-synthetic.py`) carry a
 meter column against each recording's stated meter — read `tools/baselines/`
 for what it is worth today rather than any figure in prose.

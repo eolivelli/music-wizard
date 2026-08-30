@@ -1055,6 +1055,45 @@ class ConfirmedMeters(unittest.TestCase):
                 sweep_jobs("LOCAL_METERS")
 
 
+class MeterReadingRow(unittest.TestCase):
+    """#703: the reading's confidence comes off the score file, so this pins
+    what the file has to hold and how the figure is rounded."""
+
+    @staticmethod
+    def doc(change: dict | None) -> dict:
+        return {"tempoMap": {"meterChanges": [change] if change else []}}
+
+    def test_a_read_meter_states_what_the_reading_was_worth(self):
+        self.assertEqual(61, samples.meter_confidence(self.doc(
+            {"startBar": 0, "timeSignature": {"numerator": 6, "denominator": 8},
+             "provenance": "MEASURED", "confidence": {"value": 0.6093}})))
+
+    def test_the_percentage_rounds_the_way_the_run_prints_it(self):
+        """Java's %.0f rounds a half away from zero; round() would take 62.5
+        down and print a figure the run's own line contradicts."""
+        self.assertEqual(63, samples.meter_confidence(self.doc(
+            {"startBar": 0, "timeSignature": {"numerator": 4, "denominator": 4},
+             "provenance": "MEASURED", "confidence": {"value": 0.625}})))
+
+    def test_a_meter_nobody_estimated_reports_no_confidence(self):
+        for provenance in ("SUPPLIED", "ASSUMED", "UNKNOWN"):
+            self.assertIsNone(samples.meter_confidence(self.doc(
+                {"startBar": 0, "timeSignature": {"numerator": 4, "denominator": 4},
+                 "provenance": provenance})), provenance)
+
+    def test_a_score_with_no_meter_at_all_reports_none(self):
+        self.assertIsNone(samples.meter_confidence(self.doc(None)))
+
+    def test_the_row_says_none_where_there_is_no_reading(self):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            samples.score_meter(Path("x.mp3"), self.doc(
+                {"startBar": 0, "timeSignature": {"numerator": 3, "denominator": 4},
+                 "provenance": "SUPPLIED"}), "3/4")
+        self.assertIn("3/4 at none", out.getvalue())
+        self.assertIn("OK", out.getvalue())
+
+
 class Keying(unittest.TestCase):
     """The gate keys each line on the text before its first colon, and reads
     a line as a row when it carries '.mp3:' or is an indented '  name: '. Both

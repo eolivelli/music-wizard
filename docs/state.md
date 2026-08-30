@@ -225,5 +225,4 @@ NNLS chroma (#3) and the Ellis-penalty correction (#196) have landed;
 measurement of what they are worth, with baselines under `tools/baselines/`.
 
 `mw-core` passed round 4 once its three blockers landed, but see the open
-`design-gap` issues before treating it as frozen — #703 among them (a read
-meter carries no provenance into the score).
+`design-gap` issues before treating it as frozen.

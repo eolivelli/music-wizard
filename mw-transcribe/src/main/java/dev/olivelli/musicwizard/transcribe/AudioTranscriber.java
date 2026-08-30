@@ -318,7 +318,9 @@ public final class AudioTranscriber {
                     TempoMap.constantPulse(fallback.pulsesPerMinute(),
                             // No beats, so nothing to read a meter off: the
                             // assumption is all there is here.
-                            settings.timeSignatureOrDefault(), fallback.provenance()),
+                            settings.timeSignatureOrDefault(), fallback.provenance())
+                            .withMeterChange(meterOrigin(settings.timeSignatureOrDefault(),
+                                    settings.timeSignature() != null, null)),
                     audio.durationSeconds());
         }
 
@@ -479,6 +481,12 @@ public final class AudioTranscriber {
                     pulseQuarters.orElse(meter.beatUnitQuarters()),
                     downbeat.phase(), pulsesPerBar);
         }
+
+        // Where the meter came from, on the map itself: until now the run said
+        // it on its progress line and in the run log, and a reader of the
+        // score file had neither (#703).
+        tempoMap = tempoMap.withMeterChange(
+                meterOrigin(meter, suppliedMeter, suppliedMeter ? null : reading));
 
         recordBeats(beats, meter, pulsesPerBar, suppliedMeter ? null : reading);
 
@@ -774,6 +782,27 @@ public final class AudioTranscriber {
                     : OptionalInt.empty();
         }
         return OptionalInt.empty();
+    }
+
+    /**
+     * Where the meter this run barred in came from, as the score carries it.
+     *
+     * <p>A typed signature is the user's whatever the reading said, and carries
+     * no confidence because it is not an estimate. A run with no beats read
+     * nothing, so what it barred in is the documented default.
+     *
+     * @param reading the meter read off the recording, or null where none was
+     */
+    static TempoMap.MeterChange meterOrigin(
+            TimeSignature meter, boolean supplied, MeterEstimator.Estimate reading) {
+        if (supplied) {
+            return new TempoMap.MeterChange(0, meter, Provenance.SUPPLIED);
+        }
+        if (reading == null) {
+            return new TempoMap.MeterChange(0, meter, Provenance.ASSUMED);
+        }
+        return new TempoMap.MeterChange(
+                0, meter, Provenance.MEASURED, Optional.of(reading.confidence()));
     }
 
     /**

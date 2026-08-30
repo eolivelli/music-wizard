@@ -23,6 +23,7 @@ import static org.assertj.core.api.Assertions.within;
 import dev.olivelli.musicwizard.core.model.Note;
 import dev.olivelli.musicwizard.core.model.NoteTrack;
 import dev.olivelli.musicwizard.core.model.PartRole;
+import dev.olivelli.musicwizard.core.model.Provenance;
 import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.model.TempoMap;
 import dev.olivelli.musicwizard.core.model.TimeSignature;
@@ -341,6 +342,26 @@ class MidiImportEdgeCaseTest {
     }
 
     @Test
+    @DisplayName("a signature the model cannot express leaves an assumed meter, not a declared one")
+    void anUnexpressibleOpeningSignatureIsAssumed() throws Exception {
+        // The file does declare a meter and the score does not bar in it, so
+        // the opening is a substitution like any other -- and a reader that
+        // reported it as declared would name a signature the score never used.
+        Sequence sequence = new Sequence(Sequence.PPQ, PPQ);
+        Track track = sequence.createTrack();
+        meta(track, 0, 0x58, new byte[] {65, 2, 24, 8});
+        noteOn(track, 0, 0, 60, 90);
+        noteOff(track, 4 * PPQ, 0, 60);
+
+        Score score = transcriber.transcribe(sequence);
+
+        assertThat(score.tempoMap().meterChanges()).containsExactly(
+                new TempoMap.MeterChange(0, TimeSignature.FOUR_FOUR, Provenance.ASSUMED));
+        assertThat(messages).anyMatch(message ->
+                message.contains("ignoring the time signature"));
+    }
+
+    @Test
     @DisplayName("a file with everything at tick 0 has no music in it")
     void anEmptySequenceIsRefused() throws Exception {
         Sequence sequence = new Sequence(Sequence.PPQ, PPQ);
@@ -455,8 +476,8 @@ class MidiImportEdgeCaseTest {
 
         Score score = transcriber.transcribe(sequence);
         assertThat(score.tempoMap().meterChanges()).containsExactly(
-                new TempoMap.MeterChange(0, TimeSignature.FOUR_FOUR),
-                new TempoMap.MeterChange(1, new TimeSignature(5, 4)));
+                declared(0, TimeSignature.FOUR_FOUR),
+                declared(1, new TimeSignature(5, 4)));
         assertThat(messages).anyMatch(message ->
                 message.contains("3/4") && message.contains("never takes effect"));
         assertThat(messages).anyMatch(message ->
@@ -485,8 +506,8 @@ class MidiImportEdgeCaseTest {
 
         Score score = transcriber.transcribe(sequence);
         assertThat(score.tempoMap().meterChanges()).containsExactly(
-                new TempoMap.MeterChange(0, new TimeSignature(1, 64)),
-                new TempoMap.MeterChange(7, TimeSignature.FOUR_FOUR));
+                declared(0, new TimeSignature(1, 64)),
+                declared(7, TimeSignature.FOUR_FOUR));
         // Within the tolerance is on the line, so there is nothing to report.
         assertThat(messages).noneMatch(message ->
                 message.contains("does not fall on a bar line"));
@@ -509,8 +530,8 @@ class MidiImportEdgeCaseTest {
 
         assertThat(transcriber.transcribe(sequence).tempoMap().meterChanges())
                 .containsExactly(
-                        new TempoMap.MeterChange(0, new TimeSignature(1, 64)),
-                        new TempoMap.MeterChange(16, TimeSignature.THREE_FOUR));
+                        declared(0, new TimeSignature(1, 64)),
+                        declared(16, TimeSignature.THREE_FOUR));
     }
 
     @Test
@@ -531,10 +552,10 @@ class MidiImportEdgeCaseTest {
 
         assertThat(transcriber.transcribe(sequence).tempoMap().meterChanges())
                 .containsExactly(
-                        new TempoMap.MeterChange(0, TimeSignature.SIX_EIGHT),
-                        new TempoMap.MeterChange(3, TimeSignature.THREE_FOUR),
-                        new TempoMap.MeterChange(4, new TimeSignature(5, 4)),
-                        new TempoMap.MeterChange(6, TimeSignature.FOUR_FOUR));
+                        declared(0, TimeSignature.SIX_EIGHT),
+                        declared(3, TimeSignature.THREE_FOUR),
+                        declared(4, new TimeSignature(5, 4)),
+                        declared(6, TimeSignature.FOUR_FOUR));
     }
 
     @Test
@@ -557,8 +578,8 @@ class MidiImportEdgeCaseTest {
 
         Score score = transcriber.transcribe(sequence);
         assertThat(score.tempoMap().meterChanges()).containsExactly(
-                new TempoMap.MeterChange(0, new TimeSignature(3, 32)),
-                new TempoMap.MeterChange(1, TimeSignature.THREE_FOUR));
+                declared(0, new TimeSignature(3, 32)),
+                declared(1, TimeSignature.THREE_FOUR));
         assertThat(messages).noneMatch(message ->
                 message.contains("does not fall on a bar line"));
     }
@@ -586,8 +607,8 @@ class MidiImportEdgeCaseTest {
 
         assertThat(transcriber.transcribe(sequence).tempoMap().meterChanges())
                 .containsExactly(
-                        new TempoMap.MeterChange(0, TimeSignature.FOUR_FOUR),
-                        new TempoMap.MeterChange(1, TimeSignature.THREE_FOUR));
+                        declared(0, TimeSignature.FOUR_FOUR),
+                        declared(1, TimeSignature.THREE_FOUR));
     }
 
     @Test
@@ -610,8 +631,8 @@ class MidiImportEdgeCaseTest {
 
         Score score = transcriber.transcribe(sequence);
         assertThat(score.tempoMap().meterChanges()).containsExactly(
-                new TempoMap.MeterChange(0, new TimeSignature(64, 1)),
-                new TempoMap.MeterChange(1, TimeSignature.THREE_FOUR));
+                declared(0, new TimeSignature(64, 1)),
+                declared(1, TimeSignature.THREE_FOUR));
     }
 
     @Test
@@ -636,9 +657,9 @@ class MidiImportEdgeCaseTest {
 
         assertThat(transcriber.transcribe(sequence).tempoMap().meterChanges())
                 .containsExactly(
-                        new TempoMap.MeterChange(0, TimeSignature.FOUR_FOUR),
-                        new TempoMap.MeterChange(2, new TimeSignature(7, 8)),
-                        new TempoMap.MeterChange(3, new TimeSignature(5, 4)));
+                        declared(0, TimeSignature.FOUR_FOUR),
+                        declared(2, new TimeSignature(7, 8)),
+                        declared(3, new TimeSignature(5, 4)));
     }
 
     @Test
@@ -658,9 +679,9 @@ class MidiImportEdgeCaseTest {
 
         assertThat(transcriber.transcribe(sequence).tempoMap().meterChanges())
                 .containsExactly(
-                        new TempoMap.MeterChange(0, TimeSignature.SIX_EIGHT),
-                        new TempoMap.MeterChange(3, TimeSignature.THREE_FOUR),
-                        new TempoMap.MeterChange(4, new TimeSignature(5, 4)));
+                        declared(0, TimeSignature.SIX_EIGHT),
+                        declared(3, TimeSignature.THREE_FOUR),
+                        declared(4, new TimeSignature(5, 4)));
     }
 
     @Test
@@ -763,7 +784,7 @@ class MidiImportEdgeCaseTest {
 
         Score score = transcriber.transcribe(sequence);
         assertThat(score.tempoMap().meterChanges())
-                .containsExactly(new TempoMap.MeterChange(0, TimeSignature.FOUR_FOUR));
+                .containsExactly(declared(0, TimeSignature.FOUR_FOUR));
         assertThat(messages).noneMatch(message -> message.contains("the meter changes"));
         // Still said, even though the change it is about was removed. It is a
         // permanent fact, so it goes into the log outright rather than being
@@ -790,8 +811,8 @@ class MidiImportEdgeCaseTest {
 
         Score score = transcriber.transcribe(sequence);
         assertThat(score.tempoMap().meterChanges()).containsExactly(
-                new TempoMap.MeterChange(0, TimeSignature.FOUR_FOUR),
-                new TempoMap.MeterChange(1, new TimeSignature(5, 4)));
+                declared(0, TimeSignature.FOUR_FOUR),
+                declared(1, new TimeSignature(5, 4)));
         assertThat(messages).anyMatch(message ->
                 message.contains("3/4") && message.contains("never takes effect"));
         // And no message claims a bar number the score does not hold in 3/4.
@@ -919,4 +940,15 @@ class MidiImportEdgeCaseTest {
             throws InvalidMidiDataException {
         track.add(new MidiEvent(new MetaMessage(type, data, data.length), tick));
     }
+
+    /**
+     * The change a file's own time-signature event produces. Every fixture here
+     * declares one at tick 0, so every entry they yield is
+     * {@link Provenance#DECLARED} -- the assumed opening is
+     * {@code MidiImportTest}'s.
+     */
+    private static TempoMap.MeterChange declared(int startBar, TimeSignature meter) {
+        return new TempoMap.MeterChange(startBar, meter, Provenance.DECLARED);
+    }
+
 }

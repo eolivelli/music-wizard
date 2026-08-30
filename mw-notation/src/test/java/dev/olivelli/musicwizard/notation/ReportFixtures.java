@@ -32,6 +32,7 @@ import dev.olivelli.musicwizard.core.model.NoteLetter;
 import dev.olivelli.musicwizard.core.model.NoteTrack;
 import dev.olivelli.musicwizard.core.model.PartRole;
 import dev.olivelli.musicwizard.core.model.PitchSpelling;
+import dev.olivelli.musicwizard.core.model.Provenance;
 import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.model.TempoMap;
 import dev.olivelli.musicwizard.core.model.TimeSignature;
@@ -48,6 +49,7 @@ import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -522,12 +524,23 @@ final class ReportFixtures {
      * whose beat tracker found no pulse writes.
      */
     static Score bare() {
-        return Score.empty(TempoMap.constant(BEATS_PER_MINUTE, TimeSignature.FOUR_FOUR),
+        return Score.empty(TempoMap.constant(BEATS_PER_MINUTE, TimeSignature.FOUR_FOUR)
+                        // What that run barred it in, and where that came from:
+                        // with no beats there is nothing to read a meter off,
+                        // so the meter is the documented default.
+                        .withMeterChange(new TempoMap.MeterChange(
+                                0, TimeSignature.FOUR_FOUR, Provenance.ASSUMED)),
                 DURATION).withMetadata("Silence", null);
     }
 
     private static Score withHarmony() {
-        return Score.empty(TempoMap.constant(BEATS_PER_MINUTE, TimeSignature.FOUR_FOUR), DURATION)
+        return Score.empty(TempoMap.constant(BEATS_PER_MINUTE, TimeSignature.FOUR_FOUR)
+                        // A meter read off the recording, as a run with beats
+                        // writes one, so the page has a reading to describe.
+                        .withMeterChange(new TempoMap.MeterChange(
+                                0, TimeSignature.FOUR_FOUR, Provenance.MEASURED,
+                                Optional.of(Confidence.of(0.6875)))),
+                DURATION)
                 .withMetadata("Report Fixture", "The Test Suite")
                 .withBeatGrid(beats())
                 .withChords(chords())

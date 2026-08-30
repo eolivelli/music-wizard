@@ -21,7 +21,9 @@ import static org.assertj.core.api.Assertions.withinPercentage;
 
 import dev.olivelli.musicwizard.audio.AudioBuffer;
 import dev.olivelli.musicwizard.core.model.BeatGrid;
+import dev.olivelli.musicwizard.core.model.Provenance;
 import dev.olivelli.musicwizard.core.model.Score;
+import dev.olivelli.musicwizard.core.model.TempoMap;
 import dev.olivelli.musicwizard.core.model.TimeSignature;
 import dev.olivelli.musicwizard.testkit.SignalFactory;
 import java.util.ArrayList;
@@ -153,6 +155,65 @@ class MeterDetectionTest {
         assertThat(said).anyMatch(line -> line.startsWith("meter 3/4 (")
                 && line.contains("% confidence), ")
                 && line.endsWith(" beats/min"));
+    }
+
+    @Test
+    @DisplayName("a read meter reaches the score as read, with what the reading was worth")
+    void aReadMeterCarriesItsConfidence() {
+        // Until #703 the confidence was on the progress line and nowhere else,
+        // so a reader of the score file could not tell this from a typed 3/4.
+        List<String> said = new ArrayList<>();
+
+        Score score = new AudioTranscriber(said::add)
+                .transcribe(clickTrackWithBarsOf(3), AudioTranscriber.Options.defaults());
+
+        TempoMap.MeterChange meter = score.tempoMap().meterChanges().get(0);
+        assertThat(meter.provenance()).isEqualTo(Provenance.MEASURED);
+        assertThat(meter.confidence()).isPresent();
+        // The same figure the run printed, rounded the way the line rounds it,
+        // so the file and the commentary cannot come to say different things.
+        String printed = String.format(Locale.ROOT, "meter 3/4 (%.0f%% confidence), ",
+                100 * meter.confidence().orElseThrow().value());
+        assertThat(said).anyMatch(line -> line.startsWith(printed));
+    }
+
+    @Test
+    @DisplayName("a typed meter reaches the score as the user's, with no reading beside it")
+    void aTypedMeterIsCarriedAsSupplied() {
+        Score score = new AudioTranscriber().transcribe(clickTrackWithBarsOf(3),
+                new AudioTranscriber.Options(null, TimeSignature.FOUR_FOUR, null));
+
+        TempoMap.MeterChange meter = score.tempoMap().meterChanges().get(0);
+        assertThat(meter.provenance()).isEqualTo(Provenance.SUPPLIED);
+        // The recording was still read -- the pulse count comes from that
+        // reading (#736) -- but the signature is the instruction, and a
+        // confidence beside it would describe a meter nobody used.
+        assertThat(meter.confidence()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("a run with no beats says its meter is the assumption, not a reading")
+    void aRunWithNoBeatsAssumesItsMeter() {
+        // The branch that returns an empty score: with no pulses there is
+        // nothing to read a meter off, so 4/4 here is a documented default.
+        float[] samples = new float[(int) (0.1 * RATE)];
+        for (int i = 0; i < samples.length; i++) {
+            samples[i] = (float) (0.3 * Math.sin(2 * Math.PI * 440 * i / RATE));
+        }
+
+        Score score = new AudioTranscriber()
+                .transcribe(new AudioBuffer(samples, RATE), AudioTranscriber.Options.defaults());
+        Score typed = new AudioTranscriber().transcribe(new AudioBuffer(samples, RATE),
+                new AudioTranscriber.Options(null, TimeSignature.THREE_FOUR, null));
+
+        assertThat(score.beatGrid()).as("the tracker found nothing").isEmpty();
+        assertThat(score.tempoMap().meterChanges().get(0).provenance())
+                .isEqualTo(Provenance.ASSUMED);
+        assertThat(score.tempoMap().meterChanges().get(0).confidence()).isEmpty();
+        // And a signature typed for that same clip is still the user's: the
+        // branch has no reading to prefer, not no instruction.
+        assertThat(typed.tempoMap().meterChanges().get(0).provenance())
+                .isEqualTo(Provenance.SUPPLIED);
     }
 
     @Test

@@ -408,6 +408,13 @@ public final class MidiTranscriber {
         });
 
         TimeSignature opening = meters.getOrDefault(0L, DEFAULT_METER);
+        // What the file said, or what the specification says a file that says
+        // nothing is played in -- and the score carries which, because a
+        // defaulted meter reaches the engraved bar lines (#119). Assumed also
+        // where a declaration was dropped above: what the score barred in came
+        // from nothing the file usably states.
+        Provenance openingProvenance =
+                meters.containsKey(0L) ? Provenance.DECLARED : Provenance.ASSUMED;
         List<TempoMap.MeterChange> changes = new ArrayList<>();
         // The beat each change's bar line falls on, one per entry, so removing
         // an entry restores the bar count with it.
@@ -419,7 +426,7 @@ public final class MidiTranscriber {
         // Where each change's own "it moved" line sits, or -1 — only that line
         // dies with its change.
         List<Integer> movedLine = new ArrayList<>();
-        changes.add(new TempoMap.MeterChange(0, opening));
+        changes.add(new TempoMap.MeterChange(0, opening, openingProvenance));
         barLineBeats.add(0.0);
         movedLine.add(-1);
 
@@ -495,7 +502,7 @@ public final class MidiTranscriber {
                                 + " beats later",
                         meter, entry.getKey(), bar + 1, barLineBeat - beat));
             }
-            changes.add(new TempoMap.MeterChange((int) bar, meter));
+            changes.add(new TempoMap.MeterChange((int) bar, meter, Provenance.DECLARED));
             barLineBeats.add(barLineBeat);
             movedLine.add(movedAt);
         }
