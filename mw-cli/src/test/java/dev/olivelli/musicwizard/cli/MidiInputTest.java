@@ -170,6 +170,10 @@ class MidiInputTest {
                     .contains("Meter   4/4")
                     .contains("Key     C major")
                     .contains("Parts   Piano, Bass");
+            // This file states its tempo and its meter, so neither row is
+            // marked as a substitution; the test below is the file that is.
+            assertThat(analyze.out())
+                    .doesNotContain("(the MIDI default; the file declares none)");
             // The audio path's vocabulary, which is the thing that must not leak
             // across: every one of these words claims something was measured.
             assertThat(analyze.out())
@@ -284,10 +288,10 @@ class MidiInputTest {
         void aDefaultedTempoIsNotPresentedAsAStatement() {
             // No tempo event and no time signature. MidiTranscriber substitutes
             // 120 and 4/4 -- what the specification says such a file is played at
-            // -- and the TempoMap that comes back cannot be told apart from one
-            // built for a file that declared them (#119). So the heading must not
-            // claim it was read from the file, which the first version of this
-            // command did.
+            // -- and since #119 the score records that it substituted them, so
+            // each row says which of the heading's two sources it came from.
+            // The heading must still not claim the file was read, which the
+            // first version of this command did.
             Sequence silentAboutTempo = MidiFixtures.sequence()
                     .part("Melody", 0)
                     .note(1, 1, 60).note(2, 1, 62)
@@ -299,8 +303,8 @@ class MidiInputTest {
             assertThat(analyze.exitCode()).as(analyze.all()).isZero();
             assertThat(analyze.out())
                     .contains("From the file, or the MIDI default where it declares nothing:")
-                    .contains("Tempo   120.0 BPM")
-                    .contains("Meter   4/4")
+                    .contains("Tempo   120.0 BPM (the MIDI default; the file declares none)")
+                    .contains("Meter   4/4 (the MIDI default; the file declares none)")
                     .contains("Key     not declared by the file");
             assertThat(analyze.out())
                     .as("a default presented as something the file said")

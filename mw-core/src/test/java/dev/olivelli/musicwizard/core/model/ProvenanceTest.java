@@ -23,6 +23,7 @@ import static org.assertj.core.api.Assertions.within;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -602,11 +603,89 @@ class ProvenanceTest {
             Score score = ScoreJson.fromJson(json);
 
             assertThat(provenances(score.tempoMap())).containsOnly(Provenance.UNKNOWN);
+            // The meter is the same promise one field later (#703): a file
+            // written before it says nothing about where its signature came
+            // from, and must read as saying nothing rather than as a reading
+            // worth no confidence.
+            TempoMap.MeterChange meter = score.tempoMap().meterChanges().get(0);
+            assertThat(meter.provenance()).isEqualTo(Provenance.UNKNOWN);
+            assertThat(meter.confidence()).isEmpty();
+            assertThat(meter.timeSignature()).isEqualTo(TimeSignature.FOUR_FOUR);
             // And the answer it gave before the field existed is the answer it
             // gives now: the proxy is still there for exactly these values.
             assertThat(score.tempoMap().segments()).hasSize(2);
             assertThat(score.estimatedTempo()).isEqualTo(60.0);
             assertThat(score.beatGrid()).isPresent();
+        }
+
+        @Test
+        @DisplayName("a meter read off a recording carries back what the reading was worth")
+        void aMeterReadingSurvivesARoundTrip() {
+            Score score = Score.empty(
+                    TempoMap.constant(120, TimeSignature.FOUR_FOUR, Provenance.MEASURED)
+                            .withMeterChange(new TempoMap.MeterChange(
+                                    0, TimeSignature.SIX_EIGHT, Provenance.MEASURED,
+                                    Optional.of(Confidence.of(0.61)))),
+                    12.0);
+
+            Score reloaded = ScoreJson.fromJson(ScoreJson.toJson(score));
+            TempoMap.MeterChange meter = reloaded.tempoMap().meterChanges().get(0);
+
+            assertThat(meter.provenance()).isEqualTo(Provenance.MEASURED);
+            assertThat(meter.confidence()).contains(Confidence.of(0.61));
+            assertThat(reloaded).isEqualTo(score);
+        }
+
+        @Test
+        @DisplayName("a meter nobody estimated carries no confidence to read")
+        void aStatedMeterCarriesNoConfidence() {
+            Score score = Score.empty(
+                    TempoMap.constant(120, TimeSignature.THREE_FOUR, Provenance.SUPPLIED)
+                            .withMeterChange(new TempoMap.MeterChange(
+                                    0, TimeSignature.THREE_FOUR, Provenance.SUPPLIED)),
+                    12.0);
+
+            TempoMap.MeterChange meter =
+                    ScoreJson.fromJson(ScoreJson.toJson(score)).tempoMap().meterChanges().get(0);
+
+            assertThat(meter.provenance()).isEqualTo(Provenance.SUPPLIED);
+            assertThat(meter.confidence()).isEmpty();
+        }
+
+        @Test
+        @DisplayName("an explicit null on a meter change reads as unknown, not as a broken file")
+        void anExplicitNullOnAMeterChangeReadsAsUnknown() {
+            // The shape a hand-edited file takes, and the shape Jackson itself
+            // writes for an absent Optional. Both properties, because the two
+            // are normalised separately.
+            String json = """
+                    {"segments":[{"startBeat":0.0,"startSeconds":0.0,\
+                    "beatsPerMinute":120.0,"provenance":"MEASURED"}],\
+                    "meterChanges":[{"startBar":0,\
+                    "timeSignature":{"numerator":4,"denominator":4},\
+                    "provenance":null,"confidence":null}]}""";
+
+            assertThatCode(() -> readMap(json)).doesNotThrowAnyException();
+            TempoMap.MeterChange meter = readMap(json).meterChanges().get(0);
+            assertThat(meter.provenance()).isEqualTo(Provenance.UNKNOWN);
+            assertThat(meter.confidence()).isEmpty();
+        }
+
+        @Test
+        @DisplayName("a meter label a later build invented reads as unknown")
+        void anUnrecognisedMeterLabelReadsAsUnknown() {
+            // #22 from the other direction, on the property this change adds:
+            // an unknown enum name must not take the whole file down with it.
+            String json = """
+                    {"segments":[{"startBeat":0.0,"startSeconds":0.0,\
+                    "beatsPerMinute":120.0,"provenance":"MEASURED"}],\
+                    "meterChanges":[{"startBar":0,\
+                    "timeSignature":{"numerator":4,"denominator":4},\
+                    "provenance":"ADVISED"}]}""";
+
+            assertThatCode(() -> readMap(json)).doesNotThrowAnyException();
+            assertThat(readMap(json).meterChanges().get(0).provenance())
+                    .isEqualTo(Provenance.UNKNOWN);
         }
 
         @Test

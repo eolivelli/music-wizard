@@ -89,11 +89,11 @@ final class AnalyzeCommand implements Callable<Integer> {
     /**
      * What the MIDI path's figures are, exactly. The heading names both
      * sources because {@link MidiTranscriber} substitutes the MIDI defaults
-     * where a file declares nothing and the {@code TempoMap} records the
-     * substitution as a declaration. The tempo row could be tightened via
-     * {@link Provenance} (#120); the meter row cannot until #119, and rows of
-     * different strengths under one heading would be worse than one honest
-     * heading. What is not weakened: nothing under it was measured from audio.
+     * where a file declares nothing. Which of the two a row is comes from the
+     * value's own {@link Provenance} now that the tempo (#120) and the meter
+     * (#119) both carry one, so the heading covers rows that say for
+     * themselves which source they came from. What it never covers: nothing
+     * under it was measured from audio.
      */
     private static final String DECLARED_HEADING =
             "From the file, or the MIDI default where it declares nothing:";
@@ -1448,7 +1448,8 @@ final class AnalyzeCommand implements Callable<Integer> {
     private static String statedTempo(Score score) {
         TempoMap map = score.tempoMap();
         TimeSignature meter = map.initialTimeSignature();
-        String opening = formatTempo(map.segments().get(0).beatsPerMinute(), meter);
+        String opening = formatTempo(map.segments().get(0).beatsPerMinute(), meter)
+                + notDeclared(map.segments().get(0).provenance());
         int changes = countChanges(map.segments(), TempoMap.TempoSegment::beatsPerMinute);
         return changes == 0 ? opening : opening + " at the start, " + changed(changes);
     }
@@ -1456,8 +1457,24 @@ final class AnalyzeCommand implements Callable<Integer> {
     private static String statedMeter(Score score) {
         TempoMap map = score.tempoMap();
         int changes = countChanges(map.meterChanges(), TempoMap.MeterChange::timeSignature);
-        String opening = map.initialTimeSignature().toString();
+        String opening = map.initialTimeSignature()
+                + notDeclared(map.meterChanges().get(0).provenance());
         return changes == 0 ? opening : opening + " at the start, " + changed(changes);
+    }
+
+    /**
+     * What marks a row the file did not state, and nothing for one it did.
+     *
+     * <p>The row this qualifies is the substitution {@link MidiTranscriber}
+     * makes for a file that declares nothing, which is what the specification
+     * says such a file is played at. Read off the value rather than re-derived
+     * from the file, which is #119 -- and it matters most for the meter, since
+     * a defaulted 4/4 reaches the engraved bar lines.
+     */
+    private static String notDeclared(Provenance provenance) {
+        return provenance == Provenance.ASSUMED
+                ? " (the MIDI default; the file declares none)"
+                : "";
     }
 
     /**

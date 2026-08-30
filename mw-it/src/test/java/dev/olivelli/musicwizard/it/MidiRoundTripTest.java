@@ -26,6 +26,7 @@ import dev.olivelli.musicwizard.core.model.Note;
 import dev.olivelli.musicwizard.core.model.NoteTrack;
 import dev.olivelli.musicwizard.core.model.PartRole;
 import dev.olivelli.musicwizard.core.model.PitchSpelling;
+import dev.olivelli.musicwizard.core.model.Provenance;
 import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.model.TempoMap;
 import dev.olivelli.musicwizard.core.model.TimeSignature;
@@ -226,9 +227,13 @@ class MidiRoundTripTest {
 
         List<TempoMap.MeterChange> after =
                 roundTrip(original, directory, "meter").tempoMap().meterChanges();
+        // Declared, both of them: the exported file states each signature as a
+        // time-signature event, so what comes back is read off the file rather
+        // than defaulted -- which is the distinction #119 asked the importer
+        // for and this loop is the one place both halves meet.
         assertThat(after).containsExactly(
-                new TempoMap.MeterChange(0, TimeSignature.FOUR_FOUR),
-                new TempoMap.MeterChange(1, TimeSignature.THREE_FOUR));
+                new TempoMap.MeterChange(0, TimeSignature.FOUR_FOUR, Provenance.DECLARED),
+                new TempoMap.MeterChange(1, TimeSignature.THREE_FOUR, Provenance.DECLARED));
     }
 
     @Test

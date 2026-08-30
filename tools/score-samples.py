@@ -42,7 +42,7 @@ Usage:  python3 tools/score-samples.py [--jar mw-cli/target/mw.jar]
 
 import argparse
 import json
-import re
+import math
 import subprocess
 import sys
 import tempfile
@@ -534,24 +534,28 @@ def score_phase(mp3: Path, doc: dict, truth: str) -> None:
           f"  best beat {best} at {scores[best]:.1f}%")
 
 
-#: `analyze`'s meter line, which is the only place the reading's confidence is
-#: written down: the meter itself reaches score.json and its confidence does
-#: not, MeterChange carrying no provenance (#703).
-METER_LINE = re.compile(r"^meter \S+ \((\d+)% confidence\), [\d.]+ beats/min$")
+def meter_confidence(doc: dict) -> int | None:
+    """What the run said its meter reading was worth, or None where it read none.
 
+    Read off the score file, which carries the reading's provenance and its
+    confidence since #703; before that this had to scrape `analyze`'s own
+    meter line for the figure.
 
-def printed_meter_confidence(printed: str) -> int | None:
-    """What the run said the meter was worth, or None where it read none.
-
-    None is the honest answer for a run given `--time-signature`: the meter is
-    the user's, so the line prints no confidence and there is none to report.
-    No row here supplies one.
+    None is the honest answer wherever the meter is not a reading -- a run
+    given `--time-signature`, or one with no beats to read a meter off, which
+    is stated or assumed rather than estimated and carries no confidence. No
+    row here supplies a meter.
     """
-    for line in printed.splitlines():
-        found = METER_LINE.match(line.strip())
-        if found:
-            return int(found.group(1))
-    return None
+    changes = doc.get("tempoMap", {}).get("meterChanges", [])
+    if not changes:
+        return None
+    read = changes[0].get("confidence")
+    if read is None:
+        return None
+    # Half away from zero, which is what Java's %.0f does: round() would round
+    # a reading landing exactly on a half the other way, and print a figure the
+    # run's own line contradicts.
+    return math.floor(100 * read["value"] + 0.5)
 
 
 def barred_meter(doc: dict) -> str | None:
@@ -567,7 +571,7 @@ def barred_meter(doc: dict) -> str | None:
     return f"{meter['numerator']}/{meter['denominator']}"
 
 
-def score_meter(mp3: Path, doc: dict, printed: str, want: str) -> None:
+def score_meter(mp3: Path, doc: dict, want: str) -> None:
     """The meter the run barred the recording in, against the stated one.
 
     The tracked pulses in a bar are printed beside it because they are a second
@@ -582,7 +586,7 @@ def score_meter(mp3: Path, doc: dict, printed: str, want: str) -> None:
         return
     positions = [b.get("positionInBar") for b in doc.get("beatGrid", {}).get("beats", [])]
     pulses = max(positions) + 1 if positions and None not in positions else 0
-    confidence = printed_meter_confidence(printed)
+    confidence = meter_confidence(doc)
     print(f"  meter {mp3.name}: {written} at"
           f" {'none' if confidence is None else str(confidence) + '%'}"
           f"  pulses/bar {pulses}"
@@ -715,8 +719,9 @@ def main() -> None:
     def run_for(name: str, where: str = "samples") -> tuple[dict, str] | None:
         """One analysis and everything it said, or None where the file is absent.
 
-        Both halves are kept because the two are not interchangeable: the meter
-        reaches score.json and the confidence in it is only ever printed.
+        Both halves are kept because `analyze_with_output` is shared with the
+        synthetic harness, which reads the printed half for its tempo. Every
+        table here reads the score file.
         """
         mp3 = REPO / where / name
         if mp3 not in analysed:
@@ -753,11 +758,11 @@ def main() -> None:
     print("meters, against the meter each list.txt entry states:")
     missing = []
     for name, (where, want) in METERS.items():
-        run = run_for(name, where)
-        if run is None:
+        doc = doc_for(name, where)
+        if doc is None:
             missing.append((name, where))
         else:
-            score_meter(REPO / where / name, run[0], run[1], want)
+            score_meter(REPO / where / name, doc, want)
     for name, where in missing:
         print(missing_line(f"meter {name}", where))
 

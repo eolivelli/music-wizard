@@ -20,6 +20,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.function.ToDoubleFunction;
 
 /**
@@ -101,17 +102,64 @@ public record TempoMap(List<TempoSegment> segments, List<MeterChange> meterChang
     }
 
     /**
-     * A time-signature change.
+     * A time-signature change, and where its signature came from.
+     *
+     * <p>Carried for the reason {@link TempoSegment}'s is: since the meter is
+     * read off the recording, a reader of a score file cannot otherwise tell a
+     * signature that was measured from one the user typed or one substituted
+     * because nothing said (#703). The confidence rides with it because a
+     * reading is worth what the evidence gave it, and it was previously
+     * written down nowhere but the run's own commentary.
      *
      * @param startBar      zero-based bar index at which this signature takes effect
      * @param timeSignature the signature from that bar onwards
+     * @param provenance    where this signature came from; never null, and
+     *                      {@link Provenance#UNKNOWN} for a change read from a
+     *                      score file written before provenance was carried
+     * @param confidence    what the reading was worth, and empty wherever the
+     *                      signature is not a reading: a stated or defaulted
+     *                      meter is not an estimate, so no confidence figure
+     *                      describes it
      */
-    public record MeterChange(int startBar, TimeSignature timeSignature) {
+    public record MeterChange(int startBar, TimeSignature timeSignature,
+                              Provenance provenance, Optional<Confidence> confidence) {
         public MeterChange {
             if (startBar < 0) {
                 throw new IllegalArgumentException("startBar must be non-negative, got: " + startBar);
             }
             Objects.requireNonNull(timeSignature, "timeSignature");
+            // Normalised rather than rejected, for the reason TempoSegment
+            // normalises its own: these are the properties an existing
+            // score.json does not have, and Jackson passes null for a missing
+            // creator property. Rejecting here would make every file written
+            // before this change unreadable, which is #22.
+            if (provenance == null) {
+                provenance = Provenance.UNKNOWN;
+            }
+            if (confidence == null) {
+                confidence = Optional.empty();
+            }
+        }
+
+        /**
+         * A change whose signature nobody estimated, so there is no confidence
+         * to state: one the user supplied, one a file declared, or the default
+         * substituted where neither happened.
+         */
+        public MeterChange(int startBar, TimeSignature timeSignature, Provenance provenance) {
+            this(startBar, timeSignature, provenance, Optional.empty());
+        }
+
+        /**
+         * A change whose origin is not recorded.
+         *
+         * <p>Kept for the same reason {@link TempoSegment}'s three-argument form
+         * is: a caller assembling a map by hand says {@link Provenance#UNKNOWN}
+         * by omission rather than by choosing a plausible-looking origin. A
+         * producer that knows should say so.
+         */
+        public MeterChange(int startBar, TimeSignature timeSignature) {
+            this(startBar, timeSignature, Provenance.UNKNOWN, Optional.empty());
         }
     }
 
@@ -796,11 +844,28 @@ public record TempoMap(List<TempoSegment> segments, List<MeterChange> meterChang
         return new TempoMap(segments, List.of(new MeterChange(0, timeSignature)));
     }
 
-    /** Returns a copy with an additional meter change spliced in. */
+    /**
+     * Returns a copy with an additional meter change spliced in, of unrecorded
+     * origin. See {@link MeterChange#MeterChange(int, TimeSignature)}.
+     */
     public TempoMap withMeterChange(int startBar, TimeSignature timeSignature) {
+        return withMeterChange(new MeterChange(startBar, timeSignature));
+    }
+
+    /**
+     * Returns a copy with {@code change} spliced in, replacing whatever the map
+     * held at that bar.
+     *
+     * <p>This is how a producer that built its map through one of the factories
+     * above says where the meter came from: the factories take the tempo's
+     * origin, and the meter's is a different fact — a run may read a meter off
+     * a recording whose tempo the user supplied, or the other way round.
+     */
+    public TempoMap withMeterChange(MeterChange change) {
+        Objects.requireNonNull(change, "change");
         List<MeterChange> merged = new ArrayList<>(meterChanges);
-        merged.removeIf(change -> change.startBar() == startBar);
-        merged.add(new MeterChange(startBar, timeSignature));
+        merged.removeIf(existing -> existing.startBar() == change.startBar());
+        merged.add(change);
         merged.sort(Comparator.comparingInt(MeterChange::startBar));
         return new TempoMap(segments, merged);
     }
