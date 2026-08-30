@@ -493,10 +493,12 @@ class TempoOverrideTest {
         assertThat(AudioTranscriber.trackedPulsesPerBar(
                 360.0, tracked, TimeSignature.THREE_FOUR)).hasValue(1);
 
-        // The counted beat itself is recorded as nothing: it is what every
-        // reader assumes, so recording it would state an assumption.
+        // The counted beat itself is an answer, not a silence: the meter reading
+        // has one too and would otherwise be let in over it (#736).
         assertThat(AudioTranscriber.trackedPulsesPerBar(
-                122.0, tracked, TimeSignature.FOUR_FOUR)).isEmpty();
+                122.0, tracked, TimeSignature.FOUR_FOUR)).hasValue(4);
+        assertThat(AudioTranscriber.trackedPulsesPerBar(
+                122.0, tracked, TimeSignature.SIX_EIGHT)).hasValue(2);
 
         // Nothing typed, and nothing to measure a ratio against.
         assertThat(AudioTranscriber.trackedPulsesPerBar(

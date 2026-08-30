@@ -311,6 +311,27 @@ class MeterDetectionTest {
     }
 
     @Test
+    @DisplayName("a tempo that settles nothing leaves the reading's bar standing")
+    void aTempoThatSettlesNothingLeavesTheReading() {
+        // A correction of a tenth is no relation a pulse and a counted beat
+        // stand in, so the tempo says nothing about how the bar is filled and
+        // the reading's own count still fills it. This is the ordinary shape of
+        // a tempo correction, and reading it as the counted beat barred the
+        // recording at a fraction of its length with nothing typed at all.
+        AudioBuffer audio = clickTrackWithBarsOf(6);
+        Score read = new AudioTranscriber().transcribe(audio, AudioTranscriber.Options.defaults());
+        double nudged = 1.1 * read.tempoMap().initialTimeSignature()
+                .countedTempo(read.estimatedTempo());
+
+        Score score = new AudioTranscriber()
+                .transcribe(audio, new AudioTranscriber.Options(nudged, null, null));
+
+        assertThat(positions(score)).containsExactlyElementsOf(positions(read));
+        assertThat(gridBarSeconds(score))
+                .isCloseTo(gridBarSeconds(read), withinPercentage(1.0));
+    }
+
+    @Test
     @DisplayName("a bar of the same length keeps the count whatever the pulse was called")
     void aBarOfTheSameLengthKeepsTheCount() {
         // Three quarter-note pulses to a bar, read as 3/4 and typed as 6/8:

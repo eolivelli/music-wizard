@@ -380,18 +380,16 @@ public final class AudioTranscriber {
         // claim: a typed tempo against kept pulses says so by their ratio
         // (#139), and a meter read off the recording says so when the tracker
         // filled a compound bar with its subdivision (#700). The typed one
-        // wins, being a correction rather than an estimate -- and it is asked
-        // alone rather than first, because its silence is not the absence of a
-        // claim: a ratio of one is the statement that the pulse *is* the
-        // counted beat, reported as nothing to record, and letting the reading
-        // answer over it bars the grid at one length and the map at another.
-        // Read before the map, whose lead-in is measured in tracked pulses too.
+        // wins wherever it settles the question, being a correction rather
+        // than an estimate — including where what it settles is that the pulse
+        // is the counted beat, which is a measurement and not a silence; the
+        // reading answers only where the ratio settles nothing. Read before the
+        // map, whose lead-in is measured in tracked pulses too.
         int pulsesPerBar;
-        if (settings.tempoOverride() != null) {
-            OptionalInt corrected =
-                    trackedPulsesPerBar(settings.tempoOverride(), beatTimes, meter);
-            pulsesPerBar = corrected.orElse(meter.beatsPerBar());
-            if (corrected.isPresent()) {
+        OptionalInt fromTempo = trackedPulsesPerBar(settings.tempoOverride(), beatTimes, meter);
+        if (fromTempo.isPresent()) {
+            pulsesPerBar = fromTempo.getAsInt();
+            if (pulsesPerBar != meter.beatsPerBar()) {
                 progress.accept(String.format(Locale.ROOT,
                         "the supplied tempo puts %d tracked beat%s in a bar, not %d",
                         pulsesPerBar, pulsesPerBar == 1 ? "" : "s", meter.beatsPerBar()));
@@ -742,13 +740,13 @@ public final class AudioTranscriber {
     private static final double RELATION_TOLERANCE = 0.05;
 
     /**
-     * How many tracked pulses fill a bar, where a supplied tempo says the
-     * pulse is not the meter's counted beat — the only measurement there is,
-     * since the tracker cannot know it landed on a sub-multiple (#353); the
-     * ratio of corrected rate to kept pulses is the pulse (#139). Empty
-     * unless the ratio is a musical relation (a nudge from 105 to 106 is not
-     * an octave error) <em>and</em> a whole number of such pulses fills a
-     * bar. A bar count rather than a pulse, so no rounding step sits between
+     * How many tracked pulses fill a bar, where a supplied tempo settles it —
+     * the only measurement there is, since the tracker cannot know it landed
+     * on a sub-multiple (#353); the ratio of corrected rate to kept pulses is
+     * the pulse (#139). Empty unless the ratio is a musical relation (a nudge
+     * from 105 to 106 is not an octave error) <em>and</em> a whole number of
+     * such pulses fills a bar — the two ways a tempo leaves the question open
+     * for the meter reading to answer (#736). A bar count rather than a pulse, so no rounding step sits between
      * two figures that must agree exactly. Package-private for the ratios a
      * recording cannot easily be made to produce.
      */
@@ -764,9 +762,12 @@ public final class AudioTranscriber {
                 continue;
             }
             if (relation == 1.0) {
-                // The counted beat, which is what every reader already assumes.
-                // Recording it would state an assumption as a measurement.
-                return OptionalInt.empty();
+                // The counted beat — answered rather than withheld, though it is
+                // what every reader assumes anyway. It is a measurement, and a
+                // caller that read it as having nothing to say would let the
+                // meter reading bar the grid at a length the map contradicts
+                // (#736).
+                return OptionalInt.of(meter.beatsPerBar());
             }
             double perBar = meter.quarterBeatsPerBar() / (relation * meter.beatUnitQuarters());
             return perBar >= 1 && Math.abs(perBar - Math.rint(perBar)) < 1e-9
