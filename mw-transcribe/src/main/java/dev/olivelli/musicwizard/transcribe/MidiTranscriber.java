@@ -410,7 +410,9 @@ public final class MidiTranscriber {
         TimeSignature opening = meters.getOrDefault(0L, DEFAULT_METER);
         // What the file said, or what the specification says a file that says
         // nothing is played in -- and the score carries which, because a
-        // defaulted 4/4 reaches the engraved bar lines (#119).
+        // defaulted meter reaches the engraved bar lines (#119). Assumed also
+        // where a declaration was dropped above: what the score barred in came
+        // from nothing the file usably states.
         Provenance openingProvenance =
                 meters.containsKey(0L) ? Provenance.DECLARED : Provenance.ASSUMED;
         List<TempoMap.MeterChange> changes = new ArrayList<>();

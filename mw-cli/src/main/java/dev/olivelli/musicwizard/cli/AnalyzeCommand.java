@@ -91,9 +91,8 @@ final class AnalyzeCommand implements Callable<Integer> {
      * sources because {@link MidiTranscriber} substitutes the MIDI defaults
      * where a file declares nothing. Which of the two a row is comes from the
      * value's own {@link Provenance} now that the tempo (#120) and the meter
-     * (#119) both carry one, so the heading covers rows that say for
-     * themselves which source they came from. What it never covers: nothing
-     * under it was measured from audio.
+     * (#119) both carry one, so every row under the heading says for itself
+     * which source it came from.
      */
     private static final String DECLARED_HEADING =
             "From the file, or the MIDI default where it declares nothing:";
@@ -1449,7 +1448,7 @@ final class AnalyzeCommand implements Callable<Integer> {
         TempoMap map = score.tempoMap();
         TimeSignature meter = map.initialTimeSignature();
         String opening = formatTempo(map.segments().get(0).beatsPerMinute(), meter)
-                + notDeclared(map.segments().get(0).provenance());
+                + midiDefault(map.segments().get(0).provenance());
         int changes = countChanges(map.segments(), TempoMap.TempoSegment::beatsPerMinute);
         return changes == 0 ? opening : opening + " at the start, " + changed(changes);
     }
@@ -1458,23 +1457,21 @@ final class AnalyzeCommand implements Callable<Integer> {
         TempoMap map = score.tempoMap();
         int changes = countChanges(map.meterChanges(), TempoMap.MeterChange::timeSignature);
         String opening = map.initialTimeSignature()
-                + notDeclared(map.meterChanges().get(0).provenance());
+                + midiDefault(map.meterChanges().get(0).provenance());
         return changes == 0 ? opening : opening + " at the start, " + changed(changes);
     }
 
     /**
-     * What marks a row the file did not state, and nothing for one it did.
+     * What marks a row the pipeline substituted, and nothing for one the file
+     * states.
      *
-     * <p>The row this qualifies is the substitution {@link MidiTranscriber}
-     * makes for a file that declares nothing, which is what the specification
-     * says such a file is played at. Read off the value rather than re-derived
-     * from the file, which is #119 -- and it matters most for the meter, since
-     * a defaulted 4/4 reaches the engraved bar lines.
+     * <p>Read off the value rather than re-derived from the file, which is
+     * #119. It says the value is the MIDI default and not why: the importer
+     * also substitutes where a file declares a signature the model cannot
+     * express, and a row claiming the file declared none would then be false.
      */
-    private static String notDeclared(Provenance provenance) {
-        return provenance == Provenance.ASSUMED
-                ? " (the MIDI default; the file declares none)"
-                : "";
+    private static String midiDefault(Provenance provenance) {
+        return provenance == Provenance.ASSUMED ? " (the MIDI default)" : "";
     }
 
     /**

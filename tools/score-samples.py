@@ -342,9 +342,9 @@ def analyze_with_output(jar: Path, mp3: Path) -> tuple[dict, str]:
 
     Both from one run, so a caller wanting a figure MW derives rather than
     stores can read MW's own answer instead of deriving it again here. The
-    tempo is the one: `Score.estimatedTempo()` is a method, and a harness that
-    reimplemented it would be a second definition of a number the engraved
-    chart already prints.
+    tempo is the one, and it is the synthetic harness that reads it:
+    `Score.estimatedTempo()` is a method, and a harness that reimplemented it
+    would be a second definition of a number the engraved chart already prints.
     """
     with tempfile.TemporaryDirectory() as tmp:
         ws = Path(tmp) / "w.mwz"
@@ -537,9 +537,8 @@ def score_phase(mp3: Path, doc: dict, truth: str) -> None:
 def meter_confidence(doc: dict) -> int | None:
     """What the run said its meter reading was worth, or None where it read none.
 
-    Read off the score file, which carries the reading's provenance and its
-    confidence since #703; before that this had to scrape `analyze`'s own
-    meter line for the figure.
+    Read off the score file, whose meter change carries the reading's
+    provenance and its confidence (#703).
 
     None is the honest answer wherever the meter is not a reading -- a run
     given `--time-signature`, or one with no beats to read a meter off, which
@@ -717,12 +716,8 @@ def main() -> None:
     analysed = {}
 
     def run_for(name: str, where: str = "samples") -> tuple[dict, str] | None:
-        """One analysis and everything it said, or None where the file is absent.
-
-        Both halves are kept because `analyze_with_output` is shared with the
-        synthetic harness, which reads the printed half for its tempo. Every
-        table here reads the score file.
-        """
+        """One analysis, or None where the file is absent. Every table below
+        reads the score half."""
         mp3 = REPO / where / name
         if mp3 not in analysed:
             analysed[mp3] = analyze_with_output(jar, mp3) if mp3.exists() else None

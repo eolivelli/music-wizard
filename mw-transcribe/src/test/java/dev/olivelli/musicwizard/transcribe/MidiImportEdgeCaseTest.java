@@ -342,6 +342,26 @@ class MidiImportEdgeCaseTest {
     }
 
     @Test
+    @DisplayName("a signature the model cannot express leaves an assumed meter, not a declared one")
+    void anUnexpressibleOpeningSignatureIsAssumed() throws Exception {
+        // The file does declare a meter and the score does not bar in it, so
+        // the opening is a substitution like any other -- and a reader that
+        // reported it as declared would name a signature the score never used.
+        Sequence sequence = new Sequence(Sequence.PPQ, PPQ);
+        Track track = sequence.createTrack();
+        meta(track, 0, 0x58, new byte[] {65, 2, 24, 8});
+        noteOn(track, 0, 0, 60, 90);
+        noteOff(track, 4 * PPQ, 0, 60);
+
+        Score score = transcriber.transcribe(sequence);
+
+        assertThat(score.tempoMap().meterChanges()).containsExactly(
+                new TempoMap.MeterChange(0, TimeSignature.FOUR_FOUR, Provenance.ASSUMED));
+        assertThat(messages).anyMatch(message ->
+                message.contains("ignoring the time signature"));
+    }
+
+    @Test
     @DisplayName("a file with everything at tick 0 has no music in it")
     void anEmptySequenceIsRefused() throws Exception {
         Sequence sequence = new Sequence(Sequence.PPQ, PPQ);

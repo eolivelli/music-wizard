@@ -373,8 +373,8 @@ class MidiImportTest {
     @Test
     @DisplayName("a meter the file states and one it does not are not the same claim")
     void aDefaultedMeterIsNotReadAsDeclared() {
-        // #119: both files bar in 4/4, and the score has to say which of them
-        // said so -- a defaulted 4/4 reaches the engraved bar lines.
+        // #119: both files bar the same way, and the score has to say which of
+        // them said so -- a defaulted meter reaches the engraved bar lines.
         Sequence silent = MidiFixtures.sequence()
                 .tempo(120)
                 .part("Melody", 0).note(2, 1, 60).build();

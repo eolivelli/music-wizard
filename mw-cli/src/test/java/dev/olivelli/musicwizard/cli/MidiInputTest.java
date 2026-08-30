@@ -173,7 +173,7 @@ class MidiInputTest {
             // This file states its tempo and its meter, so neither row is
             // marked as a substitution; the test below is the file that is.
             assertThat(analyze.out())
-                    .doesNotContain("(the MIDI default; the file declares none)");
+                    .doesNotContain("(the MIDI default)");
             // The audio path's vocabulary, which is the thing that must not leak
             // across: every one of these words claims something was measured.
             assertThat(analyze.out())
@@ -303,8 +303,8 @@ class MidiInputTest {
             assertThat(analyze.exitCode()).as(analyze.all()).isZero();
             assertThat(analyze.out())
                     .contains("From the file, or the MIDI default where it declares nothing:")
-                    .contains("Tempo   120.0 BPM (the MIDI default; the file declares none)")
-                    .contains("Meter   4/4 (the MIDI default; the file declares none)")
+                    .contains("Tempo   120.0 BPM (the MIDI default)")
+                    .contains("Meter   4/4 (the MIDI default)")
                     .contains("Key     not declared by the file");
             assertThat(analyze.out())
                     .as("a default presented as something the file said")
