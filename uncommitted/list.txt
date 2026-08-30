@@ -642,8 +642,10 @@ Words in il-filo-rosso.lrc, from LRCLIB entry id 20516702 (188 s, synced):
   curl -s 'https://lrclib.net/api/get/20516702'
 with its syncedLyrics field written verbatim to the file. Sung in Italian.
 
-Not in four: Enrico's ear, and the one thing he remembers of it — the chords,
-the key and the words are reported below, not checked. Corroborated outside
+Confirmed by ear 2026-08-30 (Enrico): **6/8** — the signature, not only the
+length ("not in four" was the first confirmation, and #728 asked which of 6/8
+and 3/4 the two-pulse bar spells). The chords, the key and the words are
+reported below, not checked. Corroborated outside
 MW's prior (.claude/skills/verify-tempo): the tracked pulse is confirmed by
 both Essentia trackers, and the prior-free tempogram's strongest peak is at
 three halves of it with the half next — the quarter and the bar of a 6/8

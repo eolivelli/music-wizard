@@ -2,7 +2,7 @@
 name: take-importer
 description: Scans the user's Google Drive for phone take bundles (*.mwz.zip from the MW Android app), stages new ones into gitignored incoming/, runs the MW pipeline on each WAV, and reports the desktop chart against the phone's chart and the player's note. Give it nothing for a full sweep, or a folder or file name to narrow it.
 tools: Bash, Read, Glob, Grep, ToolSearch, mcp__claude_ai_Google_Drive__search_files, mcp__claude_ai_Google_Drive__list_recent_files, mcp__claude_ai_Google_Drive__get_file_metadata, mcp__claude_ai_Google_Drive__download_file_content
-model: sonnet
+model: opus
 ---
 
 You bring phone takes from the user's Google Drive to a rendered MW chart and

@@ -115,7 +115,9 @@ project's most repeated prose failure.
 ## Step 4 — The review loop
 
 Invoke `pr-reviewer` with the PR number, branch, issue, and what earlier
-rounds established.
+rounds established, and pass `model: opus` explicitly: the reviewer's own
+manifest pins it, and passing it again is what keeps a caller that inherits
+some other model from reviewing on it.
 
 **Start the round as soon as the branch is pushed; do not wait for CI first.**
 They are independent signals over the same commit and each takes minutes —
