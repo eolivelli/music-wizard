@@ -186,11 +186,15 @@ length hung on the phase the downbeats agree on (#233).
   because a human who counted the bars outranks harmonic novelty.
 - `--time-signature` states the meter and wins outright on the *signature*.
   The reading is still taken, for its other half: how many tracked pulses fill
-  a bar is a measurement of where the tracker landed, and it is kept wherever
-  the typed signature can be counted in those pulses — so a compound recording
-  tracked on its eighths is barred alike whether its meter was typed or read
-  (#736). Where it cannot be, the run says so and bars on the counted beat.
-  This is also the only route to 12/8, 3/8 and the irregular meters.
+  a bar is a measurement, and where the typed bar holds as much music as the
+  read one it is kept, so the run bars exactly as it would have with nothing
+  typed and only the name on the page changes (#736). A typed bar of another
+  length takes its own counted beat for the pulse, as before; where that drops
+  a reading that had put the tracker below the counted beat, the run says so.
+  `--tempo` is what states the pulse where the reading has it wrong, and it is
+  read alone: a tempo and a reading never decide this together.
+  `--time-signature` is also the only route to 12/8, 3/8 and the irregular
+  meters.
 
 `--tempo` is read in the meter's *counted* beats per minute — what a
 metronome shows — which differs from quarter notes in compound time, and which

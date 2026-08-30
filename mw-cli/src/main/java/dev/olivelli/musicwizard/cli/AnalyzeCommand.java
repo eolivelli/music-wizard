@@ -114,8 +114,8 @@ final class AnalyzeCommand implements Callable<Integer> {
     Double tempo;
 
     @Option(names = "--time-signature", paramLabel = "N/D",
-            description = "Force a time signature, e.g. 4/4 or 6/8, instead of reading "
-                    + "one off the recording. Also pins the beat --tempo is counted in. "
+            description = "Force a time signature, e.g. 4/4 or 6/8, in place of the one "
+                    + "MW reads off the recording. Also pins the beat --tempo is counted in. "
                     + "Audio only: a MIDI file states its own meter.")
     String timeSignature;
 

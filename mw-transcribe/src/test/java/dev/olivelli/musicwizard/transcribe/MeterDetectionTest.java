@@ -78,6 +78,23 @@ class MeterDetectionTest {
     }
 
     /**
+     * Seconds between the grid's own bar lines, which the map's bar length has
+     * to agree with: the chart bars on the downbeats where they are plausible
+     * (#187) and the staff bars on the map, so a run whose two axes differ
+     * engraves one file barred two ways (#501).
+     */
+    private static double gridBarSeconds(Score score) {
+        List<Double> downbeats = new ArrayList<>();
+        for (BeatGrid.Beat beat : score.beatGrid().orElseThrow().beats()) {
+            if (beat.downbeat()) {
+                downbeats.add(beat.seconds());
+            }
+        }
+        return (downbeats.get(downbeats.size() - 1) - downbeats.get(0))
+                / (downbeats.size() - 1);
+    }
+
+    /**
      * Seconds a bar lasts once the music is under way.
      *
      * <p>Taken between two bar lines well past the lead-in, never from the
@@ -234,18 +251,31 @@ class MeterDetectionTest {
     }
 
     @Test
-    @DisplayName("a pulse count the typed signature cannot count is refused, and said")
+    @DisplayName("a pulse count a typed bar does not hold is refused, and said")
     void aCountTheTypedSignatureCannotBar() {
         List<String> said = new ArrayList<>();
 
         Score score = new AudioTranscriber(said::add).transcribe(clickTrackWithBarsOf(6),
                 new AudioTranscriber.Options(null, TimeSignature.FOUR_FOUR, null));
 
-        // Four counted beats do not divide six tracked ones, so the pulse the
-        // count implies is no division of 4/4's beat and the bar stays on the
-        // counted beat.
+        // A 4/4 bar is four quarter notes where the read bar is three, so the
+        // six pulses that bar was read to hold are not this bar's, and it takes
+        // its own counted beat instead.
         assertThat(positions(score)).containsExactlyInAnyOrder(0, 1, 2, 3);
         assertThat(said).anyMatch(line -> line.startsWith("the recording bars in 6 tracked beats"));
+    }
+
+    @Test
+    @DisplayName("a bar of another length is not tiled with a pulse nothing measured")
+    void aShorterTypedBarTakesItsOwnBeat() {
+        // A 2/4 bar is two quarter notes where the read bar is three, and its
+        // counted beats divide the six exactly -- so a rule asking only that
+        // would tile every beat of it with a triplet the estimator itself will
+        // not claim without reading the division off the envelope.
+        Score score = new AudioTranscriber().transcribe(clickTrackWithBarsOf(6),
+                new AudioTranscriber.Options(null, new TimeSignature(2, 4), null));
+
+        assertThat(positions(score)).containsExactlyInAnyOrder(0, 1);
     }
 
     @Test
@@ -253,14 +283,49 @@ class MeterDetectionTest {
     void theAssumptionIsNotAPulseCount() {
         List<String> said = new ArrayList<>();
 
-        // Harmony every fourth beat reads as the four-pulse prior, which says
-        // the tracker is on the counted beat: nothing measured says otherwise,
-        // so 6/8 is barred in the two dotted quarters it counts.
+        // Harmony every fourth beat reads as the four-pulse prior, whose bar is
+        // four quarter notes where a 6/8 bar is three: a different bar, so 6/8
+        // is barred in the two dotted quarters it counts. Nothing is refused
+        // that was measured below the counted beat, so nothing is said.
         Score score = new AudioTranscriber(said::add).transcribe(clickTrackWithBarsOf(4),
                 new AudioTranscriber.Options(null, TimeSignature.SIX_EIGHT, null));
 
         assertThat(positions(score)).containsExactlyInAnyOrder(0, 1);
         assertThat(said).noneMatch(line -> line.startsWith("the recording bars in"));
+    }
+
+    @Test
+    @DisplayName("a supplied tempo decides the pulse count alone, and the two axes agree")
+    void aSuppliedTempoDecidesAlone() {
+        // The tempo says the pulse is the counted beat -- the ratio of one that
+        // trackedPulsesPerBar reports as nothing to record -- and the reading
+        // says the bar holds six of them. Letting the reading answer over it
+        // barred the grid at the reading's length and the map at the tempo's.
+        AudioBuffer audio = clickTrackWithBarsOf(6);
+        Score score = new AudioTranscriber().transcribe(audio,
+                new AudioTranscriber.Options(120.0, TimeSignature.THREE_FOUR, null));
+
+        assertThat(positions(score)).containsExactlyInAnyOrder(0, 1, 2);
+        assertThat(gridBarSeconds(score))
+                .isCloseTo(steadyBarSeconds(score), withinPercentage(1.0));
+    }
+
+    @Test
+    @DisplayName("a bar of the same length keeps the count whatever the pulse was called")
+    void aBarOfTheSameLengthKeepsTheCount() {
+        // Three quarter-note pulses to a bar, read as 3/4 and typed as 6/8:
+        // the same three quarters either way, so the bar lines do not move and
+        // the signature decides only what is printed.
+        AudioBuffer audio = clickTrackWithBarsOf(3);
+        Score read = new AudioTranscriber().transcribe(audio, AudioTranscriber.Options.defaults());
+
+        Score typed = new AudioTranscriber().transcribe(audio,
+                new AudioTranscriber.Options(null, TimeSignature.SIX_EIGHT, null));
+
+        assertThat(typed.tempoMap().initialTimeSignature()).isEqualTo(TimeSignature.SIX_EIGHT);
+        assertThat(positions(typed)).containsExactlyElementsOf(positions(read));
+        assertThat(steadyBarSeconds(typed))
+                .isCloseTo(steadyBarSeconds(read), withinPercentage(1.0));
     }
 
     @Test
