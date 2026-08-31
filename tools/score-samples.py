@@ -142,11 +142,9 @@ BENCHMARKS = {
 # a row that reads WRONG is looked at before it is filed under #277.
 #
 # The local rows are one Battisti performance from two uploads, each with a
-# tonic confirmed by ear against a piano. #376 is open on them: the key came
-# back a fifth from home on the original and on its tonic on the transposed
-# upload, one performance read two ways, so the pair is a control on the
-# estimator rather than two recordings. What a reading of the transposed upload
-# is a fact about is that upload, never the song.
+# tonic confirmed by ear against a piano, so they are not two independent
+# readings. What a reading of the transposed upload is a fact about is that
+# upload, never the song.
 KEYS = {
     "blues-a-90bpm.mp3": ("samples", "A major"),
     "blues-shuffle-a-106bpm.mp3": ("samples", "A major"),

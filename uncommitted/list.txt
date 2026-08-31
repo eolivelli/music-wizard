@@ -138,13 +138,14 @@ where it is ~93. Fetch locally:
   yt-dlp -x --audio-format mp3 --audio-quality 0 \
     -o uncommitted/la-canzone-del-sole-ab.mp3 \
     https://www.youtube.com/watch?v=XXOIqni93AY
-Kept deliberately, because MW reads this rendering better than the original and
-the pair is the most useful thing here. On this file the tempo is 87.0 and all
-three independent estimators agree; on the original MW doubles it (#378). On
-this file the key comes back Ab, which is its tonic; on the original it comes
-back E, which is the dominant (#376). Same performance, same algorithm, one
-rendering right and one wrong twice over -- so neither failure is a property of
-the material, and both are bisectable against a control.
+Kept deliberately: MW has read this rendering better than the original, which
+makes the pair a bisection rather than a curiosity. On this file the tempo is
+87.0 and all three independent estimators agree; on the original MW doubles it
+(#378). The key was the second such split -- Ab, its tonic, here against the
+dominant on the original (#376) -- and it no longer is: both key rows in
+tools/baselines/score-samples.txt name the tonic. Same performance, same
+algorithm, so a failure on one rendering and not the other is not a property of
+the material and is bisectable against a control.
 Confirmed by ear: this upload is in Ab, checked against a real piano. That is a
 fact about the upload, not about the song, and it is what the key row
 tools/score-samples.py scores for this file is read against (#729).

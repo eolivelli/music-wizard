@@ -455,10 +455,11 @@ class CorpusTables(unittest.TestCase):
     """The tables of confirmed truth, held to one shape: each row says where
     its recording lives and each recording is written down there.
 
-    Both halves are the gap of #729. A table that resolves its own directory
+    The first half is the gap of #729: a table that resolves its own directory
     can only score the committed corpus, so a key or a meter an ear confirmed
-    for a commercial recording reaches no row at all; and a row whose list.txt
-    does not name its file would be ground truth from nowhere."""
+    for a commercial recording reaches no row at all. The second is the older
+    rule of #546 and #572 -- a row whose list.txt does not name its file would
+    be ground truth from nowhere -- now applied to every table."""
 
     TABLES = ("KEYS", "METERS", "NO_MINOR_CHORD", "VOCABULARY")
 
