@@ -288,13 +288,15 @@ public record BeatGrid(List<Beat> beats, Confidence beatConfidence, Confidence d
     /**
      * The same rate, for a caller holding pulse times but no grid yet.
      *
-     * <p>Exists for one caller. The transcriber reports the rate it tracked
-     * before the downbeat phase is known, so there is no grid to ask -- and
-     * chroma extraction runs in between, which takes seconds on a real
-     * recording, so reporting it after the grid is built would pay for the
-     * overload in the one currency a progress message is for. An overload rather
-     * than the arithmetic written out at the call site, because two copies of a
-     * rate is how one command came to print two tempos for one recording.
+     * <p>Every caller is upstream of the grid it would otherwise ask. The
+     * transcriber reports the rate it tracked before the downbeat phase is
+     * known, and chroma extraction runs in between, which takes seconds on a
+     * real recording, so reporting it after the grid is built would pay for
+     * this overload in the one currency a progress message is for; the meter
+     * estimator reads a pulse off beats no grid has been laid on yet. An
+     * overload rather than the arithmetic written out at each call site,
+     * because two copies of a rate is how one command came to print two tempos
+     * for one recording.
      *
      * <p>The list is copied once and then validated and measured off the copy, so
      * the figure returned is the rate of times that were actually checked. What

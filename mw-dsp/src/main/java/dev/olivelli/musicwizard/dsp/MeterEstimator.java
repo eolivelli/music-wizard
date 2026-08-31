@@ -16,9 +16,9 @@
 
 package dev.olivelli.musicwizard.dsp;
 
+import dev.olivelli.musicwizard.core.model.BeatGrid;
 import dev.olivelli.musicwizard.core.model.Confidence;
 import dev.olivelli.musicwizard.core.model.TimeSignature;
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
@@ -688,28 +688,24 @@ public final class MeterEstimator {
     }
 
     /**
-     * The middle interval between tracked beats, in seconds, which is the pulse
-     * the divisions above are read against. A median rather than a mean: a
-     * tracker that dropped a beat leaves one interval of twice the pulse, and
-     * those lags are read at a tolerance far narrower than that error.
+     * How long one tracked pulse is, in seconds, which is the pulse the
+     * divisions above are read against: {@link BeatGrid#steadyPulseRate(List)}
+     * inverted, so the estimator and the grid derive this one fact one way
+     * (#711).
+     *
+     * <p>What the shared rule is worth at this call site: an observed interval
+     * comes off the frame axis, so a median places the lag on a whole frame,
+     * which is the quantisation #200 took off the chart's bar rate.
      *
      * <p>Public so that {@code tools/MeterSweep.java} prints the pulse this
-     * class read rather than deriving one of its own beside it (#711).
+     * class read rather than deriving one of its own beside it.
      *
-     * @throws IllegalArgumentException if there are fewer than two beats
+     * @throws IllegalArgumentException if there are fewer than two beats, or
+     *                                  they are not finite, non-negative and
+     *                                  strictly increasing
      */
     public static double trackedPulse(List<Double> beatTimes) {
-        Objects.requireNonNull(beatTimes, "beatTimes");
-        if (beatTimes.size() < 2) {
-            throw new IllegalArgumentException(
-                    "a pulse needs at least two beats, got: " + beatTimes.size());
-        }
-        List<Double> intervals = new ArrayList<>(beatTimes.size() - 1);
-        for (int beat = 1; beat < beatTimes.size(); beat++) {
-            intervals.add(beatTimes.get(beat) - beatTimes.get(beat - 1));
-        }
-        Collections.sort(intervals);
-        return intervals.get(intervals.size() / 2);
+        return 60.0 / BeatGrid.steadyPulseRate(beatTimes);
     }
 
     /**
