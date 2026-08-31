@@ -31,6 +31,8 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Optional;
+import java.util.OptionalDouble;
 import java.util.stream.Stream;
 
 /**
@@ -62,6 +64,9 @@ import java.util.stream.Stream;
  * counted beats is looked for, and print as a division in three. Nothing else in
  * the row says which pulse was tracked; this does. It is the estimator's own
  * pulse, read from it rather than derived a second time here.
+ *
+ * <p><b>A column printing {@code -} was not measured</b>, which is a different
+ * finding from one that measured zero (#724).
  *
  * <p><b>Every recording under {@code uncommitted/} is swept</b>, listed from the
  * directory rather than by name, because a claim about what real mixes do is
@@ -224,12 +229,12 @@ public final class MeterSweep {
         MeterEstimator.Estimate estimate = MeterEstimator.decide(reading);
         String meter = estimate.meter().toString();
         System.out.printf(
-                "%-38s %8.2f %8.2f %8.2f %8.2f %7.1f %7.2f %7.2f %7.2f %7.2f"
+                "%-38s %8.2f %8.2f %8.2f %8.2f %7s %7.2f %7.2f %7.2f %7s"
                         + "  %-5s %-5s %d, %.2f %s%n",
                 job.file(), reading.at(2), reading.at(3), reading.at(4),
-                reading.at(6), trackedPulseRate(beatTimes), reading.onThePulse(),
-                reading.inThree(), reading.inTwo(),
-                middleOfThePulse(envelope, beatTimes), meter,
+                reading.at(6), measured(trackedPulseRate(beatTimes), "%.1f"),
+                reading.onThePulse(), reading.inThree(), reading.inTwo(),
+                measured(middleOfThePulse(envelope, beatTimes), "%.2f"), meter,
                 job.want().isEmpty() ? "-" : job.want(),
                 estimate.pulsesPerBar(), estimate.confidence().value(),
                 job.want().isEmpty() || job.want().equals(meter) ? "" : "MISMATCH");
@@ -239,16 +244,30 @@ public final class MeterSweep {
     private static final int POSITIONS = 12;
 
     /**
+     * A column, or a dash where the recording gave nothing to measure — which
+     * is not the reading a measurement that came out zero is, and printing both
+     * as zero is what #724 was.
+     */
+    private static String measured(OptionalDouble value, String format) {
+        return value.isPresent() ? String.format(format, value.getAsDouble()) : "-";
+    }
+
+    /**
      * Tracked pulses a minute, from the pulse the estimator itself read — the
      * pulse the columns beside it are shares of, and the one thing that says
      * whether they are shares of the counted beat.
+     *
+     * <p>None where the beats hold no interval to take, or one that is not a
+     * duration: a rate of zero is a reading nothing here can produce.
      */
-    private static double trackedPulseRate(List<Double> beatTimes) {
+    private static OptionalDouble trackedPulseRate(List<Double> beatTimes) {
         if (beatTimes.size() < 2) {
-            return 0;
+            return OptionalDouble.empty();
         }
         double pulse = MeterEstimator.trackedPulse(beatTimes);
-        return pulse > 0 ? 60 / pulse : 0;
+        return pulse > 0 && Double.isFinite(pulse)
+                ? OptionalDouble.of(60 / pulse)
+                : OptionalDouble.empty();
     }
 
     /**
@@ -262,12 +281,24 @@ public final class MeterSweep {
      * being the stronger of the two lags a triple division peaks at, which a
      * shuffle striking two of three positions reaches as readily as a compound
      * striking three.
+     *
+     * <p>None where the fold measured nothing: no pulse to fold over, or a
+     * pulse the envelope carries no more of than its own weakest position, so
+     * there is nothing for the middle to be a share of. A shuffle whose middle
+     * is genuinely empty reads zero, and the two are different findings (#724).
      */
-    private static double middleOfThePulse(OnsetEnvelope envelope, List<Double> beatTimes) {
-        double[] fold = foldOntoThePulse(envelope, beatTimes);
+    private static OptionalDouble middleOfThePulse(OnsetEnvelope envelope,
+                                                   List<Double> beatTimes) {
+        Optional<double[]> folded = foldOntoThePulse(envelope, beatTimes);
+        if (folded.isEmpty()) {
+            return OptionalDouble.empty();
+        }
+        double[] fold = folded.get();
         double floor = Arrays.stream(fold).min().orElse(0);
         double atThePulse = fold[0] - floor;
-        return atThePulse > 0 ? (fold[POSITIONS / 3] - floor) / atThePulse : 0;
+        return atThePulse > 0
+                ? OptionalDouble.of((fold[POSITIONS / 3] - floor) / atThePulse)
+                : OptionalDouble.empty();
     }
 
     /**
@@ -279,8 +310,11 @@ public final class MeterSweep {
      * it, because a division of the pulse is played by hand and lands near its
      * arithmetic position rather than on it — or nothing at all, the envelope
      * being centred, where the window only falls.
+     *
+     * <p>Empty where no pair of beats bounded a pulse to fold over.
      */
-    private static double[] foldOntoThePulse(OnsetEnvelope envelope, List<Double> beatTimes) {
+    private static Optional<double[]> foldOntoThePulse(OnsetEnvelope envelope,
+                                                       List<Double> beatTimes) {
         double[] strength = envelope.strength();
         double[] fold = new double[POSITIONS];
         int pulses = 0;
@@ -305,9 +339,12 @@ public final class MeterSweep {
             }
             pulses++;
         }
-        for (int position = 0; pulses > 0 && position < POSITIONS; position++) {
+        if (pulses == 0) {
+            return Optional.empty();
+        }
+        for (int position = 0; position < POSITIONS; position++) {
             fold[position] /= pulses;
         }
-        return fold;
+        return Optional.of(fold);
     }
 }
