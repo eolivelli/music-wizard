@@ -443,18 +443,50 @@ class Vocabulary(unittest.TestCase):
                          vocabulary_line([span("A", 0.0, 1.0)], "D A E"))
         self.assertIn("D,E,A", vocabulary_line([span("A", 0.0, 1.0)]))
 
-    def test_every_stated_set_is_written_down_where_an_ear_confirmed_it(self):
-        """A table entry whose file its list.txt does not name would be ground
-        truth from nowhere. Holds for the invariant of #546 too, which is the
-        same kind of fact about the same kind of file."""
-        repo = Path(__file__).resolve().parent.parent
-        for name, (where, stated) in samples.VOCABULARY.items():
-            # A set nothing parses to would put every span outside it.
+    def test_every_stated_set_parses_to_chords(self):
+        """A set nothing parses to would put every span outside it, so every
+        row would read as invention."""
+        for name, (_, stated) in samples.VOCABULARY.items():
             self.assertTrue({samples.parse_chord(c) for c in stated.split()},
                             f"{name} states no chord at all")
-            self.assertIn(name, (repo / where / "list.txt").read_text(encoding="utf-8"))
-        for name, where in samples.NO_MINOR_CHORD.items():
-            self.assertIn(name, (repo / where / "list.txt").read_text(encoding="utf-8"))
+
+
+class CorpusTables(unittest.TestCase):
+    """The tables of confirmed truth, held to one shape: each row says where
+    its recording lives and each recording is written down there.
+
+    The first half is the gap of #729: a table that resolves its own directory
+    can only score the committed corpus, so a key or a meter an ear confirmed
+    for a commercial recording reaches no row at all. The second is the older
+    rule of #546 and #572 -- a row whose list.txt does not name its file would
+    be ground truth from nowhere -- now applied to every table."""
+
+    TABLES = ("KEYS", "METERS", "NO_MINOR_CHORD", "VOCABULARY")
+
+    def rows(self, table: str) -> list[tuple[str, str]]:
+        """(file, where) for each row. NO_MINOR_CHORD carries nothing beyond
+        where, since being in it is the truth, so its value is the directory."""
+        return [(name, value if isinstance(value, str) else value[0])
+                for name, value in getattr(samples, table).items()]
+
+    def test_every_row_says_which_corpus_its_recording_is_in(self):
+        for table in self.TABLES:
+            for name, where in self.rows(table):
+                self.assertIn(where, ("samples", "uncommitted"), f"{table} {name}")
+
+    def test_every_row_is_written_down_where_an_ear_confirmed_it(self):
+        repo = Path(__file__).resolve().parent.parent
+        for table in self.TABLES:
+            for name, where in self.rows(table):
+                self.assertIn(name, (repo / where / "list.txt")
+                              .read_text(encoding="utf-8"), f"{table} {name}")
+
+    def test_a_row_that_states_only_its_truth_is_caught(self):
+        """The shape KEYS carried: a want with no where, which reads as a
+        directory nothing is in."""
+        with mock.patch.object(samples, "KEYS", {"a.mp3": "A major"}):
+            with self.assertRaises(AssertionError):
+                self.test_every_row_says_which_corpus_its_recording_is_in()
 
 
 def doc(spans: list[dict], beats: int = 16, phase: int = 0, per_bar: int = 4,

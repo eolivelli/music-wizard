@@ -100,7 +100,7 @@ CLAUDE.md carries that rule. The file is timed against a 326 s edit and this
 recording is 325 s, so the line times land; the words themselves are unchecked.
 
 Confirmed by ear 2026-08-11: **A major**, checked against a real piano. That is
-ground truth for the key.
+ground truth for the key, and tools/score-samples.py scores it (#729).
 
 Confirmed by ear 2026-08-17: **no minor chord anywhere in the song**. That is
 the second piece of ground truth here, and the one tools/score-samples.py
@@ -138,15 +138,17 @@ where it is ~93. Fetch locally:
   yt-dlp -x --audio-format mp3 --audio-quality 0 \
     -o uncommitted/la-canzone-del-sole-ab.mp3 \
     https://www.youtube.com/watch?v=XXOIqni93AY
-Kept deliberately, because MW reads this rendering better than the original and
-the pair is the most useful thing here. On this file the tempo is 87.0 and all
-three independent estimators agree; on the original MW doubles it (#378). On
-this file the key comes back Ab, which is its tonic; on the original it comes
-back E, which is the dominant (#376). Same performance, same algorithm, one
-rendering right and one wrong twice over -- so neither failure is a property of
-the material, and both are bisectable against a control.
+Kept deliberately: MW has read this rendering better than the original, which
+makes the pair a bisection rather than a curiosity. On this file the tempo is
+87.0 and all three independent estimators agree; on the original MW doubles it
+(#378). The key was the second such split -- Ab, its tonic, here against the
+dominant on the original (#376) -- and it no longer is: both key rows in
+tools/baselines/score-samples.txt name the tonic. Same performance, same
+algorithm, so a failure on one rendering and not the other is not a property of
+the material and is bisectable against a control.
 Confirmed by ear: this upload is in Ab, checked against a real piano. That is a
-fact about the upload, not about the song.
+fact about the upload, not about the song, and it is what the key row
+tools/score-samples.py scores for this file is read against (#729).
 Do not treat a reading of this file as a reading of the recording: it is a
 transposed, slowed rendering, and any figure from it belongs to it alone.
 
