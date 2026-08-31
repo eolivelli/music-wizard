@@ -693,12 +693,9 @@ public final class MeterEstimator {
      * inverted, so the estimator and the grid derive this one fact one way
      * (#711).
      *
-     * <p>That rule keeps what a median was chosen here for — a dropped beat
-     * leaves one interval of twice the pulse, and the trimmed mean discards it
-     * as readily as a median does — and drops what a median cost: an observed
-     * interval comes off the frame axis, so the lag placed from it is quantised
-     * to the analysis hop, which is the same defect #200 took off the chart's
-     * bar rate.
+     * <p>What the shared rule is worth at this call site: an observed interval
+     * comes off the frame axis, so a median places the lag on a whole frame,
+     * which is the quantisation #200 took off the chart's bar rate.
      *
      * <p>Public so that {@code tools/MeterSweep.java} prints the pulse this
      * class read rather than deriving one of its own beside it.
