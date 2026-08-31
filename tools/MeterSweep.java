@@ -65,8 +65,10 @@ import java.util.stream.Stream;
  * the row says which pulse was tracked; this does. It is the estimator's own
  * pulse, read from it rather than derived a second time here.
  *
- * <p><b>A column printing {@code -} was not measured</b>, which is a different
- * finding from one that measured zero (#724).
+ * <p><b>{@code bpm} and {@code mid} print {@code -} where nothing was
+ * measured</b>, which is a different finding from a measurement that came out
+ * zero (#724). The columns either side of them still print {@code 0.00} for
+ * both, because what they carry cannot say which it is (#767).
  *
  * <p><b>Every recording under {@code uncommitted/} is swept</b>, listed from the
  * directory rather than by name, because a claim about what real mixes do is

@@ -664,14 +664,6 @@ public final class MeterEstimator {
     /**
      * The signal about its own mean, which is what makes the shares above
      * shares of anything (#726).
-     *
-     * <p>Every lag of an autocorrelation sits on the square of the signal's
-     * mean, so a signal that never goes negative is near its own peak at every
-     * lag and clears both gates on a ratio of one pedestal to another — a
-     * division in three read off any half-wave-rectified anything.
-     * {@link OnsetEnvelope#compute} centres what it returns, so this moves no
-     * reading of a recording; what it moves is what those gates say on an
-     * envelope built some other way.
      */
     private static double[] centred(double[] signal) {
         double mean = 0;

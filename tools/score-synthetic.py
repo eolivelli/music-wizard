@@ -77,9 +77,9 @@ def parse_spec_text(text: str) -> dict:
 
 
 def spec_meter(spec: dict) -> str:
-    """The meter a spec states, or SpecParser's own default where it states
-    none. The one place that rule is written down, so what this scores against
-    and what tools/MeterSweep.java prints as its `want` cannot part (#730)."""
+    """The meter a spec states, or the default SpecParser substitutes where it
+    states none (#768). Read by tools/test-harness-rules.py as well, so the
+    sweep's `want` is held to the rule this scores by (#730)."""
     return spec["headers"].get("meter", "4/4")
 
 
