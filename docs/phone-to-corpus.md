@@ -13,9 +13,10 @@ yt-dlp -x --audio-format mp3 --audio-quality 0 \
 
 Record it in `uncommitted/list.txt` in the style of the entries there (title,
 artist, duration, the exact fetch command, any remembered chords labelled as
-remembered by ear) before running the pipeline on it. These recordings have no
-ground truth: the chart is looked at against the recollection, never scored —
-the `list.txt` header says why. Never commit or `git add` anything under
+remembered by ear) before running the pipeline on it. A recording arrives with
+no ground truth, and the chart is read against the recollection; what an ear
+later settles goes in the entry and is scored from there — the `list.txt`
+header says which facts. Never commit or `git add` anything under
 `uncommitted/` but `list.txt` itself.
 
 The phone app (`android/README.md`) records; this note is what to do with a take
@@ -61,15 +62,15 @@ indistinguishable from one you played, and the two do not go to the same place.
 A take of your own playing belongs in `samples/`, the corpus MW is measured on:
 committed where the licensing allows it, and otherwise gitignored by name, as
 several files there already are. `uncommitted/` is for commercial recordings,
-and its `list.txt` header says why they are looked at rather than scored.
+and its `list.txt` header says what an entry there may still be scored on.
 
-Being scored is a further step, and a later one: `tools/score-samples.py` looks
-for every benchmark under `samples/` and reads its changes from the `BENCHMARKS`
-table in that same script (`score-chart.py` imports it). A file's `list.txt`
-entry does not put it there: `samples/list.txt` says changes are confirmed by
-ear before a file is promoted. A sung recording is registered the same way and
-in one more place — its recording and its `.lrc` go in the `LYRICS` table of
-`tools/score-lyrics.py`.
+Being scored is a further step, and a later one: `tools/score-samples.py` reads
+a benchmark's changes, and which corpus its recording is in, from the
+`BENCHMARKS` table in that same script (`score-chart.py` imports it). A file's
+`list.txt` entry does not put it there: `samples/list.txt` says changes are
+confirmed by ear before a file is promoted. A sung recording is registered the
+same way and in one more place — its recording and its `.lrc` go in the
+`LYRICS` table of `tools/score-lyrics.py`.
 
 ## 3. Write the `list.txt` entry
 

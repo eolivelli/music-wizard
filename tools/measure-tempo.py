@@ -204,6 +204,13 @@ def statistics_of(intervals: list[float], band: float = STEADY_BAND
     return 60.0 / median, 60.0 / steady, 60.0 / mean, len(kept)
 
 
+def missing_line(name: str, where: str) -> str:
+    """A benchmark this machine cannot measure. Nothing baselines this tool,
+    which is why the marker is worth holding here: a reword breaks no diff and
+    no other row, and the rules that drive this loop read it."""
+    return f"  {name}: not present (local-only; see {where}/list.txt)"
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--jar", default=str(REPO / "mw-cli/target/mw.jar"))
@@ -234,13 +241,20 @@ def main() -> None:
     modelled = []
     absent = []
     for name in wanted:
-        mp3 = REPO / "samples" / name
         if name not in SEARCH:
             print(f"  {name}: no search band recorded; add one to SEARCH")
             continue
+        row = BENCHMARKS.get(name)
+        if row is None:
+            # Only reachable in the state the stale check above reports.
+            # Nothing then says which corpus to look in, and guessing one
+            # would report a file as absent from a directory it was never in.
+            print(f"  {name}: no scored benchmark, so no corpus to look in")
+            continue
+        mp3 = REPO / row[0] / name
         if not mp3.exists():
             absent.append(name)
-            print(f"  {name}: not present (local-only; see samples/list.txt)")
+            print(missing_line(name, row[0]))
             continue
         tempo, sharpness = measured_tempo(mp3)
         if not have_jar:

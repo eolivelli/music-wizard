@@ -10,6 +10,7 @@ onset for the lyric one. Run it directly:
 """
 
 import array
+import ast
 import contextlib
 import io
 import json
@@ -33,6 +34,7 @@ chart = import_module("score-chart")
 lyrics = import_module("score-lyrics")
 melody = import_module("score-melody")
 separation = import_module("measure-separation-cost")
+tempo = import_module("measure-tempo")
 vtt = import_module("vtt-to-lrc")
 drift = import_module("baseline-drift")
 
@@ -455,13 +457,14 @@ class CorpusTables(unittest.TestCase):
     """The tables of confirmed truth, held to one shape: each row says where
     its recording lives and each recording is written down there.
 
-    The first half is the gap of #729: a table that resolves its own directory
-    can only score the committed corpus, so a key or a meter an ear confirmed
-    for a commercial recording reaches no row at all. The second is the older
-    rule of #546 and #572 -- a row whose list.txt does not name its file would
-    be ground truth from nowhere -- now applied to every table."""
+    The first half is the gap of #729, which #750 closed for the last table
+    holding out: a table that resolves its own directory can only score the
+    committed corpus, so a grid, a key or a meter an ear confirmed for a
+    commercial recording reaches no row at all. The second is the older rule of
+    #546 and #572 -- a row whose list.txt does not name its file would be
+    ground truth from nowhere -- now applied to every table."""
 
-    TABLES = ("KEYS", "METERS", "NO_MINOR_CHORD", "VOCABULARY")
+    TABLES = ("BENCHMARKS", "KEYS", "METERS", "NO_MINOR_CHORD", "VOCABULARY")
 
     def rows(self, table: str) -> list[tuple[str, str]]:
         """(file, where) for each row. NO_MINOR_CHORD carries nothing beyond
@@ -487,6 +490,217 @@ class CorpusTables(unittest.TestCase):
         with mock.patch.object(samples, "KEYS", {"a.mp3": "A major"}):
             with self.assertRaises(AssertionError):
                 self.test_every_row_says_which_corpus_its_recording_is_in()
+
+
+class CorpusIsNamedNeverAssumed(unittest.TestCase):
+    """The other half of the shape: what reads the tables must not supply a
+    corpus the row was supposed to name.
+
+    A table can carry a `where` and still reach nothing, because the loop that
+    resolves the path is free to ignore it -- which is how the same gap reached
+    three tools at once (#750) -- and a helper that defaults it turns a
+    forgotten argument into a wrong directory rather than an error (#752). Both
+    failures are quiet in the same way: the file is not found where it was not
+    looked for, the row prints the skip marker, and the gate files a row this
+    machine can measure as one it cannot."""
+
+    # The three that resolve a corpus directory from a table.
+    HARNESSES = ("score-samples.py", "score-chart.py", "measure-tempo.py")
+    # And score-lyrics, held only to the no-default rule: its rows carry a
+    # path rather than a corpus, so it resolves no directory to get wrong, and
+    # a default would lose the caller's choice just the same.
+    HELPERS = HARNESSES + ("score-lyrics.py",)
+
+    def source(self, harness: str) -> str:
+        return (Path(__file__).resolve().parent / harness).read_text(encoding="utf-8")
+
+    def defaulting_helpers(self, harness: str) -> set[tuple[str, bool]]:
+        """Every function taking a `where`, and whether it defaults it.
+
+        Keyword-only parameters are read as well as positional ones, so that
+        writing the default the other way is not a way past the rule."""
+        found = set()
+        for node in ast.walk(ast.parse(self.source(harness))):
+            if not isinstance(node, ast.FunctionDef):
+                continue
+            args = node.args
+            positional = [a.arg for a in args.posonlyargs + args.args]
+            defaulted = set(positional[len(positional) - len(args.defaults):])
+            defaulted |= {a.arg for a, default
+                          in zip(args.kwonlyargs, args.kw_defaults)
+                          if default is not None}
+            if "where" in positional + [a.arg for a in args.kwonlyargs]:
+                found.add((node.name, "where" in defaulted))
+        return found
+
+    def test_no_reader_of_the_tables_resolves_a_corpus_of_its_own(self):
+        """#750: each of the three read BENCHMARKS and then went to samples/
+        regardless, so a grid stated for a local recording reached none of
+        them."""
+        for harness in self.HARNESSES:
+            self.assertNotIn('REPO / "samples"', self.source(harness), harness)
+
+    def test_no_helper_defaults_the_corpus_its_caller_should_name(self):
+        for harness in self.HELPERS:
+            for name, defaults in self.defaulting_helpers(harness):
+                self.assertFalse(defaults, f"{harness} {name}")
+
+    # What the rule below expects to find in each of HELPERS, so that a
+    # harness added there and pinned by nobody fails rather than passing over
+    # nothing.
+    HELD = {"score-samples.py": {"missing_line", "run_for", "doc_for"},
+            "score-chart.py": {"missing_line"},
+            "score-lyrics.py": {"missing_line"},
+            "measure-tempo.py": {"missing_line"}}
+
+    def test_the_rule_above_reaches_the_helpers_it_is_about(self):
+        """A rule matching nothing passes exactly as a rule matching everything
+        does. Every harness the rule reads is named here, so a rename that took
+        a helper out of reach fails rather than going quiet -- and so does a
+        harness added to HELPERS and pinned by nobody."""
+        self.assertEqual(set(self.HELPERS), set(self.HELD))
+        for harness, held in self.HELD.items():
+            self.assertEqual(
+                held, {name for name, _ in self.defaulting_helpers(harness)},
+                harness)
+
+    def test_a_forgotten_corpus_is_an_error_and_not_a_skip_line(self):
+        """What the default did instead: print the line the gate turns into a
+        SKIP, naming a corpus the caller never chose."""
+        for missing_line in (samples.missing_line, chart.missing_line,
+                             tempo.missing_line):
+            with self.assertRaises(TypeError):
+                missing_line("x.mp3")
+
+    ABSENT = "no-such-recording.mp3"
+    PRESENT = "a-recording.mp3"
+
+    # What each harness labels its skip rows with, one per loop that prints
+    # one. Named rather than counted, so a loop added to any of them fails
+    # until it is named here.
+    SKIP_LABELS = {
+        "score-samples.py": ("", "phase ", "meter ", "key ", "minor ",
+                             "vocabulary "),
+        "score-chart.py": ("",),
+        "measure-tempo.py": ("",),
+    }
+
+    def run_harness(self, module, tables: dict, argv: list[str],
+                    stubs: dict | None = None, root: Path | None = None) -> str:
+        """One harness driven over patched tables, with whatever it would have
+        spent a subprocess on stubbed out. Every stub is a callable, so that a
+        value which happens to be one cannot install itself."""
+        out = io.StringIO()
+        with contextlib.ExitStack() as stack:
+            if root is not None:
+                stack.enter_context(mock.patch.object(module, "REPO", root))
+            for table, rows in tables.items():
+                stack.enter_context(mock.patch.object(module, table, rows))
+            for name, stub in (stubs or {}).items():
+                stack.enter_context(mock.patch.object(module, name, stub))
+            stack.enter_context(mock.patch.object(sys, "argv", argv))
+            stack.enter_context(contextlib.redirect_stdout(out))
+            module.main()
+        return out.getvalue()
+
+    def runs(self, name: str) -> tuple:
+        """Each harness with one row of every table it reads, and the calls it
+        would otherwise have spent a `java` run on. `--jar` is this file for
+        the two that refuse to start without one, and a path that is not there
+        for the tempo tool, whose jarless arm is the cheap one."""
+        local = ("uncommitted", "C")
+        return (
+            (samples,
+             {"BENCHMARKS": {name: local}, "KEYS": {name: local},
+              "METERS": {name: local}, "NO_MINOR_CHORD": {name: "uncommitted"},
+              "VOCABULARY": {name: local}},
+             ["score-samples.py", "--jar", __file__],
+             {"analyze_with_output": self.answers(({}, ""))}),
+            (chart,
+             {"BENCHMARKS": {name: local}},
+             ["score-chart.py", "--jar", __file__],
+             {"render": self.answers(""), "short_changes": self.answers(None)}),
+            (tempo,
+             {"BENCHMARKS": {name: local}, "SEARCH": {name: (85.0, 95.0)}},
+             ["measure-tempo.py", "--jar", "/nonexistent/mw.jar"],
+             {"measured_tempo": self.answers((90.0, 2.0))}),
+        )
+
+    def test_a_row_naming_the_local_corpus_is_looked_for_there(self):
+        """The rule two tests up is a text match, so it names one spelling of
+        the hardcode and a reformat walks past it. This drives the loops: the
+        recording is put in both corpora, so which path a harness reaches for
+        is decided by nothing but the row it read.
+
+        score-samples is covered a table at a time rather than only on
+        BENCHMARKS, since taking the corpus from the row is a thing each of its
+        loops does separately."""
+        for module, tables, argv, stubs in self.runs(self.PRESENT):
+            reached = []
+            with self.corpora(("samples", "uncommitted")) as root:
+                watched = {name: self.watching(reached, stub)
+                           for name, stub in stubs.items()}
+                self.run_harness(module, tables, argv, watched, root)
+                self.assertTrue(reached, argv[0])
+                for path in reached:
+                    self.assertEqual(root / "uncommitted" / self.PRESENT, path,
+                                     f"{argv[0]} reached {path}")
+
+    def test_a_recording_only_the_local_corpus_holds_is_still_scored(self):
+        """The state a local-only recording is actually in, and the one the
+        test above cannot see: present where the row says and absent from the
+        other corpus. A harness that takes the row's corpus for the analysis
+        and asks the wrong one whether the file is there passes that test and
+        fails this, and what it costs is #750's whole cost -- a row this
+        machine can measure filed as one it cannot."""
+        for module, tables, argv, stubs in self.runs(self.PRESENT):
+            with self.corpora(("uncommitted",)) as root:
+                printed = self.run_harness(module, tables, argv, stubs, root)
+            self.assertIn(self.PRESENT, printed, argv[0])
+            self.assertNotIn(Keying.MARKER, printed, argv[0])
+
+    @contextlib.contextmanager
+    def corpora(self, holding: tuple[str, ...]):
+        """A repository root with both corpus directories, the recording in
+        the named ones."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for corpus in ("samples", "uncommitted"):
+                (root / corpus).mkdir()
+            for corpus in holding:
+                (root / corpus / self.PRESENT).write_bytes(b"")
+            yield root
+
+    def answers(self, result):
+        """A stub that spends no subprocess and returns what the caller
+        expects of the real one."""
+        return lambda *args, **kwargs: result
+
+    def watching(self, seen: list, stub):
+        """The same stub, recording the recording it was handed."""
+        def watched(*args, **kwargs):
+            seen.extend(a for a in args
+                        if isinstance(a, Path) and a.name == self.PRESENT)
+            return stub(*args, **kwargs)
+        return watched
+
+    def test_a_row_naming_the_local_corpus_is_fetched_from_it(self):
+        """And when it is not there, the skip line sends a reader to the
+        list.txt that knows how to fetch it -- from every loop, not only the
+        one #750 was about."""
+        for missing_line in (samples.missing_line, chart.missing_line,
+                             tempo.missing_line):
+            self.assertIn("uncommitted/list.txt", missing_line("x.mp3", "uncommitted"))
+        for module, tables, argv, _ in self.runs(self.ABSENT):
+            printed = self.run_harness(module, tables, argv)
+            rows = [line for line in printed.splitlines() if self.ABSENT in line]
+            # The whole set, against each loop's own helper line. A row that
+            # drifted off the marker, and a loop that stopped printing one at
+            # all, are the same failure to the gate: it compares the row
+            # against a baselined figure instead of skipping it (#365).
+            want = [module.missing_line(label + self.ABSENT, "uncommitted")
+                    for label in self.SKIP_LABELS[argv[0]]]
+            self.assertEqual(sorted(want), sorted(rows), argv[0])
 
 
 def doc(spans: list[dict], beats: int = 16, phase: int = 0, per_bar: int = 4,
@@ -1216,19 +1430,22 @@ class Keying(unittest.TestCase):
     MARKER = ": not present (local-only"
 
     def test_every_harness_marks_an_absent_file_the_same_way(self):
-        """The gate turns a row carrying this marker into a SKIP. All three
+        """The gate turns a row carrying this marker into a SKIP. The
         harnesses must produce it through their missing_line, or a fresh
         worktree fails the gate for every branch again (#365). The reader is
         held to the same literal as the writers: if the comparison's copy of
         the marker drifts, this fails before the gate does."""
         self.assertIn(self.MARKER,
                       (Path(__file__).resolve().parent / "premerge-diff.py").read_text())
-        for line in (samples.missing_line("x.mp3"),
-                     samples.missing_line("key x.mp3"),
-                     samples.missing_line("phase x.mp3"),
+        for line in (samples.missing_line("x.mp3", "samples"),
+                     samples.missing_line("key x.mp3", "samples"),
+                     samples.missing_line("phase x.mp3", "uncommitted"),
                      samples.missing_line("minor x.mp3", "uncommitted"),
                      samples.missing_line("vocabulary x.mp3", "uncommitted"),
-                     chart.missing_line("x.mp3"),
+                     chart.missing_line("x.mp3", "samples"),
+                     chart.missing_line("x.mp3", "uncommitted"),
+                     tempo.missing_line("x.mp3", "samples"),
+                     tempo.missing_line("x.mp3", "uncommitted"),
                      lyrics.missing_line("x.mp3", "uncommitted/list.txt")):
             self.assertIn(self.MARKER, line)
             self.assertIn(".mp3:", line)
@@ -1853,7 +2070,8 @@ class PremergeVerdict(unittest.TestCase):
                 (tree / baseline).write_text(row + "\n")
                 (tree / "tools" / harness).write_text(self.STUB)
                 plan[" ".join([harness] + args)] = (
-                    row if present else samples.missing_line(f"{name}.mp3")) + "\n"
+                    row if present
+                    else samples.missing_line(f"{name}.mp3", "samples")) + "\n"
             (tree / "tools" / "plan.json").write_text(json.dumps(plan))
             location = Path(tmp) / "premerge-skips.txt"
             if manifest is not None:
