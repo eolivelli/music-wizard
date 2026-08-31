@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Scores mw against the sample benchmarks whose ground truth is known.
 
-For each benchmark present in samples/ (some are local-only and fetched per
-the instructions in samples/list.txt), this runs the shaded CLI, segments the
-estimated chords into bars on the recording's own tracked beats, aligns the
-known cycle at the best rotation, and reports per-bar accuracy.
+For each benchmark whose recording is present (some are local-only and
+fetched per the list.txt of the corpus its own row names), this runs the shaded
+CLI, segments the estimated chords into bars on the recording's own tracked
+beats, aligns the known cycle at the best rotation, and reports per-bar
+accuracy.
 
 It then reports the bar phase each of those rows rests on. The bars above begin
 where the estimator decided they begin, and on real material that decision is
@@ -50,14 +51,13 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 
-# Ground truth from samples/list.txt, one token per bar, spelled exactly as
-# ChordQuality.symbol() spells it so that this file, samples/list.txt and the
-# tool's own output all say the same thing: '7' dominant, 'm7' minor seventh,
-# 'maj7' major seventh, '6' major sixth, 'm6' minor sixth, 'm7b5'
-# half-diminished, 'dim' diminished, plain letter a major triad. 'X-Y' is a
-# bar holding both chords; either counts. Scoring reports root match and
-# root+quality separately, so a plain triad on the right root earns the first
-# and not the second.
+# Ground truth, one token per bar, spelled exactly as ChordQuality.symbol()
+# spells it so that this file, each list.txt and the tool's own output all say
+# the same thing: '7' dominant, 'm7' minor seventh, 'maj7' major seventh, '6'
+# major sixth, 'm6' minor sixth, 'm7b5' half-diminished, 'dim' diminished,
+# plain letter a major triad. 'X-Y' is a bar holding both chords; either
+# counts. Scoring reports root match and root+quality separately, so a plain
+# triad on the right root earns the first and not the second.
 #
 # Every grid here is one repeating cycle a musician confirmed against the
 # recording. Two committed files are deliberately absent: ballad-wine-roses-65
@@ -65,45 +65,51 @@ REPO = Path(__file__).resolve().parent.parent
 # and a suspension this scorer has nowhere to put; footprints-200 is not a loop
 # this scorer can rotate either. samples/list.txt carries both sets of changes
 # and says why of each.
+#
+# Each row carries where its recording lives, as the tables below do, so a grid
+# an ear confirmed for a commercial recording reaches a row instead of being
+# unreachable here (#750). Every row is committed today; the three tools that
+# read this table -- this one, score-chart.py and measure-tempo.py -- resolve
+# the directory from the row rather than assuming one.
 BENCHMARKS = {
     "blues-a-90bpm.mp3":
-        "A7 A7 A7 A7  D7 D7 A7 A7  E7 D7 A7 E7",
+        ("samples", "A7 A7 A7 A7  D7 D7 A7 A7  E7 D7 A7 E7"),
     "blues-shuffle-a-106bpm.mp3":
-        "A7 A7 A7 A7  D7 D7 A7 A7  E7 D7 A7 E7",
+        ("samples", "A7 A7 A7 A7  D7 D7 A7 A7  E7 D7 A7 E7"),
     "blues-e-90bpm.mp3":
-        "E7 E7 E7 E7  A7 A7 E7 E7  B7 A7 E7 B7",
+        ("samples", "E7 E7 E7 E7  A7 A7 E7 E7  B7 A7 E7 B7"),
     "slow-68-40.mp3":
-        "A7 A7 A7 A7  D7 D7 A7 A7  E7 D7 A7 E7",
+        ("samples", "A7 A7 A7 A7  D7 D7 A7 A7  E7 D7 A7 E7"),
     # The committed tier-2 gate: BluesLoopIT scores this same recording against
     # this same cycle, on a bar axis measured from the recording rather than
     # taken from the tracker. Both readings are wanted -- where they disagree,
     # the disagreement is the beat grid.
     "g-blues-shuffle-cc.mp3":
-        "G7 G7 G7 G7  C7 C7 G7 G7  D7 C7 G7 D7",
+        ("samples", "G7 G7 G7 G7  C7 C7 G7 G7  D7 C7 G7 D7"),
     # A minor blues that stays minor, which is the case a corpus of dominant
     # sevenths cannot make: here a major third on the tonic is an error rather
     # than the answer.
     "bm-blues-slow.mp3":
-        "Bm Bm Bm Bm  Em Em Bm Bm  G7 F#7 Bm Bm",
+        ("samples", "Bm Bm Bm Bm  Em Em Bm Bm  G7 F#7 Bm Bm"),
     "cm-blues-68-95.mp3":
-        "Cm7 Cm7 Cm7 C7  Fm7 Fm7 Cm7 Cm7  Ab7 G7 Cm7 G7",
+        ("samples", "Cm7 Cm7 Cm7 C7  Fm7 Fm7 Cm7 Cm7  Ab7 G7 Cm7 G7"),
     # Eight bars in three, so the bar axis is only as good as the meter.
     "waltz-am-e7-160.mp3":
-        "Am Am Am E7  E7 E7 E7 Am",
+        ("samples", "Am Am Am E7  E7 E7 E7 Am"),
     "f-blues-swing-170.mp3":
-        "F7 Bb7 F7 F7  Bb7 Bdim F7 Am7b5-D7  Gm7 C7 F7-D7 Gm7-C7",
+        ("samples", "F7 Bb7 F7 F7  Bb7 Bdim F7 Am7b5-D7  Gm7 C7 F7-D7 Gm7-C7"),
     # Half of it is a quality the estimator cannot name, so the root and
     # root+quality columns are expected to come apart here rather than move
     # together.
     "jazz-251-c-140.mp3":
-        "Dm7 Dm7 G7 G7  Cmaj7 Cmaj7 Cmaj7 Cmaj7",
+        ("samples", "Dm7 Dm7 G7 G7  Cmaj7 Cmaj7 Cmaj7 Cmaj7"),
     "fm7-vamp-110.mp3":
-        "Fm7",
+        ("samples", "Fm7"),
     "eb7-vamp-130.mp3":
-        "Eb7",
+        ("samples", "Eb7"),
     "bossa-cm.mp3":
-        "Cm7 Cm7 Fm6 Fm6  Dm7b5 G7 Cm6 Cm6  Ebm7 Ab7 Dbmaj7 Dbmaj7  "
-        "Dm7b5 G7 Cm6 Dm7b5-G7",
+        ("samples", "Cm7 Cm7 Fm6 Fm6  Dm7b5 G7 Cm6 Cm6  Ebm7 Ab7 Dbmaj7 Dbmaj7  "
+                    "Dm7b5 G7 Cm6 Dm7b5-G7"),
     # Plain triads throughout, which is what a corpus of sevenths needs: it is
     # where "found the seventh" and "reported one because nothing said not to"
     # look different (#273). The grid is the uploader's stated one chord per
@@ -111,7 +117,7 @@ BENCHMARKS = {
     # bar, and 57 tracked bars fill the recording's 114 seconds. See
     # samples/list.txt for what that argument does not settle.
     "pop-c-g-am-f-120.mp3":
-        "C G Am F",
+        ("samples", "C G Am F"),
 }
 
 # The key each file is in, from its own list.txt -- read off what that entry
@@ -316,13 +322,15 @@ CORPUS_ONLY_QUALITY = {"ADDED_NINTH": "add9"}
 TRUTH_SYMBOL = {**QUALITY_SYMBOL, **CORPUS_ONLY_QUALITY}
 
 
-def missing_line(label: str, where: str = "samples") -> str:
+def missing_line(label: str, where: str) -> str:
     """A baselined name this machine cannot measure; the gate skips rows
     carrying this line's marker, and test-harness-rules.py holds every writer
     of it, and its reader, to one literal.
 
     `where` is the directory the file belongs in, because its own list.txt is
-    what says how to fetch it."""
+    what says how to fetch it. It is named by the caller and never defaulted:
+    a default sends a row the machine can measure to the corpus it is not in,
+    which prints this skip line for a file that is right there (#752)."""
     return f"  {label}: not present (local-only; see {where}/list.txt to fetch)"
 
 
@@ -730,40 +738,41 @@ def main() -> None:
     # nothing until it is over looks hung both here and in the CI job log.
     analysed = {}
 
-    def run_for(name: str, where: str = "samples") -> tuple[dict, str] | None:
+    def run_for(name: str, where: str) -> tuple[dict, str] | None:
         """One analysis, or None where the file is absent. Every table below
-        reads the score half."""
+        reads the score half. `where` is the row's own, never defaulted --
+        see missing_line."""
         mp3 = REPO / where / name
         if mp3 not in analysed:
             analysed[mp3] = analyze_with_output(jar, mp3) if mp3.exists() else None
         return analysed[mp3]
 
-    def doc_for(name: str, where: str = "samples") -> dict | None:
+    def doc_for(name: str, where: str) -> dict | None:
         run = run_for(name, where)
         return run[0] if run else None
 
     print("samples with known ground truth:")
     missing = []
-    for name, truth in BENCHMARKS.items():
-        doc = doc_for(name)
+    for name, (where, truth) in BENCHMARKS.items():
+        doc = doc_for(name, where)
         if doc is None:
-            missing.append(name)
+            missing.append((name, where))
         else:
-            score(REPO / "samples" / name, doc, truth)
-    for name in missing:
-        print(missing_line(name))
+            score(REPO / where / name, doc, truth)
+    for name, where in missing:
+        print(missing_line(name, where))
 
     print("bar phase the rows above rest on, at the estimator's own confidence"
           f" in it (a phase nothing supports reports {PHASE_FLOOR:.4f}):")
     missing = []
-    for name, truth in BENCHMARKS.items():
-        doc = doc_for(name)
+    for name, (where, truth) in BENCHMARKS.items():
+        doc = doc_for(name, where)
         if doc is None:
-            missing.append(name)
+            missing.append((name, where))
         else:
-            score_phase(REPO / "samples" / name, doc, truth)
-    for name in missing:
-        print(missing_line(f"phase {name}"))
+            score_phase(REPO / where / name, doc, truth)
+    for name, where in missing:
+        print(missing_line(f"phase {name}", where))
 
     print("meters, against the meter each list.txt entry states:")
     missing = []

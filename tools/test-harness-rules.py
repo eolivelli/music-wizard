@@ -10,6 +10,7 @@ onset for the lyric one. Run it directly:
 """
 
 import array
+import ast
 import contextlib
 import io
 import json
@@ -455,13 +456,14 @@ class CorpusTables(unittest.TestCase):
     """The tables of confirmed truth, held to one shape: each row says where
     its recording lives and each recording is written down there.
 
-    The first half is the gap of #729: a table that resolves its own directory
-    can only score the committed corpus, so a key or a meter an ear confirmed
-    for a commercial recording reaches no row at all. The second is the older
-    rule of #546 and #572 -- a row whose list.txt does not name its file would
-    be ground truth from nowhere -- now applied to every table."""
+    The first half is the gap of #729, which #750 closed for the last table
+    holding out: a table that resolves its own directory can only score the
+    committed corpus, so a grid, a key or a meter an ear confirmed for a
+    commercial recording reaches no row at all. The second is the older rule of
+    #546 and #572 -- a row whose list.txt does not name its file would be
+    ground truth from nowhere -- now applied to every table."""
 
-    TABLES = ("KEYS", "METERS", "NO_MINOR_CHORD", "VOCABULARY")
+    TABLES = ("BENCHMARKS", "KEYS", "METERS", "NO_MINOR_CHORD", "VOCABULARY")
 
     def rows(self, table: str) -> list[tuple[str, str]]:
         """(file, where) for each row. NO_MINOR_CHORD carries nothing beyond
@@ -487,6 +489,72 @@ class CorpusTables(unittest.TestCase):
         with mock.patch.object(samples, "KEYS", {"a.mp3": "A major"}):
             with self.assertRaises(AssertionError):
                 self.test_every_row_says_which_corpus_its_recording_is_in()
+
+
+class CorpusIsNamedNeverAssumed(unittest.TestCase):
+    """The other half of the shape: what reads the tables must not supply a
+    corpus the row was supposed to name.
+
+    A table can carry a `where` and still reach nothing, because the loop that
+    resolves the path is free to ignore it -- which is how the same gap reached
+    three tools at once (#750) -- and a helper that defaults it turns a
+    forgotten argument into a wrong directory rather than an error (#752). Both
+    failures are quiet in the same way: the file is not found where it was not
+    looked for, the row prints the skip marker, and the gate files a row this
+    machine can measure as one it cannot."""
+
+    HARNESSES = ("score-samples.py", "score-chart.py", "measure-tempo.py")
+
+    def source(self, harness: str) -> str:
+        return (Path(__file__).resolve().parent / harness).read_text(encoding="utf-8")
+
+    def defaulting_helpers(self, harness: str) -> set[str]:
+        """Every function taking a `where`, and whether it defaults it."""
+        found = set()
+        for node in ast.walk(ast.parse(self.source(harness))):
+            if not isinstance(node, ast.FunctionDef):
+                continue
+            named = [a.arg for a in node.args.posonlyargs + node.args.args]
+            if "where" in named:
+                defaulted = named[len(named) - len(node.args.defaults):]
+                found.add((node.name, "where" in defaulted))
+        return found
+
+    def test_no_reader_of_the_tables_resolves_a_corpus_of_its_own(self):
+        """#750: each of the three read BENCHMARKS and then went to samples/
+        regardless, so a grid stated for a local recording reached none of
+        them."""
+        for harness in self.HARNESSES:
+            self.assertNotIn('REPO / "samples"', self.source(harness), harness)
+
+    def test_no_helper_defaults_the_corpus_its_caller_should_name(self):
+        for harness in self.HARNESSES:
+            for name, defaults in self.defaulting_helpers(harness):
+                self.assertFalse(defaults, f"{harness} {name}")
+
+    def test_the_rule_above_reaches_the_helpers_it_is_about(self):
+        """A rule matching nothing passes exactly as a rule matching everything
+        does. These are the helpers #752 names, so a rename that took one out
+        of reach fails here rather than going quiet."""
+        self.assertEqual(
+            {"missing_line", "run_for", "doc_for"},
+            {name for name, _ in self.defaulting_helpers("score-samples.py")})
+        self.assertEqual(
+            {"missing_line"},
+            {name for name, _ in self.defaulting_helpers("score-chart.py")})
+
+    def test_a_forgotten_corpus_is_an_error_and_not_a_skip_line(self):
+        """What the default did instead: print the line the gate turns into a
+        SKIP, naming a corpus the caller never chose."""
+        for missing_line in (samples.missing_line, chart.missing_line):
+            with self.assertRaises(TypeError):
+                missing_line("x.mp3")
+
+    def test_a_row_naming_the_local_corpus_is_fetched_from_it(self):
+        """The point of the whole shape: the skip line sends a reader to the
+        list.txt that knows how to fetch the file."""
+        for missing_line in (samples.missing_line, chart.missing_line):
+            self.assertIn("uncommitted/list.txt", missing_line("x.mp3", "uncommitted"))
 
 
 def doc(spans: list[dict], beats: int = 16, phase: int = 0, per_bar: int = 4,
@@ -1223,12 +1291,13 @@ class Keying(unittest.TestCase):
         the marker drifts, this fails before the gate does."""
         self.assertIn(self.MARKER,
                       (Path(__file__).resolve().parent / "premerge-diff.py").read_text())
-        for line in (samples.missing_line("x.mp3"),
-                     samples.missing_line("key x.mp3"),
-                     samples.missing_line("phase x.mp3"),
+        for line in (samples.missing_line("x.mp3", "samples"),
+                     samples.missing_line("key x.mp3", "samples"),
+                     samples.missing_line("phase x.mp3", "uncommitted"),
                      samples.missing_line("minor x.mp3", "uncommitted"),
                      samples.missing_line("vocabulary x.mp3", "uncommitted"),
-                     chart.missing_line("x.mp3"),
+                     chart.missing_line("x.mp3", "samples"),
+                     chart.missing_line("x.mp3", "uncommitted"),
                      lyrics.missing_line("x.mp3", "uncommitted/list.txt")):
             self.assertIn(self.MARKER, line)
             self.assertIn(".mp3:", line)
@@ -1853,7 +1922,8 @@ class PremergeVerdict(unittest.TestCase):
                 (tree / baseline).write_text(row + "\n")
                 (tree / "tools" / harness).write_text(self.STUB)
                 plan[" ".join([harness] + args)] = (
-                    row if present else samples.missing_line(f"{name}.mp3")) + "\n"
+                    row if present
+                    else samples.missing_line(f"{name}.mp3", "samples")) + "\n"
             (tree / "tools" / "plan.json").write_text(json.dumps(plan))
             location = Path(tmp) / "premerge-skips.txt"
             if manifest is not None:

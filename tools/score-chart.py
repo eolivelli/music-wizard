@@ -151,11 +151,14 @@ QUALITY = {
 }
 
 
-def missing_line(label: str) -> str:
+def missing_line(label: str, where: str) -> str:
     """A baselined name this machine cannot measure; the gate skips rows
     carrying this line's marker, and test-harness-rules.py holds every writer
-    of it, and its reader, to one literal."""
-    return f"  {label}: not present (local-only; see samples/list.txt to fetch)"
+    of it, and its reader, to one literal.
+
+    `where` is the corpus the row names, and is never defaulted, for the
+    reason score-samples' own missing_line gives."""
+    return f"  {label}: not present (local-only; see {where}/list.txt to fetch)"
 
 
 def quarters(duration: str) -> float:
@@ -371,10 +374,10 @@ def main() -> None:
 
     print("charts emitted for samples with known ground truth:")
     missing = []
-    for name, truth in BENCHMARKS.items():
-        mp3 = REPO / "samples" / name
+    for name, (where, truth) in BENCHMARKS.items():
+        mp3 = REPO / where / name
         if not mp3.exists():
-            missing.append(name)
+            missing.append((name, where))
             continue
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "w.mwz"
@@ -384,8 +387,8 @@ def main() -> None:
                 text = (workspace / "out" / "chords.txt").read_text().splitlines()
                 for line in [ln for ln in text if ln.startswith("|")][:args.cycles]:
                     print("      " + line)
-    for name in missing:
-        print(missing_line(name))
+    for name, where in missing:
+        print(missing_line(name, where))
 
 
 if __name__ == "__main__":

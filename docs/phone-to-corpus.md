@@ -63,13 +63,13 @@ committed where the licensing allows it, and otherwise gitignored by name, as
 several files there already are. `uncommitted/` is for commercial recordings,
 and its `list.txt` header says why they are looked at rather than scored.
 
-Being scored is a further step, and a later one: `tools/score-samples.py` looks
-for every benchmark under `samples/` and reads its changes from the `BENCHMARKS`
-table in that same script (`score-chart.py` imports it). A file's `list.txt`
-entry does not put it there: `samples/list.txt` says changes are confirmed by
-ear before a file is promoted. A sung recording is registered the same way and
-in one more place — its recording and its `.lrc` go in the `LYRICS` table of
-`tools/score-lyrics.py`.
+Being scored is a further step, and a later one: `tools/score-samples.py` reads
+a benchmark's changes, and which corpus its recording is in, from the
+`BENCHMARKS` table in that same script (`score-chart.py` imports it). A file's
+`list.txt` entry does not put it there: `samples/list.txt` says changes are
+confirmed by ear before a file is promoted. A sung recording is registered the
+same way and in one more place — its recording and its `.lrc` go in the
+`LYRICS` table of `tools/score-lyrics.py`.
 
 ## 3. Write the `list.txt` entry
 
