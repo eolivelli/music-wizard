@@ -575,6 +575,16 @@ class CorpusIsNamedNeverAssumed(unittest.TestCase):
     ABSENT = "no-such-recording.mp3"
     PRESENT = "a-recording.mp3"
 
+    # What each harness labels its skip rows with, one per loop that prints
+    # one. Named rather than counted, so a loop added to any of them fails
+    # until it is named here.
+    SKIP_LABELS = {
+        "score-samples.py": ("", "phase ", "meter ", "key ", "minor ",
+                             "vocabulary "),
+        "score-chart.py": ("",),
+        "measure-tempo.py": ("",),
+    }
+
     def run_harness(self, module, tables: dict, argv: list[str],
                     stubs: dict | None = None, root: Path | None = None) -> str:
         """One harness driven over patched tables, with whatever it would have
@@ -684,18 +694,13 @@ class CorpusIsNamedNeverAssumed(unittest.TestCase):
         for module, tables, argv, _ in self.runs(self.ABSENT):
             printed = self.run_harness(module, tables, argv)
             rows = [line for line in printed.splitlines() if self.ABSENT in line]
-            self.assertTrue(rows, argv[0])
-            # Each row against its own helper's line, so that holding the
-            # helper's text holds the text a row carries. A loop that spells
-            # the line itself drifts off the marker in one edit, and a skip
-            # row that is no longer a skip row is compared against a baselined
-            # figure instead (#365). Per row rather than per harness, because
-            # a loop that labels its rows writes a line the plain one is not
-            # a substring of.
-            for row in rows:
-                label = row.split(":")[0].strip()
-                self.assertEqual(module.missing_line(label, "uncommitted"),
-                                 row, argv[0])
+            # The whole set, against each loop's own helper line. A row that
+            # drifted off the marker, and a loop that stopped printing one at
+            # all, are the same failure to the gate: it compares the row
+            # against a baselined figure instead of skipping it (#365).
+            want = [module.missing_line(label + self.ABSENT, "uncommitted")
+                    for label in self.SKIP_LABELS[argv[0]]]
+            self.assertEqual(sorted(want), sorted(rows), argv[0])
 
 
 def doc(spans: list[dict], beats: int = 16, phase: int = 0, per_bar: int = 4,
