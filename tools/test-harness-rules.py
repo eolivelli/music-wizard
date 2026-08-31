@@ -34,6 +34,7 @@ chart = import_module("score-chart")
 lyrics = import_module("score-lyrics")
 melody = import_module("score-melody")
 separation = import_module("measure-separation-cost")
+tempo = import_module("measure-tempo")
 vtt = import_module("vtt-to-lrc")
 drift = import_module("baseline-drift")
 
@@ -503,20 +504,32 @@ class CorpusIsNamedNeverAssumed(unittest.TestCase):
     looked for, the row prints the skip marker, and the gate files a row this
     machine can measure as one it cannot."""
 
+    # The three that resolve a corpus directory from a table.
     HARNESSES = ("score-samples.py", "score-chart.py", "measure-tempo.py")
+    # And score-lyrics, whose rows carry a path rather than a corpus, so only
+    # the second rule is about it: what its `where` names is different, and a
+    # default would lose it the same way.
+    HELPERS = HARNESSES + ("score-lyrics.py",)
 
     def source(self, harness: str) -> str:
         return (Path(__file__).resolve().parent / harness).read_text(encoding="utf-8")
 
-    def defaulting_helpers(self, harness: str) -> set[str]:
-        """Every function taking a `where`, and whether it defaults it."""
+    def defaulting_helpers(self, harness: str) -> set[tuple[str, bool]]:
+        """Every function taking a `where`, and whether it defaults it.
+
+        Keyword-only parameters are read as well as positional ones, so that
+        writing the default the other way is not a way past the rule."""
         found = set()
         for node in ast.walk(ast.parse(self.source(harness))):
             if not isinstance(node, ast.FunctionDef):
                 continue
-            named = [a.arg for a in node.args.posonlyargs + node.args.args]
-            if "where" in named:
-                defaulted = named[len(named) - len(node.args.defaults):]
+            args = node.args
+            positional = [a.arg for a in args.posonlyargs + args.args]
+            defaulted = set(positional[len(positional) - len(args.defaults):])
+            defaulted |= {a.arg for a, default
+                          in zip(args.kwonlyargs, args.kw_defaults)
+                          if default is not None}
+            if "where" in positional + [a.arg for a in args.kwonlyargs]:
                 found.add((node.name, "where" in defaulted))
         return found
 
@@ -528,7 +541,7 @@ class CorpusIsNamedNeverAssumed(unittest.TestCase):
             self.assertNotIn('REPO / "samples"', self.source(harness), harness)
 
     def test_no_helper_defaults_the_corpus_its_caller_should_name(self):
-        for harness in self.HARNESSES:
+        for harness in self.HELPERS:
             for name, defaults in self.defaulting_helpers(harness):
                 self.assertFalse(defaults, f"{harness} {name}")
 
@@ -539,9 +552,10 @@ class CorpusIsNamedNeverAssumed(unittest.TestCase):
         self.assertEqual(
             {"missing_line", "run_for", "doc_for"},
             {name for name, _ in self.defaulting_helpers("score-samples.py")})
-        self.assertEqual(
-            {"missing_line"},
-            {name for name, _ in self.defaulting_helpers("score-chart.py")})
+        for harness in ("score-chart.py", "score-lyrics.py"):
+            self.assertEqual(
+                {"missing_line"},
+                {name for name, _ in self.defaulting_helpers(harness)}, harness)
 
     def test_a_forgotten_corpus_is_an_error_and_not_a_skip_line(self):
         """What the default did instead: print the line the gate turns into a
@@ -555,6 +569,98 @@ class CorpusIsNamedNeverAssumed(unittest.TestCase):
         list.txt that knows how to fetch the file."""
         for missing_line in (samples.missing_line, chart.missing_line):
             self.assertIn("uncommitted/list.txt", missing_line("x.mp3", "uncommitted"))
+
+    ABSENT = "no-such-recording.mp3"
+    PRESENT = "a-recording.mp3"
+
+    def run_harness(self, module, tables: dict, argv: list[str],
+                    stubs: dict | None = None, root: Path | None = None) -> str:
+        """One harness driven over patched tables, with whatever it would have
+        spent a subprocess on stubbed out."""
+        out = io.StringIO()
+        with contextlib.ExitStack() as stack:
+            if root is not None:
+                stack.enter_context(mock.patch.object(module, "REPO", root))
+            for table, rows in tables.items():
+                stack.enter_context(mock.patch.object(module, table, rows))
+            for name, result in (stubs or {}).items():
+                stack.enter_context(mock.patch.object(
+                    module, name,
+                    result if callable(result)
+                    else (lambda *a, _r=result, **k: _r)))
+            stack.enter_context(mock.patch.object(sys, "argv", argv))
+            stack.enter_context(contextlib.redirect_stdout(out))
+            module.main()
+        return out.getvalue()
+
+    def runs(self, name: str) -> tuple:
+        """Each harness with one row of every table it reads, and the calls it
+        would otherwise have spent a `java` run on. `--jar` is this file for
+        the two that refuse to start without one, and a path that is not there
+        for the tempo tool, whose jarless arm is the cheap one."""
+        local = ("uncommitted", "C")
+        return (
+            (samples,
+             {"BENCHMARKS": {name: local}, "KEYS": {name: local},
+              "METERS": {name: local}, "NO_MINOR_CHORD": {name: "uncommitted"},
+              "VOCABULARY": {name: local}},
+             ["score-samples.py", "--jar", __file__],
+             {"analyze_with_output": ({}, "")}),
+            (chart,
+             {"BENCHMARKS": {name: local}},
+             ["score-chart.py", "--jar", __file__],
+             {"render": "", "short_changes": None}),
+            (tempo,
+             {"BENCHMARKS": {name: local}, "SEARCH": {name: (85.0, 95.0)}},
+             ["measure-tempo.py", "--jar", "/nonexistent/mw.jar"],
+             {"measured_tempo": (90.0, 2.0)}),
+        )
+
+    def test_a_row_naming_the_local_corpus_is_looked_for_there(self):
+        """The rule two tests up is a text match, so it names one spelling of
+        the hardcode and a reformat walks past it. This drives the loops: the
+        recording is put in both corpora, so which path a harness reaches for
+        is decided by nothing but the row it read.
+
+        score-samples is covered a table at a time rather than only on
+        BENCHMARKS, since taking the corpus from the row is a thing each of its
+        loops does separately."""
+        for module, tables, argv, stubs in self.runs(self.PRESENT):
+            with tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                for corpus in ("samples", "uncommitted"):
+                    (root / corpus).mkdir()
+                    (root / corpus / self.PRESENT).write_bytes(b"")
+                reached = []
+                watched = {name: self.watch(reached, result)
+                           for name, result in stubs.items()}
+                self.run_harness(module, tables, argv, watched, root)
+            self.assertTrue(reached, argv[0])
+            for path in reached:
+                self.assertEqual("uncommitted", path.parent.name,
+                                 f"{argv[0]} reached {path}")
+
+    def watch(self, seen: list, result):
+        """A stub that records the recording it was handed."""
+        def stub(*args, **kwargs):
+            seen.extend(a for a in args
+                        if isinstance(a, Path) and a.name == self.PRESENT)
+            return result
+        return stub
+
+    def test_a_row_naming_the_local_corpus_is_fetched_from_it(self):
+        """And when it is not there, the skip line sends a reader to the
+        list.txt that knows how to fetch it -- from every loop, not only the
+        one #750 was about."""
+        for missing_line in (samples.missing_line, chart.missing_line):
+            self.assertIn("uncommitted/list.txt", missing_line("x.mp3", "uncommitted"))
+        for module, tables, argv, _ in self.runs(self.ABSENT):
+            printed = self.run_harness(module, tables, argv)
+            rows = [line for line in printed.splitlines() if self.ABSENT in line]
+            self.assertTrue(rows, argv[0])
+            for row in rows:
+                self.assertIn("uncommitted/list.txt", row, argv[0])
+                self.assertNotIn("samples/list.txt", row, argv[0])
 
 
 def doc(spans: list[dict], beats: int = 16, phase: int = 0, per_bar: int = 4,

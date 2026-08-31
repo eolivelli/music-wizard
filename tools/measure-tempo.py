@@ -239,10 +239,9 @@ def main() -> None:
             continue
         row = BENCHMARKS.get(name)
         if row is None:
-            # Only reachable in the state the stale check above reports: a band
-            # whose benchmark was retired. Nothing then says which corpus to
-            # look in, and guessing one would report a file as absent from a
-            # directory it was never in.
+            # Only reachable in the state the stale check above reports.
+            # Nothing then says which corpus to look in, and guessing one
+            # would report a file as absent from a directory it was never in.
             print(f"  {name}: no scored benchmark, so no corpus to look in")
             continue
         mp3 = REPO / row[0] / name

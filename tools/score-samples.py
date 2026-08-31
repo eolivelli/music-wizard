@@ -68,9 +68,9 @@ REPO = Path(__file__).resolve().parent.parent
 #
 # Each row carries where its recording lives, as the tables below do, so a grid
 # an ear confirmed for a commercial recording reaches a row instead of being
-# unreachable here (#750). Every row is committed today; the three tools that
-# read this table -- this one, score-chart.py and measure-tempo.py -- resolve
-# the directory from the row rather than assuming one.
+# unreachable here (#750). The three tools that read this table -- this one,
+# score-chart.py and measure-tempo.py -- resolve the directory from the row
+# rather than assuming one.
 BENCHMARKS = {
     "blues-a-90bpm.mp3":
         ("samples", "A7 A7 A7 A7  D7 D7 A7 A7  E7 D7 A7 E7"),
