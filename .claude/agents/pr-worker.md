@@ -35,7 +35,10 @@ locally after approval; that duplication is what CI replaces.
 
 1. The pr-reviewer agent approves — `APPROVE` from a round that found nothing
    new, or `APPROVE_WITH_CORRECTIONS` whose delta pass confirmed your prose
-   fixes.
+   fixes — **and no round you launched is still unreported**. A re-run of a
+   stalled reviewer is a second opinion, not a replacement: merging on
+   whichever finishes first selects the less thorough review. If a stalled
+   round is truly dead, say so in the PR before merging without it.
 2. **CI is green on the PR** — every check, watched to completion
    (`gh pr checks <number> --watch`), on the final approved head. A push
    after the last green run restarts the wait.
@@ -129,6 +132,8 @@ parallelism *within* one PR, not licence to open a second.
   until a round finds nothing new (`APPROVE`), or only prose
   (`APPROVE_WITH_CORRECTIONS` → fix the text → delta pass on exactly that
   text → merge).
+- **Every round you launch is owed until it reports** — see the merge rule
+  above.
 
 For each finding: fix it or refute it with evidence; add a regression test;
 assume your fix might be worse than the bug; reply on the PR so the next round
