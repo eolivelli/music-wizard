@@ -402,12 +402,10 @@ class MeterEstimationTest {
         @DisplayName("the confidence does not step where the meter does")
         void theShadowIsHeldToParity() {
             // A three a six exactly accounts for becomes that six; a three just
-            // short of it stays a three. The shadow bounds the denominator at
-            // itself rather than at a multiple of itself, and that factor of one
-            // is what makes the two report the same number either side of the
-            // boundary. Both clear the margin over the assumption several times
-            // over, which is the side of the floor this asserts on -- below it
-            // the floor dominates and the boundary steps whatever the factor.
+            // short of it stays a three. The meter changes there and the number
+            // must not. Both readings clear the margin over the assumption
+            // several times over, which is the side of the floor #714 asks a
+            // test to be explicit about.
             double promoted = MeterEstimator.decide(reading(1, 100, 1, 50)).confidence().value();
             double justUnder =
                     MeterEstimator.decide(reading(1, 100, 1, 49.99)).confidence().value();
@@ -508,6 +506,17 @@ class MeterEstimationTest {
         void nothingIsCertain() {
             assertThat(MeterEstimator.decide(reading(1, 1000, 1, 1)).confidence().value())
                     .isLessThan(1.0);
+        }
+
+        @Test
+        @DisplayName("a reading short of a bar length is not a reading")
+        void aPartialReading() {
+            // Every length has to be there for the gates to compare them, and
+            // the map is the only way to build a reading that is missing one.
+            assertThatThrownBy(
+                    () -> new MeterEstimator.Reading(Map.of(2, 1.0, 3, 1.0), 0, 0, 0, 400))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("one periodicity per bar length");
         }
 
         @Test

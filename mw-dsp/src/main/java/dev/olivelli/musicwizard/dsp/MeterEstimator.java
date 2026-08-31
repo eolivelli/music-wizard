@@ -20,10 +20,13 @@ import dev.olivelli.musicwizard.core.model.Confidence;
 import dev.olivelli.musicwizard.core.model.TimeSignature;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.LinkedHashMap;
+import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
+import java.util.TreeMap;
 import java.util.function.Function;
 
 /**
@@ -144,6 +147,17 @@ public final class MeterEstimator {
     private static final List<BarLength> CANDIDATES =
             BAR_LENGTHS.stream().filter(BarLength::candidate).toList();
 
+    /** The lengths a {@link Reading} carries one periodicity for each of. */
+    private static final Set<Integer> PULSE_COUNTS = pulseCounts();
+
+    private static Set<Integer> pulseCounts() {
+        Set<Integer> pulses = new LinkedHashSet<>();
+        for (BarLength length : BAR_LENGTHS) {
+            pulses.add(length.pulses());
+        }
+        return Collections.unmodifiableSet(pulses);
+    }
+
     /**
      * The periodicity at which a bar length counts as supported by the harmony.
      *
@@ -202,7 +216,7 @@ public final class MeterEstimator {
 
     /**
      * The shortest usable stretch of beats a reading is taken from, in bars of
-     * the longest candidate.
+     * the longest one.
      *
      * <p>Below it the Fourier coefficient is describing the window rather than
      * the music, and its null no longer holds.
@@ -333,7 +347,13 @@ public final class MeterEstimator {
                           double onThePulse, int usableBeats) {
 
         public Reading {
-            harmonic = Map.copyOf(Objects.requireNonNull(harmonic, "harmonic"));
+            Objects.requireNonNull(harmonic, "harmonic");
+            if (!harmonic.keySet().equals(PULSE_COUNTS)) {
+                throw new IllegalArgumentException(
+                        "a reading carries one periodicity per bar length: expected "
+                                + PULSE_COUNTS + ", got " + harmonic.keySet());
+            }
+            harmonic = Collections.unmodifiableSortedMap(new TreeMap<>(harmonic));
         }
 
         /** The harmonic periodicity at a bar length this reads. */
@@ -388,7 +408,7 @@ public final class MeterEstimator {
         }
 
         double[] novelty = DownbeatEstimator.harmonicNovelty(chroma);
-        Map<Integer, Double> harmonic = new LinkedHashMap<>();
+        Map<Integer, Double> harmonic = new HashMap<>();
         for (BarLength length : BAR_LENGTHS) {
             harmonic.put(length.pulses(),
                     periodicity(novelty, firstBeat, lastBeat, length.pulses()));
@@ -400,7 +420,7 @@ public final class MeterEstimator {
 
     /** No periodicity at any length, which is what too short a stretch reports. */
     private static Map<Integer, Double> noHarmony() {
-        Map<Integer, Double> harmonic = new LinkedHashMap<>();
+        Map<Integer, Double> harmonic = new HashMap<>();
         for (BarLength length : BAR_LENGTHS) {
             harmonic.put(length.pulses(), 0.0);
         }
@@ -446,9 +466,7 @@ public final class MeterEstimator {
      *
      * <p>The shorter divides the longer, so novelty that really repeats at the
      * longer scores the shorter as strongly, and {@link #DIVIDED} is where the
-     * two cases part. Written over whatever divisor pairs the candidates hold;
-     * they hold one today, and nothing here is a rule for lengths the set does
-     * not have (#706).
+     * two cases part. Written over whatever divisor pairs the candidates hold.
      */
     private static boolean accountsFor(Reading reading, int longer, int shorter) {
         return longer > shorter && longer % shorter == 0
