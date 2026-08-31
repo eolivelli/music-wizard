@@ -506,9 +506,9 @@ class CorpusIsNamedNeverAssumed(unittest.TestCase):
 
     # The three that resolve a corpus directory from a table.
     HARNESSES = ("score-samples.py", "score-chart.py", "measure-tempo.py")
-    # And score-lyrics, whose rows carry a path rather than a corpus, so only
-    # the second rule is about it: what its `where` names is different, and a
-    # default would lose it the same way.
+    # And score-lyrics, held only to the no-default rule: its rows carry a
+    # path rather than a corpus, so it resolves no directory to get wrong, and
+    # a default would lose the caller's choice just the same.
     HELPERS = HARNESSES + ("score-lyrics.py",)
 
     def source(self, harness: str) -> str:
@@ -545,17 +545,24 @@ class CorpusIsNamedNeverAssumed(unittest.TestCase):
             for name, defaults in self.defaulting_helpers(harness):
                 self.assertFalse(defaults, f"{harness} {name}")
 
+    # What the rule below expects to find in each of HELPERS. measure-tempo
+    # resolves its corpus inline and defines no such helper, which is a fact
+    # about it rather than a rule that found nothing.
+    HELD = {"score-samples.py": {"missing_line", "run_for", "doc_for"},
+            "score-chart.py": {"missing_line"},
+            "score-lyrics.py": {"missing_line"},
+            "measure-tempo.py": set()}
+
     def test_the_rule_above_reaches_the_helpers_it_is_about(self):
         """A rule matching nothing passes exactly as a rule matching everything
-        does. These are the helpers #752 names, so a rename that took one out
-        of reach fails here rather than going quiet."""
-        self.assertEqual(
-            {"missing_line", "run_for", "doc_for"},
-            {name for name, _ in self.defaulting_helpers("score-samples.py")})
-        for harness in ("score-chart.py", "score-lyrics.py"):
+        does. Every harness the rule reads is named here, so a rename that took
+        a helper out of reach fails rather than going quiet -- and so does a
+        harness added to HELPERS and pinned by nobody."""
+        self.assertEqual(set(self.HELPERS), set(self.HELD))
+        for harness, held in self.HELD.items():
             self.assertEqual(
-                {"missing_line"},
-                {name for name, _ in self.defaulting_helpers(harness)}, harness)
+                held, {name for name, _ in self.defaulting_helpers(harness)},
+                harness)
 
     def test_a_forgotten_corpus_is_an_error_and_not_a_skip_line(self):
         """What the default did instead: print the line the gate turns into a
@@ -564,30 +571,22 @@ class CorpusIsNamedNeverAssumed(unittest.TestCase):
             with self.assertRaises(TypeError):
                 missing_line("x.mp3")
 
-    def test_a_row_naming_the_local_corpus_is_fetched_from_it(self):
-        """The point of the whole shape: the skip line sends a reader to the
-        list.txt that knows how to fetch the file."""
-        for missing_line in (samples.missing_line, chart.missing_line):
-            self.assertIn("uncommitted/list.txt", missing_line("x.mp3", "uncommitted"))
-
     ABSENT = "no-such-recording.mp3"
     PRESENT = "a-recording.mp3"
 
     def run_harness(self, module, tables: dict, argv: list[str],
                     stubs: dict | None = None, root: Path | None = None) -> str:
         """One harness driven over patched tables, with whatever it would have
-        spent a subprocess on stubbed out."""
+        spent a subprocess on stubbed out. Every stub is a callable, so that a
+        value which happens to be one cannot install itself."""
         out = io.StringIO()
         with contextlib.ExitStack() as stack:
             if root is not None:
                 stack.enter_context(mock.patch.object(module, "REPO", root))
             for table, rows in tables.items():
                 stack.enter_context(mock.patch.object(module, table, rows))
-            for name, result in (stubs or {}).items():
-                stack.enter_context(mock.patch.object(
-                    module, name,
-                    result if callable(result)
-                    else (lambda *a, _r=result, **k: _r)))
+            for name, stub in (stubs or {}).items():
+                stack.enter_context(mock.patch.object(module, name, stub))
             stack.enter_context(mock.patch.object(sys, "argv", argv))
             stack.enter_context(contextlib.redirect_stdout(out))
             module.main()
@@ -605,15 +604,15 @@ class CorpusIsNamedNeverAssumed(unittest.TestCase):
               "METERS": {name: local}, "NO_MINOR_CHORD": {name: "uncommitted"},
               "VOCABULARY": {name: local}},
              ["score-samples.py", "--jar", __file__],
-             {"analyze_with_output": ({}, "")}),
+             {"analyze_with_output": self.answers(({}, ""))}),
             (chart,
              {"BENCHMARKS": {name: local}},
              ["score-chart.py", "--jar", __file__],
-             {"render": "", "short_changes": None}),
+             {"render": self.answers(""), "short_changes": self.answers(None)}),
             (tempo,
              {"BENCHMARKS": {name: local}, "SEARCH": {name: (85.0, 95.0)}},
              ["measure-tempo.py", "--jar", "/nonexistent/mw.jar"],
-             {"measured_tempo": (90.0, 2.0)}),
+             {"measured_tempo": self.answers((90.0, 2.0))}),
         )
 
     def test_a_row_naming_the_local_corpus_is_looked_for_there(self):
@@ -626,27 +625,52 @@ class CorpusIsNamedNeverAssumed(unittest.TestCase):
         BENCHMARKS, since taking the corpus from the row is a thing each of its
         loops does separately."""
         for module, tables, argv, stubs in self.runs(self.PRESENT):
-            with tempfile.TemporaryDirectory() as tmp:
-                root = Path(tmp)
-                for corpus in ("samples", "uncommitted"):
-                    (root / corpus).mkdir()
-                    (root / corpus / self.PRESENT).write_bytes(b"")
-                reached = []
-                watched = {name: self.watch(reached, result)
-                           for name, result in stubs.items()}
+            reached = []
+            with self.corpora(("samples", "uncommitted")) as root:
+                watched = {name: self.watching(reached, stub)
+                           for name, stub in stubs.items()}
                 self.run_harness(module, tables, argv, watched, root)
-            self.assertTrue(reached, argv[0])
-            for path in reached:
-                self.assertEqual("uncommitted", path.parent.name,
-                                 f"{argv[0]} reached {path}")
+                self.assertTrue(reached, argv[0])
+                for path in reached:
+                    self.assertEqual(root / "uncommitted" / self.PRESENT, path,
+                                     f"{argv[0]} reached {path}")
 
-    def watch(self, seen: list, result):
-        """A stub that records the recording it was handed."""
-        def stub(*args, **kwargs):
+    def test_a_recording_only_the_local_corpus_holds_is_still_scored(self):
+        """The state a local-only recording is actually in, and the one the
+        test above cannot see: present where the row says and absent from the
+        other corpus. A harness that takes the row's corpus for the analysis
+        and asks the wrong one whether the file is there passes that test and
+        fails this, and what it costs is #750's whole cost -- a row this
+        machine can measure filed as one it cannot."""
+        for module, tables, argv, stubs in self.runs(self.PRESENT):
+            with self.corpora(("uncommitted",)) as root:
+                printed = self.run_harness(module, tables, argv, stubs, root)
+            self.assertNotIn(Keying.MARKER, printed, argv[0])
+
+    @contextlib.contextmanager
+    def corpora(self, holding: tuple[str, ...]):
+        """A repository root with both corpus directories, the recording in
+        the named ones."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for corpus in ("samples", "uncommitted"):
+                (root / corpus).mkdir()
+            for corpus in holding:
+                (root / corpus / self.PRESENT).write_bytes(b"")
+            yield root
+
+    def answers(self, result):
+        """A stub that spends no subprocess and returns what the caller
+        expects of the real one."""
+        return lambda *args, **kwargs: result
+
+    def watching(self, seen: list, stub):
+        """The same stub, recording the recording it was handed."""
+        def watched(*args, **kwargs):
             seen.extend(a for a in args
                         if isinstance(a, Path) and a.name == self.PRESENT)
-            return result
-        return stub
+            return stub(*args, **kwargs)
+        return watched
 
     def test_a_row_naming_the_local_corpus_is_fetched_from_it(self):
         """And when it is not there, the skip line sends a reader to the

@@ -21,10 +21,11 @@
 # neither it nor johnny-b-goode holds a minor chord. That is worth writing down
 # wherever it is confirmed, because the next reader would otherwise re-derive it
 # or, as happened, read MW's correct answer as a bug. A fact stated here can
-# also be scored: tools/score-samples.py reads keys, meters, bar-by-bar
-# changes, the no-minor invariant and the stated chord set out of the entries
-# below. A complete set is not a grid -- it says nothing about when anything
-# sounds -- so it prices a chord MW invented where a grid prices alignment.
+# also be scored: tools/score-samples.py reads keys, meters, the no-minor
+# invariant and the stated chord set out of the entries below, and a bar-by-bar
+# grid written down here would be read the same way (#750). A complete set is
+# not a grid -- it says nothing about when anything sounds -- so it prices a
+# chord MW invented where a grid prices alignment.
 #
 # The second kind of file is a recording whose rights are clear on both sides
 # and which is waiting to be confirmed by ear before it is promoted into
