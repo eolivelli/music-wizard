@@ -22,6 +22,8 @@ import static org.assertj.core.api.Assertions.within;
 
 import dev.olivelli.musicwizard.core.model.TimeSignature;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
@@ -517,6 +519,31 @@ class MeterEstimationTest {
                     () -> new MeterEstimator.Reading(Map.of(2, 1.0, 3, 1.0), 0, 0, 0, 400))
                     .isInstanceOf(IllegalArgumentException.class)
                     .hasMessageContaining("one periodicity per bar length");
+        }
+
+        @Test
+        @DisplayName("a reading holding nothing at a length it names is not one either")
+        void aReadingWithAHole() {
+            // The key being there is not the periodicity being there.
+            Map<Integer, Double> hole = new HashMap<>(Map.of(2, 1.0, 3, 1.0, 4, 1.0));
+            hole.put(6, null);
+
+            assertThatThrownBy(() -> new MeterEstimator.Reading(hole, 0, 0, 0, 400))
+                    .isInstanceOf(NullPointerException.class)
+                    .hasMessageContaining("no periodicity at 6");
+        }
+
+        @Test
+        @DisplayName("a reading reads back in one order, whatever order it was built in")
+        void aReadingIsOrdered() {
+            Map<Integer, Double> shuffled = new LinkedHashMap<>();
+            shuffled.put(6, 4.0);
+            shuffled.put(2, 1.0);
+            shuffled.put(4, 3.0);
+            shuffled.put(3, 2.0);
+
+            assertThat(new MeterEstimator.Reading(shuffled, 0, 0, 0, 400).harmonic().keySet())
+                    .containsExactly(2, 3, 4, 6);
         }
 
         @Test

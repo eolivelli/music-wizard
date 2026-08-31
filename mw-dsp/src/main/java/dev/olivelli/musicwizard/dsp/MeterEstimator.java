@@ -26,6 +26,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.SortedMap;
 import java.util.TreeMap;
 import java.util.function.Function;
 
@@ -216,7 +217,7 @@ public final class MeterEstimator {
 
     /**
      * The shortest usable stretch of beats a reading is taken from, in bars of
-     * the longest one.
+     * the longest bar length this reads.
      *
      * <p>Below it the Fourier coefficient is describing the window rather than
      * the music, and its null no longer holds.
@@ -353,7 +354,12 @@ public final class MeterEstimator {
                         "a reading carries one periodicity per bar length: expected "
                                 + PULSE_COUNTS + ", got " + harmonic.keySet());
             }
-            harmonic = Collections.unmodifiableSortedMap(new TreeMap<>(harmonic));
+            SortedMap<Integer, Double> copied = new TreeMap<>();
+            for (int pulses : PULSE_COUNTS) {
+                copied.put(pulses, Objects.requireNonNull(harmonic.get(pulses),
+                        () -> "no periodicity at " + pulses + " tracked pulses"));
+            }
+            harmonic = Collections.unmodifiableSortedMap(copied);
         }
 
         /** The harmonic periodicity at a bar length this reads. */
