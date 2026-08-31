@@ -20,8 +20,15 @@ import dev.olivelli.musicwizard.core.model.Confidence;
 import dev.olivelli.musicwizard.core.model.TimeSignature;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
+import java.util.SortedMap;
+import java.util.TreeMap;
+import java.util.function.Function;
 
 /**
  * Reads how many tracked pulses make a bar, and names the meter that bars them.
@@ -94,14 +101,6 @@ import java.util.Objects;
 public final class MeterEstimator {
 
     /**
-     * Tracked pulses to a bar this reads. Three and four are bars; six is a bar
-     * the tracker has filled with its own subdivision, which is a reading about
-     * the pulse level rather than about the bar and is why
-     * {@link Estimate#pulsesPerBar()} is carried beside the meter.
-     */
-    private static final int[] CANDIDATES = {3, 4, 6};
-
-    /**
      * The bar length the harmony alone may not choose, because two divides both
      * four and six and the statistic below cannot prefer a period to its own
      * divisors. It reaches {@link Estimate#pulsesPerBar()} only through
@@ -114,6 +113,51 @@ public final class MeterEstimator {
 
     /** The bar length assumed when the evidence does not displace it. */
     private static final int ASSUMED = 4;
+
+    /**
+     * A bar length this reads, and the meter it names.
+     *
+     * @param pulses    tracked pulses to one of its bars
+     * @param candidate whether the harmony may choose it, which {@link #IN_TWO}
+     *                  alone may not
+     * @param names     the meter a bar of that many pulses is written in
+     */
+    private record BarLength(int pulses, boolean candidate,
+                             Function<Reading, TimeSignature> names) {
+    }
+
+    /**
+     * Every bar length this reads, each beside the meter it names — the one
+     * place a length is written down, so what a {@link Reading} holds, what the
+     * harmony may choose between and what is engraved cannot come to disagree
+     * (#706).
+     *
+     * <p>Three and four are bars; six is a bar the tracker has filled with its
+     * own subdivision, which is a reading about the pulse level rather than
+     * about the bar and is why {@link Estimate#pulsesPerBar()} is carried beside
+     * the meter. Two is read but not chosen, for the reason {@link #IN_TWO}
+     * gives.
+     */
+    private static final List<BarLength> BAR_LENGTHS = List.of(
+            new BarLength(IN_TWO, false, reading -> TimeSignature.SIX_EIGHT),
+            new BarLength(3, true, reading -> TimeSignature.THREE_FOUR),
+            new BarLength(ASSUMED, true, reading -> TimeSignature.FOUR_FOUR),
+            new BarLength(6, true, MeterEstimator::groupingOfSix));
+
+    /** The bar lengths the harmony chooses between. */
+    private static final List<BarLength> CANDIDATES =
+            BAR_LENGTHS.stream().filter(BarLength::candidate).toList();
+
+    /** The lengths a {@link Reading} carries one periodicity for each of. */
+    private static final Set<Integer> PULSE_COUNTS = pulseCounts();
+
+    private static Set<Integer> pulseCounts() {
+        Set<Integer> pulses = new LinkedHashSet<>();
+        for (BarLength length : BAR_LENGTHS) {
+            pulses.add(length.pulses());
+        }
+        return Collections.unmodifiableSet(pulses);
+    }
 
     /**
      * The periodicity at which a bar length counts as supported by the harmony.
@@ -173,7 +217,7 @@ public final class MeterEstimator {
 
     /**
      * The shortest usable stretch of beats a reading is taken from, in bars of
-     * the longest candidate.
+     * the longest bar length this reads.
      *
      * <p>Below it the Fourier coefficient is describing the window rather than
      * the music, and its null no longer holds.
@@ -234,10 +278,10 @@ public final class MeterEstimator {
     }
 
     /** The longest bar a reading may name, which sets how long a reading needs. */
-    private static int longestCandidate() {
+    private static int longestBar() {
         int longest = 0;
-        for (int candidate : CANDIDATES) {
-            longest = Math.max(longest, candidate);
+        for (BarLength length : BAR_LENGTHS) {
+            longest = Math.max(longest, length.pulses());
         }
         return longest;
     }
@@ -280,14 +324,13 @@ public final class MeterEstimator {
      * The statistics a reading is made of, for an instrument that wants the
      * numbers rather than the decision.
      *
-     * <p>One statistic at four periods, so they may be read against each other,
-     * and beside them the one thing here that is not read from the harmony at
-     * all: how the tracked pulse divides.
+     * <p>One statistic at every bar length {@link #BAR_LENGTHS} holds, so they
+     * may be read against each other, and beside them the one thing here that is
+     * not read from the harmony at all: how the tracked pulse divides.
      *
-     * @param atTwo       harmonic periodicity at two tracked pulses
-     * @param atThree     the same at three
-     * @param atFour      the same at four, which is the assumption's own score
-     * @param atSix       the same at six
+     * @param harmonic    harmonic periodicity at each of those lengths, keyed by
+     *                    tracked pulses to a bar; the assumed length's entry is
+     *                    the assumption's own score
      * @param inThree     the stronger of the onset envelope's periodicities at
      *                    the two lags a triple division of the pulse puts a peak
      *                    at, over its periodicity at the pulse itself; zero
@@ -301,19 +344,31 @@ public final class MeterEstimator {
      * @param usableBeats beats novelty is defined at, which is what the harmonic
      *                    periodicities are measured over
      */
-    public record Reading(double atTwo, double atThree, double atFour, double atSix,
-                          double inThree, double inTwo, double onThePulse, int usableBeats) {
+    public record Reading(Map<Integer, Double> harmonic, double inThree, double inTwo,
+                          double onThePulse, int usableBeats) {
 
-        /** The harmonic periodicity at a period, which need not be a candidate. */
+        public Reading {
+            Objects.requireNonNull(harmonic, "harmonic");
+            if (!harmonic.keySet().equals(PULSE_COUNTS)) {
+                throw new IllegalArgumentException(
+                        "a reading carries one periodicity per bar length: expected "
+                                + PULSE_COUNTS + ", got " + harmonic.keySet());
+            }
+            SortedMap<Integer, Double> copied = new TreeMap<>();
+            for (int pulses : PULSE_COUNTS) {
+                copied.put(pulses, Objects.requireNonNull(harmonic.get(pulses),
+                        () -> "no periodicity at " + pulses + " tracked pulses"));
+            }
+            harmonic = Collections.unmodifiableSortedMap(copied);
+        }
+
+        /** The harmonic periodicity at a bar length this reads. */
         public double at(int pulses) {
-            return switch (pulses) {
-                case 2 -> atTwo;
-                case 3 -> atThree;
-                case 4 -> atFour;
-                case 6 -> atSix;
-                default -> throw new IllegalArgumentException(
-                        "not a period this reads: " + pulses);
-            };
+            Double periodicity = harmonic.get(pulses);
+            if (periodicity == null) {
+                throw new IllegalArgumentException("not a period this reads: " + pulses);
+            }
+            return periodicity;
         }
     }
 
@@ -347,8 +402,8 @@ public final class MeterEstimator {
         int firstBeat = 1;
         int lastBeat = beatTimes.size() - 2;
         int usable = lastBeat - firstBeat + 1;
-        if (usable < BARS_FOR_A_READING * longestCandidate() || chroma.frameCount() == 0) {
-            return new Reading(0, 0, 0, 0, 0, 0, 0, Math.max(0, usable));
+        if (usable < BARS_FOR_A_READING * longestBar() || chroma.frameCount() == 0) {
+            return new Reading(noHarmony(), 0, 0, 0, Math.max(0, usable));
         }
         if (!chroma.isBeatSynchronous() || chroma.frameCount() != beatTimes.size() - 1) {
             throw new IllegalArgumentException(
@@ -359,14 +414,23 @@ public final class MeterEstimator {
         }
 
         double[] novelty = DownbeatEstimator.harmonicNovelty(chroma);
-        Divisions divisions = divisionsOfThePulse(envelope, medianInterval(beatTimes));
-        return new Reading(
-                periodicity(novelty, firstBeat, lastBeat, 2),
-                periodicity(novelty, firstBeat, lastBeat, 3),
-                periodicity(novelty, firstBeat, lastBeat, 4),
-                periodicity(novelty, firstBeat, lastBeat, 6),
-                divisions.inThree(), divisions.inTwo(), divisions.onThePulse(),
-                usable);
+        Map<Integer, Double> harmonic = new HashMap<>();
+        for (BarLength length : BAR_LENGTHS) {
+            harmonic.put(length.pulses(),
+                    periodicity(novelty, firstBeat, lastBeat, length.pulses()));
+        }
+        Divisions divisions = divisionsOfThePulse(envelope, trackedPulse(beatTimes));
+        return new Reading(harmonic, divisions.inThree(), divisions.inTwo(),
+                divisions.onThePulse(), usable);
+    }
+
+    /** No periodicity at any length, which is what too short a stretch reports. */
+    private static Map<Integer, Double> noHarmony() {
+        Map<Integer, Double> harmonic = new HashMap<>();
+        for (BarLength length : BAR_LENGTHS) {
+            harmonic.put(length.pulses(), 0.0);
+        }
+        return harmonic;
     }
 
     /**
@@ -386,24 +450,48 @@ public final class MeterEstimator {
     public static Estimate decide(Reading reading) {
         Objects.requireNonNull(reading, "reading");
         if (barsInTwo(reading)) {
-            return new Estimate(TimeSignature.SIX_EIGHT, IN_TWO, confidenceInTwo(reading));
+            return new Estimate(meterAt(reading, IN_TWO), IN_TWO, confidenceInTwo(reading));
         }
         int best = ASSUMED;
-        for (int candidate : CANDIDATES) {
-            if (reading.at(candidate) > reading.at(best)) {
-                best = candidate;
+        for (BarLength length : CANDIDATES) {
+            if (reading.at(length.pulses()) > reading.at(best)) {
+                best = length.pulses();
             }
         }
-        // Three divides six, so a six-pulse bar scores three as strongly as it
-        // scores itself and would take the reading on floating-point residue.
-        if (best == 3 && reading.atSix() >= DIVIDED * reading.atThree()) {
-            best = 6;
-        }
+        best = longestAccountingFor(reading, best);
         if (best == ASSUMED || !clearsThePrior(reading, best)) {
-            return new Estimate(TimeSignature.FOUR_FOUR, ASSUMED,
+            return new Estimate(meterAt(reading, ASSUMED), ASSUMED,
                     confidenceIn(reading, ASSUMED));
         }
         return new Estimate(meterAt(reading, best), best, confidenceIn(reading, best));
+    }
+
+    /**
+     * Whether a longer bar length accounts for a shorter one's periodicity
+     * rather than the shorter being a reading of its own.
+     *
+     * <p>The shorter divides the longer, so novelty that really repeats at the
+     * longer scores the shorter as strongly, and {@link #DIVIDED} is where the
+     * two cases part. Written over whatever divisor pairs the candidates hold.
+     */
+    private static boolean accountsFor(Reading reading, int longer, int shorter) {
+        return longer > shorter && longer % shorter == 0
+                && reading.at(longer) >= DIVIDED * reading.at(shorter);
+    }
+
+    /**
+     * The longest candidate that accounts for the one the harmony scored
+     * highest, which is that one where nothing longer does. Without it the
+     * shorter reading takes the bar on floating-point residue.
+     */
+    private static int longestAccountingFor(Reading reading, int best) {
+        int longest = best;
+        for (BarLength length : CANDIDATES) {
+            if (length.pulses() > longest && accountsFor(reading, length.pulses(), best)) {
+                longest = length.pulses();
+            }
+        }
+        return longest;
     }
 
     /**
@@ -423,16 +511,17 @@ public final class MeterEstimator {
      * Three divides six, so novelty that repeats every six beats states the
      * three as well, and that three is the six seen again rather than a rival
      * to it — six being a length two divides, its shadow cannot be one. Which
-     * of the two it is, {@link #shadowOfSix} answers.
+     * of the two it is, {@link #shadowOfALongerBar} answers.
      */
     private static boolean barsInTwo(Reading reading) {
-        double tiled = reading.atTwo();
+        double tiled = 0;
         double contrary = 0;
-        for (int candidate : CANDIDATES) {
-            if (candidate % IN_TWO == 0) {
-                tiled = Math.max(tiled, reading.at(candidate));
-            } else if (!shadowOfSix(reading, candidate)) {
-                contrary = Math.max(contrary, reading.at(candidate));
+        for (BarLength length : BAR_LENGTHS) {
+            int pulses = length.pulses();
+            if (pulses % IN_TWO == 0) {
+                tiled = Math.max(tiled, reading.at(pulses));
+            } else if (!shadowOfALongerBar(reading, pulses)) {
+                contrary = Math.max(contrary, reading.at(pulses));
             }
         }
         if (tiled < THE_NULL || contrary >= SUPPORTED || contrary >= tiled) {
@@ -442,14 +531,19 @@ public final class MeterEstimator {
     }
 
     /**
-     * Whether a period is one a six-pulse reading already accounts for, rather
-     * than a reading of its own. Every gate a six has to clear to be believed,
-     * so a three dismissed here is dismissed by a six that would otherwise have
-     * taken the reading.
+     * Whether a period is one a longer candidate already accounts for, rather
+     * than a reading of its own. Every gate that candidate has to clear to be
+     * believed, so a period dismissed here is dismissed by a bar length that
+     * would otherwise have taken the reading.
      */
-    private static boolean shadowOfSix(Reading reading, int period) {
-        return 6 % period == 0 && clearsThePrior(reading, 6)
-                && reading.atSix() >= DIVIDED * reading.at(period);
+    private static boolean shadowOfALongerBar(Reading reading, int period) {
+        for (BarLength length : CANDIDATES) {
+            if (accountsFor(reading, length.pulses(), period)
+                    && clearsThePrior(reading, length.pulses())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -462,23 +556,27 @@ public final class MeterEstimator {
                 && reading.at(candidate) >= MARGIN * reading.at(ASSUMED);
     }
 
-    /**
-     * The meter a bar length names.
-     *
-     * <p>Three pulses is 3/4. Six is the tracker on a subdivision rather than on
-     * the counted beat, and which meter that is comes from how the six group —
-     * in two threes, which is 6/8, or in three twos, which is 3/4 — read from the
-     * same harmonic statistic. Both divide six, so a bar that marks nothing
-     * inside itself scores them alike. Nothing about the bar lines turns on it:
-     * 3/4 and 6/8 hold the same three quarter notes, so at six pulses to a bar
-     * they agree on every bar line and on the pulse, and differ only in what is
-     * printed.
-     */
+    /** The meter a bar length names, from the entry in {@link #BAR_LENGTHS} that names it. */
     private static TimeSignature meterAt(Reading reading, int pulsesPerBar) {
-        if (pulsesPerBar == 3) {
-            return TimeSignature.THREE_FOUR;
+        for (BarLength length : BAR_LENGTHS) {
+            if (length.pulses() == pulsesPerBar) {
+                return length.names().apply(reading);
+            }
         }
-        return reading.atThree() >= reading.atTwo()
+        throw new IllegalArgumentException("not a bar length this reads: " + pulsesPerBar);
+    }
+
+    /**
+     * Which meter a bar of six tracked pulses is written in, the tracker being on
+     * a subdivision rather than on the counted beat: how the six group — in two
+     * threes, which is 6/8, or in three twos, which is 3/4 — read from the same
+     * harmonic statistic. Both divide six, so a bar that marks nothing inside
+     * itself scores them alike. Nothing about the bar lines turns on it: 3/4 and
+     * 6/8 hold the same three quarter notes, so at six pulses to a bar they agree
+     * on every bar line and on the pulse, and differ only in what is printed.
+     */
+    private static TimeSignature groupingOfSix(Reading reading) {
+        return reading.at(3) >= reading.at(IN_TWO)
                 ? TimeSignature.SIX_EIGHT : TimeSignature.THREE_FOUR;
     }
 
@@ -504,11 +602,12 @@ public final class MeterEstimator {
     private static Confidence confidenceIn(Reading reading, int chosen) {
         double rival = 0;
         double shadow = 0;
-        for (int candidate : CANDIDATES) {
-            if (chosen % candidate != 0) {
-                rival = Math.max(rival, reading.at(candidate));
-            } else if (candidate != chosen) {
-                shadow = Math.max(shadow, reading.at(candidate));
+        for (BarLength length : CANDIDATES) {
+            int pulses = length.pulses();
+            if (chosen % pulses != 0) {
+                rival = Math.max(rival, reading.at(pulses));
+            } else if (pulses != chosen) {
+                shadow = Math.max(shadow, reading.at(pulses));
             }
         }
         double observed = Math.clamp(reading.at(chosen) / SUPPORTED, 0, 1);
@@ -572,12 +671,22 @@ public final class MeterEstimator {
     }
 
     /**
-     * The middle interval between tracked beats, which is the pulse the bars
-     * are drawn on. A median rather than a mean: a tracker that dropped a beat
-     * leaves one interval of twice the pulse, and the lags above are read at a
-     * tolerance far narrower than that error.
+     * The middle interval between tracked beats, in seconds, which is the pulse
+     * the divisions above are read against. A median rather than a mean: a
+     * tracker that dropped a beat leaves one interval of twice the pulse, and
+     * those lags are read at a tolerance far narrower than that error.
+     *
+     * <p>Public so that {@code tools/MeterSweep.java} prints the pulse this
+     * class read rather than deriving one of its own beside it (#711).
+     *
+     * @throws IllegalArgumentException if there are fewer than two beats
      */
-    private static double medianInterval(List<Double> beatTimes) {
+    public static double trackedPulse(List<Double> beatTimes) {
+        Objects.requireNonNull(beatTimes, "beatTimes");
+        if (beatTimes.size() < 2) {
+            throw new IllegalArgumentException(
+                    "a pulse needs at least two beats, got: " + beatTimes.size());
+        }
         List<Double> intervals = new ArrayList<>(beatTimes.size() - 1);
         for (int beat = 1; beat < beatTimes.size(); beat++) {
             intervals.add(beatTimes.get(beat) - beatTimes.get(beat - 1));
@@ -602,7 +711,7 @@ public final class MeterEstimator {
      * bars corroborates the bar it tiles no more than the one it does.
      */
     private static Confidence confidenceInTwo(Reading reading) {
-        double periodic = Math.clamp(reading.atTwo() / SUPPORTED, 0, 1);
+        double periodic = Math.clamp(reading.at(IN_TWO) / SUPPORTED, 0, 1);
         double carried = Math.clamp(reading.inThree(), 0, 1);
         double lead = Math.clamp(reading.inThree() - reading.inTwo(), 0, 1);
         return Confidence.clamped(
