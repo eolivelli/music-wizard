@@ -667,3 +667,24 @@ each `analyze --lyrics il-filo-rosso.lrc --lyrics-language it --melody` and
 Only short N.C. spans; the grid loses the beat for a few seconds in the fade
 and recovers.
 
+
+generale.mp3
+
+"Generale" (Francesco De Gregori), 4:21, official audio. Italian
+singer-songwriter, acoustic guitar and strings. Fetch locally:
+  yt-dlp -x --audio-format mp3 --audio-quality 0 \
+    -o uncommitted/generale.mp3 \
+    https://www.youtube.com/watch?v=C-G0QmbQNO4
+That command was written down when the file was fetched, on a branch that was
+never merged, which is how this file came to have no entry at all (#639). The
+URL still resolves to the artist's official audio and matches the local file's
+duration to the second.
+
+Confirmed by ear (Enrico, who knows the song): the recording is in **A**. It
+is recorded in generale-reference.txt beside the fetched chart, which is
+written in A major, so that is what tools/score-samples.py scores the key
+against (#751). The chart itself is not ground truth and that file says so: a
+fan transcription, kept as an independent second read.
+
+Words in generale.lrc, sung in Italian. No harness reads them; the file is
+what the lyrics-under-chords rendering of #309 was first checked against.
