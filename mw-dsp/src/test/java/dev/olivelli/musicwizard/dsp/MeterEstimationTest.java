@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.within;
 
+import dev.olivelli.musicwizard.core.model.BeatGrid;
 import dev.olivelli.musicwizard.core.model.TimeSignature;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -637,13 +638,37 @@ class MeterEstimationTest {
 
         @Test
         @DisplayName("a dropped beat does not move the pulse the divisions are read against")
-        void theTrackedPulseIsAMedian() {
+        void aDroppedBeatDoesNotMoveTheTrackedPulse() {
             // One interval of twice the pulse, which is what the tracker leaves
-            // where it did not emit a beat. A mean would follow it; the lags the
-            // divisions are looked for at are read at a far narrower tolerance.
+            // where it did not emit a beat. A plain mean would follow it; the
+            // lags the divisions are looked for at are read at a far narrower
+            // tolerance.
             List<Double> times = List.of(0.0, 0.5, 1.0, 1.5, 2.5, 3.0, 3.5);
 
             assertThat(MeterEstimator.trackedPulse(times)).isEqualTo(PULSE_SECONDS);
+        }
+
+        @Test
+        @DisplayName("the tracked pulse is not one of the observed intervals")
+        void theTrackedPulseIsNotQuantised() {
+            // Beats alternating between two frame-axis values, which is what a
+            // tracker emits at a rate that falls between two hops. A median
+            // answers with one of the two; the lag is placed from this, so the
+            // rate between them is the one to place it from (#711, #200).
+            List<Double> times = List.of(0.0, 0.48, 1.0, 1.48, 2.0, 2.48, 3.0);
+
+            assertThat(MeterEstimator.trackedPulse(times)).isCloseTo(0.5, within(1e-9));
+            assertThat(MeterEstimator.trackedPulse(times))
+                    .isEqualTo(60.0 / BeatGrid.steadyPulseRate(times));
+        }
+
+        @Test
+        @DisplayName("beat times a grid would refuse are refused here too")
+        void theTrackedPulseDemandsAGridsInvariant() {
+            assertThatThrownBy(() -> MeterEstimator.trackedPulse(List.of(0.0)))
+                    .isInstanceOf(IllegalArgumentException.class);
+            assertThatThrownBy(() -> MeterEstimator.trackedPulse(List.of(1.0, 0.5)))
+                    .isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test
