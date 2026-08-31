@@ -545,13 +545,13 @@ class CorpusIsNamedNeverAssumed(unittest.TestCase):
             for name, defaults in self.defaulting_helpers(harness):
                 self.assertFalse(defaults, f"{harness} {name}")
 
-    # What the rule below expects to find in each of HELPERS. measure-tempo
-    # resolves its corpus inline and defines no such helper, which is a fact
-    # about it rather than a rule that found nothing.
+    # What the rule below expects to find in each of HELPERS, so that a
+    # harness added there and pinned by nobody fails rather than passing over
+    # nothing.
     HELD = {"score-samples.py": {"missing_line", "run_for", "doc_for"},
             "score-chart.py": {"missing_line"},
             "score-lyrics.py": {"missing_line"},
-            "measure-tempo.py": set()}
+            "measure-tempo.py": {"missing_line"}}
 
     def test_the_rule_above_reaches_the_helpers_it_is_about(self):
         """A rule matching nothing passes exactly as a rule matching everything
@@ -567,7 +567,8 @@ class CorpusIsNamedNeverAssumed(unittest.TestCase):
     def test_a_forgotten_corpus_is_an_error_and_not_a_skip_line(self):
         """What the default did instead: print the line the gate turns into a
         SKIP, naming a corpus the caller never chose."""
-        for missing_line in (samples.missing_line, chart.missing_line):
+        for missing_line in (samples.missing_line, chart.missing_line,
+                             tempo.missing_line):
             with self.assertRaises(TypeError):
                 missing_line("x.mp3")
 
@@ -645,6 +646,7 @@ class CorpusIsNamedNeverAssumed(unittest.TestCase):
         for module, tables, argv, stubs in self.runs(self.PRESENT):
             with self.corpora(("uncommitted",)) as root:
                 printed = self.run_harness(module, tables, argv, stubs, root)
+            self.assertIn(self.PRESENT, printed, argv[0])
             self.assertNotIn(Keying.MARKER, printed, argv[0])
 
     @contextlib.contextmanager
@@ -676,7 +678,8 @@ class CorpusIsNamedNeverAssumed(unittest.TestCase):
         """And when it is not there, the skip line sends a reader to the
         list.txt that knows how to fetch it -- from every loop, not only the
         one #750 was about."""
-        for missing_line in (samples.missing_line, chart.missing_line):
+        for missing_line in (samples.missing_line, chart.missing_line,
+                             tempo.missing_line):
             self.assertIn("uncommitted/list.txt", missing_line("x.mp3", "uncommitted"))
         for module, tables, argv, _ in self.runs(self.ABSENT):
             printed = self.run_harness(module, tables, argv)
@@ -1428,6 +1431,8 @@ class Keying(unittest.TestCase):
                      samples.missing_line("vocabulary x.mp3", "uncommitted"),
                      chart.missing_line("x.mp3", "samples"),
                      chart.missing_line("x.mp3", "uncommitted"),
+                     tempo.missing_line("x.mp3", "samples"),
+                     tempo.missing_line("x.mp3", "uncommitted"),
                      lyrics.missing_line("x.mp3", "uncommitted/list.txt")):
             self.assertIn(self.MARKER, line)
             self.assertIn(".mp3:", line)

@@ -204,6 +204,16 @@ def statistics_of(intervals: list[float], band: float = STEADY_BAND
     return 60.0 / median, 60.0 / steady, 60.0 / mean, len(kept)
 
 
+def missing_line(name: str, where: str) -> str:
+    """A benchmark this machine cannot measure. Nothing baselines this tool,
+    which is why the marker is worth holding here: a reword breaks no diff and
+    no other row, and the rules that drive this loop read it.
+
+    Shorter than its neighbours' line by the fetch instruction, which the block
+    above and each list.txt already carry."""
+    return f"  {name}: not present (local-only; see {where}/list.txt)"
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--jar", default=str(REPO / "mw-cli/target/mw.jar"))
@@ -247,7 +257,7 @@ def main() -> None:
         mp3 = REPO / row[0] / name
         if not mp3.exists():
             absent.append(name)
-            print(f"  {name}: not present (local-only; see {row[0]}/list.txt)")
+            print(missing_line(name, row[0]))
             continue
         tempo, sharpness = measured_tempo(mp3)
         if not have_jar:
