@@ -685,15 +685,17 @@ class CorpusIsNamedNeverAssumed(unittest.TestCase):
             printed = self.run_harness(module, tables, argv)
             rows = [line for line in printed.splitlines() if self.ABSENT in line]
             self.assertTrue(rows, argv[0])
+            # Each row against its own helper's line, so that holding the
+            # helper's text holds the text a row carries. A loop that spells
+            # the line itself drifts off the marker in one edit, and a skip
+            # row that is no longer a skip row is compared against a baselined
+            # figure instead (#365). Per row rather than per harness, because
+            # a loop that labels its rows writes a line the plain one is not
+            # a substring of.
             for row in rows:
-                self.assertIn("uncommitted/list.txt", row, argv[0])
-                self.assertNotIn("samples/list.txt", row, argv[0])
-            # Verbatim, so that pinning the helper's text is pinning the text a
-            # row carries: a loop that spells the line itself drifts off the
-            # marker in one edit, and nothing else notices for a harness the
-            # gate does not read.
-            self.assertIn(module.missing_line(self.ABSENT, "uncommitted"),
-                          printed, argv[0])
+                label = row.split(":")[0].strip()
+                self.assertEqual(module.missing_line(label, "uncommitted"),
+                                 row, argv[0])
 
 
 def doc(spans: list[dict], beats: int = 16, phase: int = 0, per_bar: int = 4,
