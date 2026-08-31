@@ -688,6 +688,12 @@ class CorpusIsNamedNeverAssumed(unittest.TestCase):
             for row in rows:
                 self.assertIn("uncommitted/list.txt", row, argv[0])
                 self.assertNotIn("samples/list.txt", row, argv[0])
+            # Verbatim, so that pinning the helper's text is pinning the text a
+            # row carries: a loop that spells the line itself drifts off the
+            # marker in one edit, and nothing else notices for a harness the
+            # gate does not read.
+            self.assertIn(module.missing_line(self.ABSENT, "uncommitted"),
+                          printed, argv[0])
 
 
 def doc(spans: list[dict], beats: int = 16, phase: int = 0, per_bar: int = 4,
@@ -1417,7 +1423,7 @@ class Keying(unittest.TestCase):
     MARKER = ": not present (local-only"
 
     def test_every_harness_marks_an_absent_file_the_same_way(self):
-        """The gate turns a row carrying this marker into a SKIP. All three
+        """The gate turns a row carrying this marker into a SKIP. The
         harnesses must produce it through their missing_line, or a fresh
         worktree fails the gate for every branch again (#365). The reader is
         held to the same literal as the writers: if the comparison's copy of

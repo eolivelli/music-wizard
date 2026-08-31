@@ -207,10 +207,7 @@ def statistics_of(intervals: list[float], band: float = STEADY_BAND
 def missing_line(name: str, where: str) -> str:
     """A benchmark this machine cannot measure. Nothing baselines this tool,
     which is why the marker is worth holding here: a reword breaks no diff and
-    no other row, and the rules that drive this loop read it.
-
-    Shorter than its neighbours' line by the fetch instruction, which the block
-    above and each list.txt already carry."""
+    no other row, and the rules that drive this loop read it."""
     return f"  {name}: not present (local-only; see {where}/list.txt)"
 
 
