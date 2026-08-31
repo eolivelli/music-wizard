@@ -22,6 +22,7 @@ import static org.assertj.core.api.Assertions.within;
 
 import dev.olivelli.musicwizard.core.model.TimeSignature;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -121,6 +122,29 @@ class MeterEstimationTest {
         for (double at = 0; at <= strength.length - 1; at += lag / divisions) {
             strength[(int) Math.round(at)] = 1;
         }
+        return new OnsetEnvelope(strength, frameRate);
+    }
+
+    /**
+     * An onset envelope that never goes negative and holds nothing periodic: a
+     * pedestal with noise on it, which is the raw half-wave-rectified flux
+     * before {@link OnsetEnvelope#compute} centres it (#726).
+     */
+    private static OnsetEnvelope rectifiedNoise(long seed) {
+        double frameRate = 120;
+        double[] strength = new double[(int) Math.round(frameRate * PULSE_SECONDS * BEATS)];
+        Random random = new Random(seed);
+        for (int frame = 0; frame < strength.length; frame++) {
+            strength[frame] = Math.max(0, random.nextGaussian());
+        }
+        return new OnsetEnvelope(strength, frameRate);
+    }
+
+    /** The pedestal alone, with nothing at all on it. */
+    private static OnsetEnvelope pedestal() {
+        double frameRate = 120;
+        double[] strength = new double[(int) Math.round(frameRate * PULSE_SECONDS * BEATS)];
+        Arrays.fill(strength, 1);
         return new OnsetEnvelope(strength, frameRate);
     }
 
@@ -663,6 +687,32 @@ class MeterEstimationTest {
             assertThat(reading.inThree()).isZero();
             assertThat(reading.inTwo()).isZero();
             assertThat(MeterEstimator.decide(reading).meter()).isEqualTo(TimeSignature.FOUR_FOUR);
+        }
+
+        @Test
+        @DisplayName("a signal that never goes negative divides neither way")
+        void aPedestalIsNotADivision() {
+            List<Double> times = beats(BEATS);
+            Chroma chroma = stepwiseChroma(BEATS - 1, 2);
+
+            // Uncentred, every lag of a signal on a pedestal sits on the
+            // pedestal, so both shares read near one and the pulse they are
+            // shares of is the pedestal's own (#726).
+            MeterEstimator.Reading flat = MeterEstimator.read(times, chroma, pedestal());
+            assertThat(flat.onThePulse()).isZero();
+            assertThat(flat.inThree()).isZero();
+            assertThat(MeterEstimator.decide(flat).meter()).isEqualTo(TimeSignature.FOUR_FOUR);
+
+            // And the shape the raw flux has before it is centred: noise with
+            // its negative half cut away, holding no period whatever.
+            for (long seed = 0; seed < 20; seed++) {
+                MeterEstimator.Reading reading =
+                        MeterEstimator.read(times, chroma, rectifiedNoise(seed));
+                assertThat(reading.inThree()).isZero();
+                assertThat(reading.inTwo()).isZero();
+                assertThat(MeterEstimator.decide(reading).meter())
+                        .isEqualTo(TimeSignature.FOUR_FOUR);
+            }
         }
 
         @Test

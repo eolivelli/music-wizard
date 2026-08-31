@@ -646,7 +646,7 @@ public final class MeterEstimator {
         if (!(lag > 0) || longest >= envelope.length()) {
             return new Divisions(0, 0, 0);
         }
-        double[] correlation = TempoEstimator.autocorrelate(envelope.strength(), longest);
+        double[] correlation = TempoEstimator.autocorrelate(centred(envelope.strength()), longest);
         if (!(correlation[0] > 0)) {
             return new Divisions(0, 0, 0);
         }
@@ -659,6 +659,31 @@ public final class MeterEstimator {
                 Math.max(peakNear(correlation, lag / 3), peakNear(correlation, 2 * lag / 3));
         double inTwo = Math.max(peakNear(correlation, lag / 2), peakNear(correlation, lag / 4));
         return new Divisions(inThree / pulse, inTwo / pulse, onThePulse);
+    }
+
+    /**
+     * The signal about its own mean, which is what makes the shares above
+     * shares of anything (#726).
+     *
+     * <p>Every lag of an autocorrelation sits on the square of the signal's
+     * mean, so a signal that never goes negative is near its own peak at every
+     * lag and clears both gates on a ratio of one pedestal to another — a
+     * division in three read off any half-wave-rectified anything.
+     * {@link OnsetEnvelope#compute} centres what it returns, so this moves no
+     * reading of a recording; what it moves is what those gates say on an
+     * envelope built some other way.
+     */
+    private static double[] centred(double[] signal) {
+        double mean = 0;
+        for (double value : signal) {
+            mean += value;
+        }
+        mean /= Math.max(1, signal.length);
+        double[] out = new double[signal.length];
+        for (int i = 0; i < signal.length; i++) {
+            out[i] = signal[i] - mean;
+        }
+        return out;
     }
 
     /** The envelope's strongest periodicity within {@link #LAG_TOLERANCE} of a lag. */
