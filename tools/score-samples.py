@@ -141,10 +141,13 @@ BENCHMARKS = {
 # signature can itself be wrong, and a dominant can be named as the tonic -- so
 # a row that reads WRONG is looked at before it is filed under #277.
 #
-# The local rows are one Battisti performance from two uploads, each with a
-# tonic confirmed by ear against a piano, so they are not two independent
-# readings. What a reading of the transposed upload is a fact about is that
-# upload, never the song.
+# How a local row's key was settled is not a further bar: some were checked
+# against a piano and others confirmed by a musician who knows the song, and
+# no row is ranked below another for it (#751).
+#
+# The Battisti rows are one performance from two uploads, so they are not two
+# independent readings. What a reading of the transposed upload is a fact
+# about is that upload, never the song.
 KEYS = {
     "blues-a-90bpm.mp3": ("samples", "A major"),
     "blues-shuffle-a-106bpm.mp3": ("samples", "A major"),
@@ -165,6 +168,8 @@ KEYS = {
     "pop-am-f-c-g-144.mp3": ("samples", "A minor"),
     "la-canzone-del-sole.mp3": ("uncommitted", "A major"),
     "la-canzone-del-sole-ab.mp3": ("uncommitted", "Ab major"),
+    "hanno-ucciso-luomo-ragno.mp3": ("uncommitted", "A minor"),
+    "generale.mp3": ("uncommitted", "A major"),
 }
 
 # The meter each file is in: an entry names its meter where it is not four, so
