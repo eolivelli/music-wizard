@@ -29,7 +29,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Stream;
@@ -61,9 +60,8 @@ import java.util.stream.Stream;
  * a multiple or a fraction of the counted beat they divide something the music
  * is not counted in — a swung eighth can land where a triple division of two
  * counted beats is looked for, and print as a division in three. Nothing else in
- * the row says which pulse was tracked; this does. It reproduces the estimator's
- * own median interval rather than reading it, so a change to how that class
- * derives its pulse leaves this printing the old one.
+ * the row says which pulse was tracked; this does. It is the estimator's own
+ * pulse, read from it rather than derived a second time here.
  *
  * <p><b>Every recording under {@code uncommitted/} is swept</b>, listed from the
  * directory rather than by name, because a claim about what real mixes do is
@@ -228,8 +226,8 @@ public final class MeterSweep {
         System.out.printf(
                 "%-38s %8.2f %8.2f %8.2f %8.2f %7.1f %7.2f %7.2f %7.2f %7.2f"
                         + "  %-5s %-5s %d, %.2f %s%n",
-                job.file(), reading.atTwo(), reading.atThree(), reading.atFour(),
-                reading.atSix(), trackedPulseRate(beatTimes), reading.onThePulse(),
+                job.file(), reading.at(2), reading.at(3), reading.at(4),
+                reading.at(6), trackedPulseRate(beatTimes), reading.onThePulse(),
                 reading.inThree(), reading.inTwo(),
                 middleOfThePulse(envelope, beatTimes), meter,
                 job.want().isEmpty() ? "-" : job.want(),
@@ -241,21 +239,16 @@ public final class MeterSweep {
     private static final int POSITIONS = 12;
 
     /**
-     * Tracked pulses a minute, from the middle interval between beats — the
+     * Tracked pulses a minute, from the pulse the estimator itself read — the
      * pulse the columns beside it are shares of, and the one thing that says
      * whether they are shares of the counted beat.
      */
     private static double trackedPulseRate(List<Double> beatTimes) {
-        List<Double> intervals = new ArrayList<>(Math.max(0, beatTimes.size() - 1));
-        for (int beat = 1; beat < beatTimes.size(); beat++) {
-            intervals.add(beatTimes.get(beat) - beatTimes.get(beat - 1));
-        }
-        if (intervals.isEmpty()) {
+        if (beatTimes.size() < 2) {
             return 0;
         }
-        Collections.sort(intervals);
-        double middle = intervals.get(intervals.size() / 2);
-        return middle > 0 ? 60 / middle : 0;
+        double pulse = MeterEstimator.trackedPulse(beatTimes);
+        return pulse > 0 ? 60 / pulse : 0;
     }
 
     /**

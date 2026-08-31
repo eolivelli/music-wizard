@@ -23,6 +23,7 @@ import static org.assertj.core.api.Assertions.within;
 import dev.olivelli.musicwizard.core.model.TimeSignature;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -80,13 +81,13 @@ class MeterEstimationTest {
     private static MeterEstimator.Reading reading(double atTwo, double atThree,
                                                   double atFour, double atSix,
                                                   double inThree, double inTwo) {
-        return new MeterEstimator.Reading(atTwo, atThree, atFour, atSix, inThree, inTwo,
-                1, 400);
+        return new MeterEstimator.Reading(Map.of(2, atTwo, 3, atThree, 4, atFour, 6, atSix),
+                inThree, inTwo, 1, 400);
     }
 
     /** A reading of nothing at all, which is what too short a recording gives. */
     private static MeterEstimator.Reading nothing() {
-        return new MeterEstimator.Reading(0, 0, 0, 0, 0, 0, 0, 0);
+        return new MeterEstimator.Reading(Map.of(2, 0.0, 3, 0.0, 4, 0.0, 6, 0.0), 0, 0, 0, 0);
     }
 
     /**
@@ -398,6 +399,23 @@ class MeterEstimationTest {
         }
 
         @Test
+        @DisplayName("the confidence does not step where the meter does")
+        void theShadowIsHeldToParity() {
+            // A three a six exactly accounts for becomes that six; a three just
+            // short of it stays a three. The shadow bounds the denominator at
+            // itself rather than at a multiple of itself, and that factor of one
+            // is what makes the two report the same number either side of the
+            // boundary. Both clear the margin over the assumption several times
+            // over, which is the side of the floor this asserts on -- below it
+            // the floor dominates and the boundary steps whatever the factor.
+            double promoted = MeterEstimator.decide(reading(1, 100, 1, 50)).confidence().value();
+            double justUnder =
+                    MeterEstimator.decide(reading(1, 100, 1, 49.99)).confidence().value();
+
+            assertThat(promoted).isCloseTo(justUnder, within(1e-3));
+        }
+
+        @Test
         @DisplayName("period six does count against the three-pulse bar it does not divide")
         void sixIsStillARivalToThree() {
             // The relation is one-way: nothing about a three-pulse bar produces
@@ -511,10 +529,10 @@ class MeterEstimationTest {
             MeterEstimator.Reading reading =
                     MeterEstimator.read(times, stepwiseChroma(BEATS - 1, 3), clicks(1));
 
-            assertThat(reading.atThree()).isGreaterThan(reading.atFour());
+            assertThat(reading.at(3)).isGreaterThan(reading.at(4));
             // The null this is read against has expectation one at every period.
-            assertThat(reading.atFour()).isLessThan(5.0);
-            assertThat(reading.atSix()).isLessThan(5.0);
+            assertThat(reading.at(4)).isLessThan(5.0);
+            assertThat(reading.at(6)).isLessThan(5.0);
         }
 
         @Test
@@ -527,8 +545,8 @@ class MeterEstimationTest {
             MeterEstimator.Reading reading =
                     MeterEstimator.read(times, stepwiseChroma(BEATS - 1, 6), clicks(1));
 
-            assertThat(reading.atSix()).isCloseTo(reading.atThree(), within(1e-9))
-                    .isCloseTo(reading.atTwo(), within(1e-9));
+            assertThat(reading.at(6)).isCloseTo(reading.at(3), within(1e-9))
+                    .isCloseTo(reading.at(2), within(1e-9));
             // And the rule is what stops the three from taking it.
             assertThat(MeterEstimator.decide(reading).pulsesPerBar()).isEqualTo(6);
         }
@@ -551,10 +569,21 @@ class MeterEstimationTest {
             MeterEstimator.Reading reading =
                     MeterEstimator.read(times, stepwiseChroma(19, 3), clicks(1));
 
-            assertThat(reading.atThree()).isZero();
+            assertThat(reading.at(3)).isZero();
             assertThat(reading.usableBeats()).isEqualTo(18);
             assertThat(MeterEstimator.decide(reading).meter())
                     .isEqualTo(TimeSignature.FOUR_FOUR);
+        }
+
+        @Test
+        @DisplayName("a dropped beat does not move the pulse the divisions are read against")
+        void theTrackedPulseIsAMedian() {
+            // One interval of twice the pulse, which is what the tracker leaves
+            // where it did not emit a beat. A mean would follow it; the lags the
+            // divisions are looked for at are read at a far narrower tolerance.
+            List<Double> times = List.of(0.0, 0.5, 1.0, 1.5, 2.5, 3.0, 3.5);
+
+            assertThat(MeterEstimator.trackedPulse(times)).isEqualTo(PULSE_SECONDS);
         }
 
         @Test
