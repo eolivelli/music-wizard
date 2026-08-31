@@ -121,7 +121,9 @@ public final class MeterSweep {
             new Job("pop-am-f-c-g-144.mp3", "4/4"),
             new Job("ballad-wine-roses-65.mp3", "4/4"),
             // Synthetic, where the spec compiled the MIDI, so the meter is
-            // truth by construction rather than by ear.
+            // truth by construction rather than by ear -- and each want below
+            // is held to its own package's spec header by
+            // tools/test-harness-rules.py, which is where they could part.
             new Job("synthetic_samples", "pop-axis-g-116.mp3", "4/4"),
             new Job("synthetic_samples", "pop-deceptive-f-72.mp3", "4/4"),
             new Job("synthetic_samples", "rocknroll-12bar-a-168.mp3", "4/4"),

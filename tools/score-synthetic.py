@@ -76,6 +76,13 @@ def parse_spec_text(text: str) -> dict:
     return {"headers": headers, "bars": bars}
 
 
+def spec_meter(spec: dict) -> str:
+    """The meter a spec states, or SpecParser's own default where it states
+    none. The one place that rule is written down, so what this scores against
+    and what tools/MeterSweep.java prints as its `want` cannot part (#730)."""
+    return spec["headers"].get("meter", "4/4")
+
+
 def sequence_accuracy(shares: list, want: list) -> tuple[float, float]:
     """Bars correct on root and on root+quality, aligned as a sequence.
 
@@ -187,9 +194,7 @@ def score_package(jar: Path, spec_file: Path) -> str:
     want_key = spec["headers"].get("key")
     got_key = named_key(doc)
     key_verdict = "OK" if got_key == want_key else f"{got_key or 'none'} WRONG"
-    # The spec's own default, which is what SpecParser substitutes for a spec
-    # that names no meter.
-    want_meter = spec["headers"].get("meter", "4/4")
+    want_meter = spec_meter(spec)
     got_meter = samples.barred_meter(doc)
     meter_verdict = "OK" if got_meter == want_meter else f"{got_meter or 'none'} WRONG"
     return (f"  {name}.mp3: bars={len(shares)}/{n}  {tempo}  meter {meter_verdict}"

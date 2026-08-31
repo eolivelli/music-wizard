@@ -1301,6 +1301,24 @@ class ConfirmedMeters(unittest.TestCase):
                 sweep_jobs("LOCAL_METERS")
 
 
+class SyntheticMeters(unittest.TestCase):
+    """The same duplication one corpus over (#730). A synthetic package states
+    its meter in its own spec.txt, which tools/score-synthetic.py reads; the
+    sweep restated it by hand, so a spec whose meter changed left the sweep
+    asserting the old one. Held to the header here, by the rule the scorer
+    applies to it."""
+
+    def test_the_sweep_wants_what_each_package_s_spec_states(self):
+        stated = {file: want for where, file, want in sweep_jobs("JOBS")
+                  if where == "synthetic_samples"}
+        self.assertTrue(stated)
+        self.assertEqual(
+            {file: synthetic.spec_meter(synthetic.parse_spec(
+                synthetic.CORPUS / (file.removesuffix(".mp3") + ".spec.txt")))
+             for file in stated},
+            stated)
+
+
 class MeterReadingRow(unittest.TestCase):
     """#703: the reading's confidence comes off the score file, so this pins
     what the file has to hold and how the figure is rounded."""
