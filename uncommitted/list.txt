@@ -21,10 +21,10 @@
 # neither it nor johnny-b-goode holds a minor chord. That is worth writing down
 # wherever it is confirmed, because the next reader would otherwise re-derive it
 # or, as happened, read MW's correct answer as a bug. A fact stated here can
-# also be scored: tools/score-samples.py reads the last two, as seconds of minor
-# label and as chart time spent on a chord outside the stated set, both against
-# zero. A complete set is not a grid -- it says nothing about when anything
-# sounds -- so it prices a chord MW invented where a grid prices alignment.
+# also be scored: tools/score-samples.py reads keys, meters, the no-minor
+# invariant and the stated chord set out of the entries below. A complete set
+# is not a grid -- it says nothing about when anything sounds -- so it prices a
+# chord MW invented where a grid prices alignment.
 #
 # The second kind of file is a recording whose rights are clear on both sides
 # and which is waiting to be confirmed by ear before it is promoted into
@@ -675,10 +675,9 @@ singer-songwriter, acoustic guitar and strings. Fetch locally:
   yt-dlp -x --audio-format mp3 --audio-quality 0 \
     -o uncommitted/generale.mp3 \
     https://www.youtube.com/watch?v=C-G0QmbQNO4
-That command was written down when the file was fetched, on a branch that was
-never merged, which is how this file came to have no entry at all (#639). The
-URL still resolves to the artist's official audio and matches the local file's
-duration to the second.
+That is the command the file was fetched with, recovered from a commit that
+never merged (#639); the URL still resolves to the artist's official audio and
+matches the local file's duration to the second.
 
 Confirmed by ear (Enrico, who knows the song): the recording is in **A**. It
 is recorded in generale-reference.txt beside the fetched chart, which is
@@ -686,5 +685,6 @@ written in A major, so that is what tools/score-samples.py scores the key
 against (#751). The chart itself is not ground truth and that file says so: a
 fan transcription, kept as an independent second read.
 
-Words in generale.lrc, sung in Italian. No harness reads them; the file is
-what the lyrics-under-chords rendering of #309 was first checked against.
+Words in generale.lrc, sung in Italian. No baselined row scores them; the
+file is what the lyrics-under-chords rendering of #309 was first checked
+against.

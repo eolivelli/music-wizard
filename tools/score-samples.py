@@ -141,8 +141,7 @@ BENCHMARKS = {
 # signature can itself be wrong, and a dominant can be named as the tonic -- so
 # a row that reads WRONG is looked at before it is filed under #277.
 #
-# What admits a row is a key an ear has settled and the file's list.txt entry
-# writes down. How it was settled is not a further bar: some were checked
+# How a local row's key was settled is not a further bar: some were checked
 # against a piano and others confirmed by a musician who knows the song, and
 # no row is ranked below another for it (#751).
 #
