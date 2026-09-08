@@ -172,6 +172,10 @@ public final class MusicXmlExport {
      *
      * @throws IllegalArgumentException if the track is percussion, or holds a
      *         note that has not been quantized
+     * @throws IllegalStateException if a chart bar runs past the staff bar of
+     *         the same index, which the two axes allow when the meter changes
+     *         and the first chord falls after bar 0: the page then misaligns
+     *         where this refuses to write a symbol in the wrong bar (#787)
      */
     public static String leadSheet(QuantizedScore quantized, NoteTrack melody) {
         Objects.requireNonNull(quantized, "quantized");
@@ -291,12 +295,7 @@ public final class MusicXmlExport {
 
     /** A length counted in {@code perWhole}ths of a whole note, as divisions. */
     private static int divisionsOf(long length, long perWhole) {
-        long whole = 4L * DIVISIONS_PER_QUARTER;
-        if (whole % perWhole != 0) {
-            throw new IllegalStateException("a pickup counted in 1/" + perWhole
-                    + " notes is not a whole number of divisions");
-        }
-        return Math.toIntExact(length * (whole / perWhole));
+        return ExportGrid.unitsOf(length, perWhole);
     }
 
     // ----------------------------------------------------------------- chart

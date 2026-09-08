@@ -201,6 +201,8 @@ class ExportGridTest {
             // The whole-bar rest, which is the bar's own length as a fraction.
             long[] whole = LilyPondDuration.wholeNoteFraction(meter.quarterBeatsPerBar());
             ExportGrid.unitsOf(4.0 * whole[0] / whole[1]);
+            assertThat(ExportGrid.unitsOf(whole[0], whole[1]))
+                    .isEqualTo(ExportGrid.unitsOf(4.0 * whole[0] / whole[1]));
             checked++;
         }
         for (TupletBar bar : everyTupletBar()) {
@@ -210,6 +212,11 @@ class ExportGridTest {
             for (int step = 0; step < bar.divisions(); step++) {
                 long[] fraction = bar.lengthToBarLine(step);
                 ExportGrid.unitsOf(4.0 * fraction[0] / fraction[1]);
+                // The fraction form is what a pickup cut is counted in, and a
+                // unit no grid unit divides must not refuse a length every
+                // grid unit does.
+                assertThat(ExportGrid.unitsOf(fraction[0], fraction[1]))
+                        .isEqualTo(ExportGrid.unitsOf(4.0 * fraction[0] / fraction[1]));
                 checked++;
             }
         }

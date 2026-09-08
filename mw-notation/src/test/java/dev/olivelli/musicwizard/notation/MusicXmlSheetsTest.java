@@ -231,7 +231,64 @@ class MusicXmlSheetsTest {
                 .doesNotContain("A minor");
     }
 
+    @Test
+    @DisplayName("a triplet pickup in a meter with three beats is cut exactly")
+    void aTripletPickupInThreeFourIsCut() {
+        // A pickup a third of a beat long is counted in a unit no division
+        // divides, in a bar whose length adds a factor of three of its own;
+        // the length is exact all the same, and the LilyPond page writes it.
+        TempoMap map = TempoMap.constant(120, TimeSignature.THREE_FOUR);
+        NoteTrack melody = new NoteTrack(PartRole.LEAD_VOCAL, "Voice", List.of(
+                note(3 - thirds(1), thirds(1), "G4"), note(3, 3, "C5")), Confidence.CERTAIN);
+        Score score = Score.empty(map, 60)
+                .withTrack(melody)
+                .withChords(new ChordProgression(List.of(
+                        chord("C4", ChordQuality.MAJOR, 0, 3),
+                        chord("G4", ChordQuality.MAJOR, 3, 6)), Confidence.CERTAIN));
+        QuantizedScore quantized = Fixtures.quantized(score,
+                GridResolution.THIRD_BEAT, GridResolution.THIRD_BEAT);
+
+        String xml = MusicXmlExport.leadSheet(quantized, melodyOf(quantized));
+
+        assertValidMusicXml("triplet pickup", xml);
+        Document document = parse(xml);
+        assertMeasuresFillTheirMeter("triplet pickup", document);
+        Element pickup = elements(document, "measure").getFirst();
+        assertThat(pickup.getAttribute("implicit")).isEqualTo("yes");
+        assertThat(symbolsOf(pickup)).containsExactly("C major");
+        assertThat(LeadSheet.toLilyPond(quantized, melodyOf(quantized))).contains("\\partial");
+    }
+
+    @Test
+    @DisplayName("the first symbol kept by the pickup cut is named, whatever the chart said")
+    void theFirstSymbolKeptIsNamed() {
+        // Bar 0 of the chart: a lead-in gap, then C twice over, so the chart
+        // names the second C nowhere. A quarter pickup keeps only that second
+        // C, and a page opening on an unnamed chord would open on no chord.
+        TempoMap map = TempoMap.constant(120, TimeSignature.FOUR_FOUR);
+        NoteTrack melody = new NoteTrack(PartRole.LEAD_VOCAL, "Voice", List.of(
+                note(3, 1, "G4"), note(4, 4, "C5")), Confidence.CERTAIN);
+        Score score = Score.empty(map, 60)
+                .withTrack(melody)
+                .withChords(new ChordProgression(List.of(
+                        chord("C4", ChordQuality.MAJOR, 1, 2),
+                        chord("C4", ChordQuality.MAJOR, 2, 4),
+                        chord("F4", ChordQuality.MAJOR, 4, 8)), Confidence.CERTAIN));
+        QuantizedScore quantized = Fixtures.quantized(score,
+                GridResolution.HALF_BEAT, GridResolution.HALF_BEAT);
+
+        Document document = parse(MusicXmlExport.leadSheet(quantized, melodyOf(quantized)));
+
+        List<Element> measures = elements(document, "measure");
+        assertThat(symbolsOf(measures.get(0))).containsExactly("C major");
+        assertThat(symbolsOf(measures.get(1))).containsExactly("F major");
+    }
+
     // -------------------------------------------------------------- fixtures
+
+    private static double thirds(double steps) {
+        return steps / 3.0;
+    }
 
     private static Score oneChord(Chord chord) {
         return Score.empty(TempoMap.constant(120, TimeSignature.FOUR_FOUR), 2)
