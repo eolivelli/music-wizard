@@ -93,8 +93,12 @@ android {
 
     androidResources {
         // alphaTab ships two soundfonts for its synthesizer, which the app
-        // never plays; its music font stays.
-        ignoreAssetsPattern = '!sonivox.sf2:!sonivox.sf3'
+        // never plays, and the soundfonts' licence file; its music font stays,
+        // with the font's own licence beside it from this app's assets. The
+        // rest of the pattern is aapt's default list, which setting the
+        // property replaces.
+        ignoreAssetsPattern = '!sonivox.sf2:!sonivox.sf3:!LICENSE:' +
+                '!.svn:!.git:!.ds_store:!*.scc:.*:<dir>_*:!CVS:!thumbs.db:!picasa.ini:!*~'
     }
 
     lint {
@@ -122,16 +126,6 @@ configurations.configureEach {
     // alone.
     exclude group: 'com.tagtraum', module: 'jipes'
     exclude group: 'com.tagtraum', module: 'ffsampledsp-complete'
-
-    // alphaTab declares four dependencies the app does not use. core-ktx and
-    // appcompat serve only its AlphaTabView widget, which the app never
-    // creates, and the core-ktx it names wants a newer compileSdk than this
-    // build's. The two alphaSkia artifacts are the natives behind its "skia"
-    // engine; the app draws with its "android" engine, which needs none.
-    exclude group: 'androidx.core', module: 'core-ktx'
-    exclude group: 'androidx.appcompat'
-    exclude group: 'net.alphatab', module: 'alphaSkia-android'
-    exclude group: 'net.alphatab', module: 'alphaSkia'
 
     // A backstop, not the fix: #247 removed mw-ml -- and with it ONNX Runtime's
     // desktop natives -- from mw-transcribe's own dependencies, and the reactor
@@ -169,8 +163,18 @@ dependencies {
 
     // The engraver: reads the MusicXML the notation module writes and draws
     // it on the device. Kotlin, consumed as ordinary classes; no Kotlin
-    // plugin. Its licence is the one exception noted above.
-    implementation 'net.alphatab:alphaTab:1.8.4'
+    // plugin. Its licence is the one exception noted above. Of what it
+    // declares, core-ktx and appcompat serve only its AlphaTabView widget,
+    // which the app never creates (and that core-ktx wants a newer
+    // compileSdk than this build's); the two alphaSkia artifacts are the
+    // natives behind its "skia" engine, and the app draws with its "android"
+    // engine, which needs none.
+    implementation('net.alphatab:alphaTab:1.8.4') {
+        exclude group: 'androidx.core', module: 'core-ktx'
+        exclude group: 'androidx.appcompat'
+        exclude group: 'net.alphatab', module: 'alphaSkia-android'
+        exclude group: 'net.alphatab', module: 'alphaSkia'
+    }
 
     coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.5'
 

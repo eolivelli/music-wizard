@@ -95,24 +95,23 @@ public class MwAnalysisTest {
      * it cannot use — which is what this fails on.
      */
     @Test
-    public void alphaSkiaIsNotOnTheClasspath() {
-        // The engraver's "skia" natives are excluded in app/build.gradle; the
-        // app draws with its "android" engine.
+    public void onnxRuntimeIsNotOnTheClasspath() {
         try {
-            Class.forName("alphaTab.alphaSkia.AlphaSkiaCanvas");
-            fail("alphaSkia is on the app's classpath; the exclusions in"
+            Class.forName("ai.onnxruntime.OrtEnvironment");
+            fail("ONNX Runtime is on the app's classpath; the exclusions in"
                     + " app/build.gradle have stopped working");
         } catch (ClassNotFoundException expected) {
             // Exactly what the exclusion is for.
         }
     }
 
+    /** The engraver's "skia" natives are excluded; the app draws with its "android" engine. */
     @Test
-    public void onnxRuntimeIsNotOnTheClasspath() {
+    public void alphaSkiaIsNotOnTheClasspath() {
         try {
-            Class.forName("ai.onnxruntime.OrtEnvironment");
-            fail("ONNX Runtime is on the app's classpath; the exclusions in"
-                    + " app/build.gradle have stopped working");
+            Class.forName("alphaTab.alphaSkia.AlphaSkiaCanvas");
+            fail("alphaSkia is on the app's classpath; the exclusion in"
+                    + " app/build.gradle has stopped working");
         } catch (ClassNotFoundException expected) {
             // Exactly what the exclusion is for.
         }

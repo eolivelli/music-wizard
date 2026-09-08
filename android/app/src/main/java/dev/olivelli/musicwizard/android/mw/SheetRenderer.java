@@ -32,8 +32,9 @@ import java.util.Objects;
 import kotlin.Unit;
 
 /**
- * Engraves MusicXML with alphaTab, one result per system, on whatever thread
- * calls it.
+ * Engraves MusicXML with alphaTab, one result per drawn chunk, on whatever
+ * thread calls it; renders are serialized, since alphaTab's logger and settings
+ * tables are process-wide.
  *
  * <p>alphaTab reports a failure on an event and otherwise returns nothing, so a
  * caller that only read the results would take an empty page for a healthy one.
@@ -41,6 +42,8 @@ import kotlin.Unit;
  * failure escapes as an exception.
  */
 public final class SheetRenderer {
+
+    private static final Object LOCK = new Object();
 
     /** Draws into {@code android.graphics.Bitmap}s; needs {@link #initialize} once. */
     public static final String ENGINE_ANDROID = "android";
@@ -51,9 +54,17 @@ public final class SheetRenderer {
     private SheetRenderer() {
     }
 
-    /** One rendered system: what the engine produced, and where it sits on the page. */
+    /**
+     * One drawn chunk: a system, or the title or footer, which hold no bar.
+     *
+     * @param firstBar the first bar's index, negative for a chunk with none
+     */
     public record Partial(Object result, double x, double y, double width, double height,
                           int firstBar, int lastBar) {
+
+        public boolean isSystem() {
+            return firstBar >= 0;
+        }
     }
 
     /**
@@ -91,9 +102,28 @@ public final class SheetRenderer {
         Objects.requireNonNull(musicXml, "musicXml");
         Objects.requireNonNull(engine, "engine");
         List<String> warnings = new ArrayList<>();
-        if (!(widthPx > 0)) {
+        if (!(widthPx > 0) || !Double.isFinite(widthPx)) {
             return Result.failed("the page has no width to lay the music out to", warnings);
         }
+        if (!(scale > 0) || !Double.isFinite(scale)) {
+            return Result.failed("the engraving has no size to be drawn at", warnings);
+        }
+        // Any other name falls back to alphaTab's default engine, whose
+        // natives are excluded from the app.
+        if (!engine.equals(ENGINE_ANDROID) && !engine.equals(ENGINE_SVG)) {
+            return Result.failed("no such engine: " + engine, warnings);
+        }
+        synchronized (LOCK) {
+            try {
+                return engrave(musicXml, engine, widthPx, scale, warnings);
+            } catch (Throwable t) {
+                return Result.failed("alphaTab could not engrave it: " + t, warnings);
+            }
+        }
+    }
+
+    private static Result engrave(byte[] musicXml, String engine, double widthPx, double scale,
+                                  List<String> warnings) {
         Settings settings = new Settings();
         settings.getCore().setEngine(engine);
         settings.getCore().setUseWorkers(false);

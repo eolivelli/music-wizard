@@ -44,10 +44,10 @@ public class SheetRendererTest {
     /** Four bars of chords, as the phone's analysis produces them. */
     private static byte[] chart() {
         List<Chord> chords = List.of(
-                chord("C4", ChordQuality.MAJOR, 0, 2),
-                chord("G4", ChordQuality.MAJOR, 2, 4),
-                chord("A4", ChordQuality.MINOR_SEVENTH, 4, 6),
-                chord("F4", ChordQuality.MAJOR, 6, 8));
+                chord("A4", ChordQuality.MINOR_SEVENTH, 0, 2),
+                chord("D4", ChordQuality.MINOR_SEVENTH, 2, 4),
+                chord("G4", ChordQuality.DOMINANT_SEVENTH, 4, 6),
+                chord("C4", ChordQuality.MAJOR_SEVENTH, 6, 8));
         Score score = Score.empty(TempoMap.constant(120, TimeSignature.FOUR_FOUR), 8)
                 .withChords(new ChordProgression(chords, Confidence.CERTAIN))
                 .withMetadata("Chart Practice", "Anonymous");
@@ -65,14 +65,57 @@ public class SheetRendererTest {
 
         assertNull(result.warnings().toString(), result.failure());
         assertTrue(result.totalHeight() > 0);
-        assertFalse(result.partials().isEmpty());
+        // The chart's four bars lay out on one system; the title is a chunk of
+        // its own and holds no bar.
+        assertEquals(1, result.partials().stream().filter(SheetRenderer.Partial::isSystem).count());
         String svg = result.partials().stream()
                 .map(partial -> String.valueOf(partial.result()))
                 .reduce("", String::concat);
         assertTrue(svg, svg.contains("<svg"));
-        // The chord symbols, as the chart names them.
-        assertTrue(svg, svg.contains("Am7"));
-        assertTrue(svg, svg.contains("G"));
+        // The chord symbols, as the chart names them; none is a word a font
+        // name or a style rule could carry.
+        for (String symbol : List.of("Am7", "Dm7", "G7", "Cmaj7")) {
+            assertTrue(symbol + " in " + svg, svg.contains(symbol));
+        }
+        // The document itself raised no complaint; what the SVG engine says
+        // about measuring text without the "skia" natives is not about it.
+        assertTrue(result.warnings().toString(),
+                result.warnings().stream().noneMatch(w -> w.startsWith("MusicXML")));
+    }
+
+    @Test
+    public void saysWhyWhenTheEngineIsUnknown() {
+        SheetRenderer.Result result = SheetRenderer.render(chart(), "default", 1200, 1);
+
+        assertNotNull(result.failure());
+        assertTrue(result.failure(), result.failure().contains("default"));
+    }
+
+    @Test
+    public void saysWhyWhenThereIsNoScale() {
+        SheetRenderer.Result result =
+                SheetRenderer.render(chart(), SheetRenderer.ENGINE_SVG, 1200, 0);
+
+        assertNotNull(result.failure());
+    }
+
+    @Test
+    public void rendersFromSeveralThreadsAtOnce() throws Exception {
+        java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(4);
+        try {
+            List<java.util.concurrent.Future<SheetRenderer.Result>> runs = new java.util.ArrayList<>();
+            for (int i = 0; i < 12; i++) {
+                runs.add(pool.submit(() -> SheetRenderer.render(chart(), SheetRenderer.ENGINE_SVG, 1200, 1)));
+            }
+            for (java.util.concurrent.Future<SheetRenderer.Result> run : runs) {
+                assertNull(run.get().failure());
+            }
+        } finally {
+            pool.shutdownNow();
+        }
+        // The logger is back to what it was before the first render.
+        assertFalse(String.valueOf(alphaTab.Logger.Companion.getLog()),
+                alphaTab.Logger.Companion.getLog().getClass().getName().contains("SheetRenderer"));
     }
 
     @Test
