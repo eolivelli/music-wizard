@@ -819,14 +819,12 @@ final class RenderCommand implements Callable<Integer> {
      *
      * <p>The exit status stays zero, which is the command's existing rule rather
      * than a new one: non-zero is reserved for producing <em>nothing at all</em>,
-     * and the {@code .txt}, {@code .ly}, {@code .musicxml} and {@code .pdf} were
-     * all produced. The
-     * argument for failing is that a wrong PDF is worse than a missing one; the
-     * argument against, which wins here, is that the wrongness is in bars a user
-     * can see named on this line, the other outputs are unaffected and useful,
-     * and a script that chains {@code render} would lose all of them over a
-     * defect it cannot act on. It is the same posture a missing LilyPond binary
-     * gets: emit what you can, say plainly what is wrong.
+     * and every output was produced. The argument for failing is that a wrong
+     * PDF is worse than a missing one; the argument against, which wins here, is
+     * that the wrongness is in bars a user can see named on this line, and a
+     * script that chains {@code render} would lose every output over a defect
+     * it cannot act on. It is the same posture a missing LilyPond binary gets:
+     * emit what you can, say plainly what is wrong.
      *
      * <p><b>The count is how many times LilyPond complained, not how many
      * bars are wrong, and the wording says so.</b> Newer LilyPonds report
