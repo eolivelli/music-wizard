@@ -33,6 +33,9 @@ import dev.olivelli.musicwizard.core.model.Chord;
 import dev.olivelli.musicwizard.core.model.ChordProgression;
 import dev.olivelli.musicwizard.core.model.ChordQuality;
 import dev.olivelli.musicwizard.core.model.Confidence;
+import dev.olivelli.musicwizard.core.model.LyricLine;
+import dev.olivelli.musicwizard.core.model.LyricWord;
+import dev.olivelli.musicwizard.core.model.Lyrics;
 import dev.olivelli.musicwizard.core.model.Note;
 import dev.olivelli.musicwizard.core.model.NoteTrack;
 import dev.olivelli.musicwizard.core.model.PartRole;
@@ -284,7 +287,290 @@ class MusicXmlSheetsTest {
         assertThat(symbolsOf(measures.get(1))).containsExactly("F major");
     }
 
+    // ----------------------------------------------------------------- words
+
+    @Test
+    @DisplayName("the lead sheet with words, valid and paired with its LilyPond page")
+    void leadSheetWithLyricsPage() {
+        QuantizedScore quantized = Fixtures.leadSheetWithPickupAndLyrics(3);
+        NoteTrack melody = melodyOf(quantized);
+        String xml = MusicXmlExport.leadSheet(quantized, melody);
+
+        assertValidMusicXml("lead-sheet-pickup-lyrics", xml);
+        assertMeasuresFillTheirMeter("lead-sheet-pickup-lyrics", parse(xml));
+        // The same score as LeadSheetTest's golden of that name.
+        assertThat(LeadSheet.toLilyPond(quantized, melody))
+                .isEqualTo(Goldens.read("lead-sheet-pickup-lyrics", ".ly"));
+        Goldens.assertGolden("lead-sheet-pickup-lyrics", ".musicxml", xml);
+    }
+
+    @Test
+    @DisplayName("the chart with words, valid and paired with its LilyPond page")
+    void chordsOverLyricsPage() {
+        Score score = Fixtures.chordsOverLyrics();
+        String xml = MusicXmlExport.lyricSheet(score);
+        String lilyPond = LyricSheet.toLilyPond(score);
+
+        assertValidMusicXml("chords-over-lyrics", xml);
+        Document document = parse(xml);
+        assertMeasuresFillTheirMeter("chords-over-lyrics", document);
+        assertThat(lilyPond).isEqualTo(Goldens.read("chords-over-lyrics", ".ly"));
+        assertThat(elements(document, "measure")).hasSize(barCount(lilyPond) / 2);
+        Goldens.assertGolden("chords-over-lyrics", ".musicxml", xml);
+    }
+
+    @Test
+    @DisplayName("a syllable rides the note sounding when it is sung, joined as the page joins it")
+    void syllablesRideTheirNotes() {
+        Document document = parse(sungLeadSheetXml());
+
+        List<Element> measures = elements(document, "measure");
+        assertThat(lyricsOf(measures.get(0))).containsExactly("1 single one");
+        assertThat(lyricsOf(measures.get(1))).containsExactly("1 begin go", "1 end ing");
+    }
+
+    @Test
+    @DisplayName("a syllable no note can carry is said at its own moment")
+    void aSyllableOnARestIsSaid() {
+        Document document = parse(sungLeadSheetXml());
+
+        Element bar = elements(document, "measure").get(2);
+        List<Element> said = childElements(bar, "direction").stream()
+                .filter(direction -> "below".equals(direction.getAttribute("placement")))
+                .toList();
+        assertThat(said).hasSize(1);
+        assertThat(text(one(one(said.getFirst(), "direction-type"), "words"))).isEqualTo("rest");
+        assertThat(child(said.getFirst(), "offset")).isEmpty();
+        // Before the rest it is sung over, and on no note.
+        assertThat(order(bar, "direction", "note").getFirst()).isEqualTo("direction");
+        assertThat(lyricsOf(bar)).noneMatch(lyric -> lyric.endsWith(" rest"));
+    }
+
+    @Test
+    @DisplayName("a melisma opens an extender on its note and closes it where it ends")
+    void aMelismaIsExtended() {
+        Document document = parse(sungLeadSheetXml());
+
+        Element bar = elements(document, "measure").get(2);
+        List<Element> notes = childElements(bar, "note");
+        Element held = notes.get(notes.size() - 2);
+        Element after = notes.getLast();
+        assertThat(text(one(one(held, "lyric"), "text"))).isEqualTo("hold");
+        assertThat(one(one(held, "lyric"), "extend").getAttribute("type")).isEqualTo("start");
+        assertThat(child(one(after, "lyric"), "text")).isEmpty();
+        assertThat(one(one(after, "lyric"), "extend").getAttribute("type")).isEqualTo("stop");
+    }
+
+    @Test
+    @DisplayName("a melisma ending in a rest is closed on the rest")
+    void aMelismaIsClosedOnARest() {
+        // The page closes it with an empty syllable on the rest's span; a
+        // document that did not would draw the extender to the next word.
+        QuantizedScore quantized = withWords(leadSheet(),
+                new LyricWord("la", 2, 3, java.util.Optional.empty(), java.util.Optional.empty(),
+                        false, true, Confidence.CERTAIN));
+        // The melody of leadSheet() holds C5 through bar 1; cut it short so the
+        // bar ends in a rest the extent reaches into.
+        Score score = quantized.score();
+        NoteTrack melody = new NoteTrack(PartRole.LEAD_VOCAL, "Voice", List.of(
+                note(3, 1, "G4"), note(4, 1, "C5"), note(8, 4, "D5")), Confidence.CERTAIN);
+        Score shortened = Score.empty(score.tempoMap(), 60)
+                .withTrack(melody).withChords(score.chords()).withLyrics(score.lyrics());
+        QuantizedScore cut = new QuantizedScore(shortened, quantized.grids(), quantized.swing());
+
+        Document document = parse(MusicXmlExport.leadSheet(cut, melody));
+
+        Element bar = elements(document, "measure").get(1);
+        List<Element> notes = childElements(bar, "note");
+        assertThat(one(one(notes.getFirst(), "lyric"), "extend").getAttribute("type"))
+                .isEqualTo("start");
+        Element rest = notes.stream().filter(n -> !child(n, "rest").isEmpty()).findFirst()
+                .orElseThrow();
+        assertThat(one(one(rest, "lyric"), "extend").getAttribute("type")).isEqualTo("stop");
+    }
+
+    @Test
+    @DisplayName("a melisma ending inside its own note opens no extender")
+    void aMelismaInsideItsOwnNoteIsNotExtended() {
+        // The page writes the held syllable and closes it on the same note's
+        // span; the format has nothing to draw between the two.
+        QuantizedScore quantized = withWords(leadSheet(),
+                new LyricWord("la", 2, 3, java.util.Optional.empty(), java.util.Optional.empty(),
+                        false, true, Confidence.CERTAIN),
+                sung("no", 8, 12));
+        Document document = parse(MusicXmlExport.leadSheet(quantized, melodyOf(quantized)));
+
+        assertThat(lyricsOf(elements(document, "measure").get(1))).containsExactly("1 single la");
+        assertThat(elements(document, "extend")).isEmpty();
+    }
+
+    @Test
+    @DisplayName("a melisma ending in a silent bar is closed once, on the bar's rest")
+    void aMelismaIsClosedInASilentBar() {
+        // Two held words closing in the same silent bar: the first opened an
+        // extender the bar's rest stops; the second was said inside that bar
+        // and opened none, so its closing has nothing to stop and the rest
+        // carries one stop, not two.
+        TempoMap map = TempoMap.constant(120, TimeSignature.FOUR_FOUR);
+        NoteTrack melody = new NoteTrack(PartRole.LEAD_VOCAL, "Voice", List.of(
+                note(0, 4, "C5"), note(8, 4, "D5")), Confidence.CERTAIN);
+        Score score = Score.empty(map, 60)
+                .withTrack(melody)
+                .withChords(new ChordProgression(List.of(
+                        chord("C4", ChordQuality.MAJOR, 0, 12)), Confidence.CERTAIN));
+        QuantizedScore quantized = withWords(
+                Fixtures.quantized(score, GridResolution.HALF_BEAT, GridResolution.HALF_BEAT,
+                        GridResolution.HALF_BEAT),
+                held("la", 0, 4.5), held("li", 5, 6));
+
+        Document document = parse(MusicXmlExport.leadSheet(quantized, melodyOf(quantized)));
+
+        Element silent = elements(document, "measure").get(1);
+        Element rest = one(silent, "note");
+        assertThat(one(rest, "rest").getAttribute("measure")).isEqualTo("yes");
+        assertThat(childElements(rest, "lyric")).hasSize(1);
+        assertThat(one(one(rest, "lyric"), "extend").getAttribute("type")).isEqualTo("stop");
+        assertThat(elements(document, "extend")).hasSize(2);
+    }
+
+    @Test
+    @DisplayName("a syllable ends the extender before it and still opens its own")
+    void aSyllableEndsTheExtenderBeforeIt() {
+        // The first melisma's closing lands on the note that carries the next
+        // held word: that word ends the first extender by being written, and
+        // opens its own, which the note after stops.
+        TempoMap map = TempoMap.constant(120, TimeSignature.FOUR_FOUR);
+        NoteTrack melody = new NoteTrack(PartRole.LEAD_VOCAL, "Voice", List.of(
+                note(0, 1, "C5"), note(1, 3, "D5"), note(4, 4, "E5"), note(8, 4, "F5")),
+                Confidence.CERTAIN);
+        Score score = Score.empty(map, 60)
+                .withTrack(melody)
+                .withChords(new ChordProgression(List.of(
+                        chord("C4", ChordQuality.MAJOR, 0, 12)), Confidence.CERTAIN));
+        QuantizedScore quantized = withWords(
+                Fixtures.quantized(score, GridResolution.HALF_BEAT, GridResolution.HALF_BEAT,
+                        GridResolution.HALF_BEAT),
+                held("la", 0, 1.5), held("li", 2, 6));
+
+        Document document = parse(MusicXmlExport.leadSheet(quantized, melodyOf(quantized)));
+
+        List<Element> measures = elements(document, "measure");
+        List<Element> first = childElements(measures.get(0), "note");
+        assertThat(one(one(first.get(0), "lyric"), "extend").getAttribute("type"))
+                .isEqualTo("start");
+        assertThat(text(one(one(first.get(1), "lyric"), "text"))).isEqualTo("li");
+        assertThat(one(one(first.get(1), "lyric"), "extend").getAttribute("type"))
+                .isEqualTo("start");
+        Element second = one(measures.get(1), "note");
+        assertThat(one(one(second, "lyric"), "extend").getAttribute("type")).isEqualTo("stop");
+        assertThat(elements(document, "extend")).hasSize(3);
+    }
+
+    @Test
+    @DisplayName("a second syllable sung inside one note is said, not stacked")
+    void aSecondSyllableOnOneNoteIsSaid() {
+        // Two words over the one whole note of bar 1: the first rides it, the
+        // second is said inside it.
+        QuantizedScore quantized = withWords(leadSheet(),
+                LyricWord.ofSeconds("first", 2, 3, Confidence.CERTAIN),
+                LyricWord.ofSeconds("next", 3, 4, Confidence.CERTAIN));
+        Document document = parse(MusicXmlExport.leadSheet(quantized, melodyOf(quantized)));
+
+        Element bar = elements(document, "measure").get(1);
+        assertThat(lyricsOf(bar)).containsExactly("1 single first");
+        List<Element> said = childElements(bar, "direction");
+        assertThat(text(one(one(said.getFirst(), "direction-type"), "words"))).isEqualTo("next");
+        assertThat(text(one(said.getFirst(), "offset")))
+                .isEqualTo(String.valueOf(2 * MusicXmlExport.DIVISIONS_PER_QUARTER));
+    }
+
+    @Test
+    @DisplayName("the chart with words prints the words and hides the rests")
+    void theLyricSheetHidesItsRests() {
+        Document document = parse(MusicXmlExport.lyricSheet(Fixtures.chordsOverLyrics()));
+
+        assertThat(one(one(document.getDocumentElement(), "part")
+                .getElementsByTagName("attributes").item(0) instanceof Element attributes
+                ? attributes : null, "staff-details").getAttribute("print-object"))
+                .isEqualTo("no");
+        for (Element note : elements(document, "note")) {
+            assertThat(note.getAttribute("print-object")).isEqualTo("no");
+            // Or the words would go unprinted with the rests they ride.
+            assertThat(note.getAttribute("print-lyric")).isEqualTo("yes");
+        }
+        List<Element> measures = elements(document, "measure");
+        // The cell holding "hap" and "py" is cut in two, one rest for each.
+        assertThat(lyricsOf(measures.get(0)))
+                .containsExactly("1 single Sing", "1 begin hap", "1 end py");
+        // A word sung inside the silence cuts the silence, too.
+        assertThat(lyricsOf(measures.get(3))).containsExactly("1 single now");
+        assertThat(childElements(measures.get(3), "note")).hasSize(3);
+    }
+
+    @Test
+    @DisplayName("the chart itself carries no words, whatever the score sings")
+    void theChartCarriesNoWords() {
+        Document document = parse(MusicXmlExport.chordChart(Fixtures.chordsOverLyrics()));
+        assertThat(elements(document, "lyric")).isEmpty();
+        for (Element note : elements(document, "note")) {
+            assertThat(note.getAttribute("print-object")).isEmpty();
+        }
+    }
+
     // -------------------------------------------------------------- fixtures
+
+    /**
+     * A melody with a pickup, over chords, singing a word on the pickup, a
+     * hyphenated word over two notes, a word over a rest, and a melisma that
+     * ends on the next note's onset.
+     */
+    private static QuantizedScore sungLeadSheet() {
+        TempoMap map = TempoMap.constant(120, TimeSignature.FOUR_FOUR);
+        NoteTrack melody = new NoteTrack(PartRole.LEAD_VOCAL, "Voice", List.of(
+                note(3, 1, "G4"), note(4, 2, "C5"), note(6, 2, "D5"),
+                note(10, 1, "E5"), note(11, 1, "F5")), Confidence.CERTAIN);
+        List<Chord> chords = List.of(
+                chord("C4", ChordQuality.MAJOR, 0, 4),
+                chord("F4", ChordQuality.MAJOR, 4, 8),
+                chord("G4", ChordQuality.MAJOR, 8, 12));
+        Score score = Score.empty(map, 60)
+                .withTrack(melody)
+                .withChords(new ChordProgression(chords, Confidence.CERTAIN));
+        return withWords(Fixtures.quantized(score, GridResolution.HALF_BEAT,
+                        GridResolution.HALF_BEAT, GridResolution.HALF_BEAT),
+                sung("one", 3, 4), joined("go", 4, 6), sung("ing", 6, 8), sung("rest", 8, 10),
+                new LyricWord("hold", 5, 5.5, java.util.Optional.empty(),
+                        java.util.Optional.empty(), false, true, Confidence.CERTAIN));
+    }
+
+    private static String sungLeadSheetXml() {
+        QuantizedScore quantized = sungLeadSheet();
+        return MusicXmlExport.leadSheet(quantized, melodyOf(quantized));
+    }
+
+    private static QuantizedScore withWords(QuantizedScore quantized, LyricWord... words) {
+        Score sung = quantized.score().withLyrics(new Lyrics(
+                List.of(new LyricLine(List.of(words), Confidence.CERTAIN)), "en",
+                Confidence.CERTAIN));
+        return new QuantizedScore(sung, quantized.grids(), quantized.swing());
+    }
+
+    /** A word sung from one beat to another, at the fixtures' tempo. */
+    private static LyricWord sung(String text, double fromBeat, double toBeat) {
+        return LyricWord.ofSeconds(text, fromBeat / 2, toBeat / 2, Confidence.CERTAIN);
+    }
+
+    /** A word held past its own moment, to the beat its extent ends on. */
+    private static LyricWord held(String text, double fromBeat, double toBeat) {
+        return new LyricWord(text, fromBeat / 2, toBeat / 2, java.util.Optional.empty(),
+                java.util.Optional.empty(), false, true, Confidence.CERTAIN);
+    }
+
+    /** The same, continuing into the next word as one word's syllables do. */
+    private static LyricWord joined(String text, double fromBeat, double toBeat) {
+        return new LyricWord(text, fromBeat / 2, toBeat / 2, java.util.Optional.empty(),
+                java.util.Optional.empty(), true, false, Confidence.CERTAIN);
+    }
 
     private static double thirds(double steps) {
         return steps / 3.0;
@@ -349,17 +635,34 @@ class MusicXmlSheetsTest {
         return text(one(one(harmony, "root"), "root-step")) + " " + text(one(harmony, "kind"));
     }
 
+    /** Every lyric of a measure as "lane syllabic text", in document order. */
+    private static List<String> lyricsOf(Element measure) {
+        List<String> lyrics = new ArrayList<>();
+        for (Element note : childElements(measure, "note")) {
+            for (Element lyric : childElements(note, "lyric")) {
+                List<Element> text = child(lyric, "text");
+                lyrics.add(lyric.getAttribute("number") + " "
+                        + (text.isEmpty() ? "-" : text(one(lyric, "syllabic")) + " " + text(text)));
+            }
+        }
+        return lyrics;
+    }
+
     /** The element names a measure holds after its attributes and directions. */
     private static List<String> order(Element measure) {
-        List<String> names = new ArrayList<>();
+        return order(measure, "harmony", "note");
+    }
+
+    private static List<String> order(Element measure, String... names) {
+        List<String> found = new ArrayList<>();
         NodeList children = measure.getChildNodes();
         for (int i = 0; i < children.getLength(); i++) {
             if (children.item(i) instanceof Element child
-                    && (child.getTagName().equals("harmony") || child.getTagName().equals("note"))) {
-                names.add(child.getTagName());
+                    && List.of(names).contains(child.getTagName())) {
+                found.add(child.getTagName());
             }
         }
-        return names;
+        return found;
     }
 
     private static int barCount(String lilyPond) {

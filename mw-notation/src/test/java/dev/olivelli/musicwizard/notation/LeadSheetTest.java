@@ -142,31 +142,7 @@ class LeadSheetTest {
      * between.
      */
     private static QuantizedScore withPickupAndLyrics(double firstWordBeat) {
-        TempoMap map = TempoMap.constant(QUARTER_BPM, TimeSignature.FOUR_FOUR);
-        NoteTrack voice = new NoteTrack(PartRole.LEAD_VOCAL, "Voice", List.of(
-                note(map, 3, 1, "G4"),
-                note(map, 4, 4, "C5"),
-                note(map, 8, 4, "E5"),
-                note(map, 12, 4, "D5")), Confidence.CERTAIN);
-        String[] sung = {"one", "two", "three", "four"};
-        double[] at = {firstWordBeat, 4, 8, 12};
-        double[] until = {4, 8, 12, 16};
-        List<LyricWord> words = new ArrayList<>();
-        for (int i = 0; i < sung.length; i++) {
-            words.add(LyricWord.ofSeconds(sung[i], map.beatsToSeconds(at[i]),
-                    map.beatsToSeconds(until[i]), Confidence.CERTAIN));
-        }
-        Score score = Score.empty(map, 16 / (QUARTER_BPM / 60))
-                .withTrack(voice)
-                .withChords(new ChordProgression(List.of(
-                        chord(map, "C4", ChordQuality.MAJOR, 0, 4),
-                        chord(map, "F4", ChordQuality.MAJOR, 4, 8),
-                        chord(map, "G4", ChordQuality.DOMINANT_SEVENTH, 8, 12),
-                        chord(map, "C4", ChordQuality.MAJOR, 12, 16)),
-                        Confidence.of(0.9)))
-                .withLyrics(new Lyrics(List.of(new LyricLine(words, Confidence.CERTAIN)),
-                        "en", Confidence.CERTAIN));
-        return Quantizer.quantize(score);
+        return Fixtures.leadSheetWithPickupAndLyrics(firstWordBeat);
     }
 
     /** A position or length of {@code steps} triplet eighths, in quarter beats. */
