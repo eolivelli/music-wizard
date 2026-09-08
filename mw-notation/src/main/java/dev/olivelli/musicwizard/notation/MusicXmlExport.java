@@ -74,9 +74,9 @@ import java.util.Optional;
  *       accidental as well would need this class to track which accidentals are
  *       already in force in the bar, and a second implementation of that rule
  *       is a second chance to disagree with the first.
- *   <li><b>Beams, stems, slurs, dynamics and lyrics.</b> The domain model
- *       carries none of them for a note track. A reader lays out beams from the
- *       time signature and the note values, which are both here.
+ *   <li><b>Beams, stems, slurs and dynamics.</b> The domain model carries
+ *       none of them for a note track. A reader lays out beams from the time
+ *       signature and the note values, which are both here.
  *   <li><b>Voices.</b> One voice per part, as on the LilyPond side: overlapping
  *       notes become block chords rather than separate voices. #93.
  *   <li><b>Tempo changes.</b> One metronome mark for the whole part, averaged
@@ -175,7 +175,9 @@ public final class MusicXmlExport {
      * singer reads it. Where that note already carries one of the lane's
      * syllables, or is a rest, or is the far end of a tie the syllable does not
      * begin on, the syllable is written as text at its own moment instead —
-     * placed where the page places it, and never dropped.
+     * placed where the page places it. Within the staff's bars nothing is
+     * dropped; a syllable past the staff's last bar goes with the chords there
+     * (#778).
      *
      * @throws IllegalArgumentException if the track is percussion, or holds a
      *         note that has not been quantized
@@ -215,8 +217,8 @@ public final class MusicXmlExport {
      * syllable rides the rest that begins on its unit — the rests being cut
      * there for the purpose — and the rests and the staff are marked not to
      * print, which leaves the chords and the words on the page, as the LilyPond
-     * sheet has them. A reader that prints the rests regardless shows a staff
-     * of silence under correct words, which is degraded rather than wrong.
+     * sheet has them. The words are marked to print on their own, because a
+     * note that does not print takes its lyrics with it unless told otherwise.
      *
      * @throws IllegalArgumentException if the score holds no chords to chart
      */
@@ -236,7 +238,7 @@ public final class MusicXmlExport {
         XmlWriter xml = open(score);
         partList(xml, List.of(CHORDS_PART));
         xml.open("part", "id", partId(0));
-        writeChart(xml, score, bars, lyrics.map(MusicXmlExport::sungOf).orElse(List.of()), hidden);
+        writeChart(xml, score, bars, lyrics, hidden);
         xml.close("part");
         return close(xml);
     }
@@ -332,10 +334,11 @@ public final class MusicXmlExport {
     // ----------------------------------------------------------------- chart
 
     private static void writeChart(XmlWriter xml, Score score, List<ChartLayout.Bar> bars,
-                                   List<Sung> sung, boolean hidden) {
+                                   Optional<LyricEngraving.Placement> lyrics, boolean hidden) {
         TimeSignature counted = ChordChart.countedIn(score, bars);
         double opensAt = ChordChart.opensAt(bars);
-        long[] barStart = ChartGrid.barStarts(bars);
+        List<List<Sung>> sungByBar = lyrics.map(placement -> byBar(placement, bars.size()))
+                .orElse(List.of());
         for (int i = 0; i < bars.size(); i++) {
             ChartLayout.Bar bar = bars.get(i);
             // The chart writes its first bar full and leads in with a rest, as
@@ -359,13 +362,10 @@ public final class MusicXmlExport {
                                 TempoMark.headline(score, opensAt)));
             }
             // This bar's syllables, at their position in it in quarter beats.
-            List<Sung> words = new ArrayList<>();
+            List<Sung> words = sungByBar.isEmpty() ? List.of() : sungByBar.get(i);
             List<Double> positions = new ArrayList<>();
-            for (Sung syllable : sung) {
-                if (syllable.unit() >= barStart[i] && syllable.unit() < barStart[i + 1]) {
-                    words.add(syllable);
-                    positions.add((syllable.unit() - barStart[i]) * ChartGrid.UNIT);
-                }
+            for (Sung syllable : words) {
+                positions.add(syllable.into() * ChartGrid.UNIT);
             }
             double at = 0;
             for (ChartLayout.Cell cell : bar.cells()) {
@@ -407,31 +407,46 @@ public final class MusicXmlExport {
     }
 
     /**
-     * Every syllable the page places, in unit order, with what the format
-     * says about it: which lane, how it joins its neighbours, whether it opens
-     * an extender — or closes one, which is a syllable of empty text.
+     * Every syllable the page places, by chart bar and in unit order within it,
+     * with what the format says about it: which lane, how it joins its
+     * neighbours, whether it opens an extender — or closes one, which is a
+     * syllable of empty text. Bars past {@code bars} are not represented.
      */
-    private static List<Sung> sungOf(LyricEngraving.Placement placement) {
-        List<Sung> sung = new ArrayList<>();
+    private static List<List<Sung>> byBar(LyricEngraving.Placement placement, int bars) {
+        List<List<Sung>> byBar = new ArrayList<>();
+        for (int i = 0; i < bars; i++) {
+            byBar.add(new ArrayList<>());
+        }
+        long[] barStart = placement.barStart();
         for (int lane = 0; lane < placement.lanes().size(); lane++) {
             List<LyricEngraving.Syllable> syllables = placement.lanes().get(lane);
+            int bar = 0;
             for (int i = 0; i < syllables.size(); i++) {
                 LyricEngraving.Syllable syllable = syllables.get(i);
-                // A hyphen joins a syllable to the next only when there is one,
-                // as the page writes it.
-                boolean joins = syllable.hyphenated() && i + 1 < syllables.size();
+                while (bar < bars && syllable.unit() >= barStart[bar + 1]) {
+                    bar++;
+                }
+                if (bar >= bars) {
+                    break;
+                }
                 boolean joined = i > 0 && syllables.get(i - 1).hyphenated();
-                String syllabic = joined ? (joins ? "middle" : "end") : (joins ? "begin" : "single");
-                sung.add(new Sung(lane + 1, syllable.unit(), syllable.text(), syllabic,
-                        syllable.melisma() && placement.extended()));
+                String syllabic = joined ? (syllable.hyphenated() ? "middle" : "end")
+                        : (syllable.hyphenated() ? "begin" : "single");
+                byBar.get(bar).add(new Sung(lane + 1, syllable.unit() - barStart[bar],
+                        syllable.text(), syllabic, syllable.melisma()));
             }
         }
-        sung.sort(Comparator.comparingLong(Sung::unit).thenComparingInt(Sung::lane));
-        return sung;
+        for (List<Sung> inBar : byBar) {
+            inBar.sort(Comparator.comparingLong(Sung::into).thenComparingInt(Sung::lane));
+        }
+        return byBar;
     }
 
-    /** One placed syllable; an empty text closes an extender rather than saying anything. */
-    private record Sung(int lane, long unit, String text, String syllabic, boolean extendStart) {
+    /**
+     * One placed syllable, {@code into} its chart bar in grid units; an empty
+     * text closes an extender rather than saying anything.
+     */
+    private record Sung(int lane, long into, String text, String syllabic, boolean extendStart) {
 
         boolean closesExtender() {
             return text.isEmpty();
@@ -508,7 +523,9 @@ public final class MusicXmlExport {
     }
 
     private static void rest(XmlWriter out, NoteValue value, boolean hidden, List<Sung> riding) {
-        out.open("note", "print-object", hidden ? "no" : null)
+        // A note that does not print takes its lyrics with it unless told otherwise.
+        out.open("note", "print-object", hidden ? "no" : null,
+                        "print-lyric", hidden ? "yes" : null)
                 .empty("rest")
                 .element("duration", String.valueOf(divisionsOf(value.quarters())))
                 .element("voice", MusicXmlStaffWriter.VOICE)
@@ -686,8 +703,8 @@ public final class MusicXmlExport {
         /** The chord symbols of this bar not yet written, in order. */
         private List<Placed> harmonies = new ArrayList<>();
 
-        /** Every syllable of the page, once the pickup is known; {@code null} before. */
-        private List<Sung> sung;
+        /** The page's syllables by chart bar, once the pickup is known; {@code null} before. */
+        private List<List<Sung>> sungByBar;
 
         /** This bar's syllables not yet written, at their offsets into the bar. */
         private List<SungAt> lyrics = new ArrayList<>();
@@ -717,7 +734,7 @@ public final class MusicXmlExport {
             expected = divisionsOf(barMeter.quarterBeatsPerBar());
             harmonies = barIndex < chart.size() ? placed(chart.get(barIndex)) : new ArrayList<>();
             barShift = 0;
-            lyrics = sung == null ? new ArrayList<>() : lyricsOf(barIndex);
+            lyrics = sungByBar == null ? new ArrayList<>() : lyricsOf(barIndex);
             boolean first = bars == 0;
             bars++;
             if (first || meterChanged) {
@@ -807,9 +824,13 @@ public final class MusicXmlExport {
             for (Placed placed : due(written, written + duration)) {
                 harmony(measure, placed.chord(), placed.offset());
             }
-            // A rest carries no syllable; each is said at its own moment.
+            // A rest carries no syllable: each is said at its own moment. It
+            // does close an extender, as the page's empty syllable does.
+            List<Sung> closing = new ArrayList<>();
             for (SungAt at : lyricsDue(written, written + duration)) {
-                if (!at.sung().closesExtender()) {
+                if (at.sung().closesExtender()) {
+                    closing.add(at.sung());
+                } else {
                     spoken(measure, at.sung(), at.offset());
                 }
             }
@@ -820,8 +841,11 @@ public final class MusicXmlExport {
             measure.open("note")
                     .empty("rest", "measure", "yes")
                     .element("duration", String.valueOf(duration))
-                    .element("voice", VOICE)
-                    .close("note");
+                    .element("voice", VOICE);
+            for (Sung syllable : closing) {
+                lyric(measure, syllable);
+            }
+            measure.close("note");
             written += duration;
         }
 
@@ -840,13 +864,13 @@ public final class MusicXmlExport {
             if (!harmonies.isEmpty()) {
                 throw new IllegalStateException(
                         "measure " + number() + " of " + meter + " has a chord change at division "
-                                + harmonies.getFirst().offset() + ", past its end;"
+                                + harmonies.getFirst().offset() + ", outside its span;"
                                 + " the chart and the staff disagree about this bar");
             }
             if (!lyrics.isEmpty()) {
                 throw new IllegalStateException(
                         "measure " + number() + " of " + meter + " has a syllable at division "
-                                + lyrics.getFirst().offset() + ", past its end;"
+                                + lyrics.getFirst().offset() + ", outside its span;"
                                 + " the chart and the staff disagree about this bar");
             }
         }
@@ -916,29 +940,24 @@ public final class MusicXmlExport {
          * at the pickup and again at the first note.
          */
         private void placeLyrics(Optional<StaffNotation.Pickup> pickup) {
-            if (sung != null) {
+            if (sungByBar != null) {
                 return;
             }
-            sung = chart.isEmpty() ? List.of()
+            sungByBar = chart.isEmpty() ? List.of()
                     : LyricEngraving.place(score, chart, pickup, true)
-                            .map(MusicXmlExport::sungOf).orElse(List.of());
+                            .map(placement -> byBar(placement, chart.size())).orElse(List.of());
             lyrics = lyricsOf(index);
         }
 
         /** This bar's syllables, offset from its first written division. */
         private List<SungAt> lyricsOf(int barIndex) {
             List<SungAt> at = new ArrayList<>();
-            if (barIndex >= chart.size()) {
+            if (barIndex >= sungByBar.size()) {
                 return at;
             }
-            long[] barStart = ChartGrid.barStarts(chart);
-            for (Sung syllable : sung) {
-                if (syllable.unit() >= barStart[barIndex]
-                        && syllable.unit() < barStart[barIndex + 1]) {
-                    at.add(new SungAt(Math.toIntExact(
-                            (syllable.unit() - barStart[barIndex]) * UNIT_DIVISIONS - barShift),
-                            syllable));
-                }
+            for (Sung syllable : sungByBar.get(barIndex)) {
+                at.add(new SungAt(
+                        Math.toIntExact(syllable.into() * UNIT_DIVISIONS - barShift), syllable));
             }
             return at;
         }
@@ -985,9 +1004,9 @@ public final class MusicXmlExport {
                 harmony(measure, placed.chord(), placed.offset());
             }
             // Which syllables this note carries: per lane the first sung on it,
-            // on its own onset if it is the far end of a tie; a closing syllable
-            // only where nothing else of its lane is on the note. The rest are
-            // said at their moments.
+            // on its own onset if it is the far end of a tie, and never on a
+            // rest; a closing syllable wherever nothing else of its lane is on
+            // the note, a rest included. The rest are said at their moments.
             List<Sung> carried = new ArrayList<>();
             List<Integer> lanesTaken = new ArrayList<>();
             List<SungAt> said = new ArrayList<>();
@@ -1005,8 +1024,7 @@ public final class MusicXmlExport {
                 }
             }
             for (SungAt at : note.lyrics) {
-                if (at.sung().closesExtender() && !note.pitches.isEmpty()
-                        && !lanesTaken.contains(at.sung().lane())) {
+                if (at.sung().closesExtender() && !lanesTaken.contains(at.sung().lane())) {
                     carried.add(at.sung());
                     lanesTaken.add(at.sung().lane());
                 }

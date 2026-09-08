@@ -362,6 +362,34 @@ class MusicXmlSheetsTest {
     }
 
     @Test
+    @DisplayName("a melisma ending in a rest is closed on the rest")
+    void aMelismaIsClosedOnARest() {
+        // The page closes it with an empty syllable on the rest's span; a
+        // document that did not would draw the extender to the next word.
+        QuantizedScore quantized = withWords(leadSheet(),
+                new LyricWord("la", 2, 3, java.util.Optional.empty(), java.util.Optional.empty(),
+                        false, true, Confidence.CERTAIN));
+        // The melody of leadSheet() holds C5 through bar 1; cut it short so the
+        // bar ends in a rest the extent reaches into.
+        Score score = quantized.score();
+        NoteTrack melody = new NoteTrack(PartRole.LEAD_VOCAL, "Voice", List.of(
+                note(3, 1, "G4"), note(4, 1, "C5"), note(8, 4, "D5")), Confidence.CERTAIN);
+        Score shortened = Score.empty(score.tempoMap(), 60)
+                .withTrack(melody).withChords(score.chords()).withLyrics(score.lyrics());
+        QuantizedScore cut = new QuantizedScore(shortened, quantized.grids(), quantized.swing());
+
+        Document document = parse(MusicXmlExport.leadSheet(cut, melody));
+
+        Element bar = elements(document, "measure").get(1);
+        List<Element> notes = childElements(bar, "note");
+        assertThat(one(one(notes.getFirst(), "lyric"), "extend").getAttribute("type"))
+                .isEqualTo("start");
+        Element rest = notes.stream().filter(n -> !child(n, "rest").isEmpty()).findFirst()
+                .orElseThrow();
+        assertThat(one(one(rest, "lyric"), "extend").getAttribute("type")).isEqualTo("stop");
+    }
+
+    @Test
     @DisplayName("a second syllable sung inside one note is said, not stacked")
     void aSecondSyllableOnOneNoteIsSaid() {
         // Two words over the one whole note of bar 1: the first rides it, the
@@ -390,6 +418,8 @@ class MusicXmlSheetsTest {
                 .isEqualTo("no");
         for (Element note : elements(document, "note")) {
             assertThat(note.getAttribute("print-object")).isEqualTo("no");
+            // Or the words would go unprinted with the rests they ride.
+            assertThat(note.getAttribute("print-lyric")).isEqualTo("yes");
         }
         List<Element> measures = elements(document, "measure");
         // The cell holding "hap" and "py" is cut in two, one rest for each.

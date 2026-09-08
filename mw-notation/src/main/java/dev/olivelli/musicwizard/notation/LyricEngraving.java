@@ -93,6 +93,11 @@ final class LyricEngraving {
      * {@code heldTo} reaches past its own unit — the marked word's recorded
      * extent (#597), which is where the extender drawn after it must stop
      * unless another syllable stops it sooner.
+     *
+     * <p>Once placed, both facts are final for every spelling: {@code
+     * hyphenated} is false on a lane's last syllable, since a hyphen joins it
+     * to a next one, and {@code heldTo} is its own unit wherever the page
+     * draws no extender.
      */
     record Syllable(long unit, String text, boolean hyphenated, long heldTo) {
 
@@ -185,18 +190,17 @@ final class LyricEngraving {
      *                 increasing unit order
      * @param barStart the grid unit each chart bar begins on, with one more
      *                 entry for the end of the last
-     * @param extended whether melismas are drawn, which is when each is also
-     *                 closed by a syllable of empty text on its ending unit
      */
-    record Placement(List<List<Syllable>> lanes, Opening opening, long[] barStart,
-                     boolean extended) {
+    record Placement(List<List<Syllable>> lanes, Opening opening, long[] barStart) {
     }
 
     /**
      * The placement, or empty when there is nothing to place under the bars.
      *
      * @param closesMelismas whether the page draws extenders, which it can only
-     *                       beside a staff; see the class javadoc
+     *                       beside a staff; see the class javadoc. Where it
+     *                       does, each melisma is also closed by a syllable of
+     *                       empty text on its ending unit
      */
     static Optional<Placement> place(Score score, List<ChartLayout.Bar> bars,
                                      Optional<StaffNotation.Pickup> pickup,
@@ -210,10 +214,35 @@ final class LyricEngraving {
         if (lanes.isEmpty()) {
             return Optional.empty();
         }
-        if (closesMelismas) {
-            lanes = lanes.stream().map(LyricEngraving::terminated).toList();
+        lanes = lanes.stream()
+                .map(lane -> closesMelismas ? terminated(lane) : unextended(lane))
+                .map(LyricEngraving::unjoinedAtTheEnd)
+                .toList();
+        return Optional.of(new Placement(lanes, opening, barStart));
+    }
+
+    /** The lane with no melisma at all, for a page that draws no extender. */
+    private static List<Syllable> unextended(List<Syllable> syllables) {
+        return syllables.stream()
+                .map(s -> new Syllable(s.unit(), s.text(), s.hyphenated(), s.unit()))
+                .toList();
+    }
+
+    /**
+     * The lane with its last syllable joined to nothing: a chain running off
+     * the end of the lyric, or one whose next syllable did not fit the chart,
+     * would otherwise leave a hyphen with nothing on its right, which LilyPond
+     * reports as unterminated — into the output this tool reads to decide
+     * whether engraving went well.
+     */
+    private static List<Syllable> unjoinedAtTheEnd(List<Syllable> syllables) {
+        if (syllables.isEmpty() || !syllables.getLast().hyphenated()) {
+            return syllables;
         }
-        return Optional.of(new Placement(lanes, opening, barStart, closesMelismas));
+        List<Syllable> out = new ArrayList<>(syllables.subList(0, syllables.size() - 1));
+        Syllable last = syllables.getLast();
+        out.add(new Syllable(last.unit(), last.text(), false, last.heldTo()));
+        return List.copyOf(out);
     }
 
     /**
@@ -363,19 +392,13 @@ final class LyricEngraving {
                         ? Math.min(syllables.get(at + 1).unit(), to) : to;
                 line.append('"').append(escape(syllable.text())).append('"')
                         .append(LilyPondDuration.scaled((until - cursor) * UNIT));
-                // A hyphen joins this syllable to the next one, so it is written
-                // only when there is a next one to join: a chain running off the
-                // end of the lyric, or one whose next syllable did not fit the
-                // chart, leaves a hyphen with nothing on its right and LilyPond
-                // reports an unterminated hyphen -- into the output this tool
-                // reads to decide whether engraving went well.
-                boolean joins = syllable.hyphenated() && at + 1 < syllables.size();
-                // No next-syllable guard on the extender: terminated() has
+                // Both decided at placement: no hyphen on a lane's last
+                // syllable, and no extender where no voice is named. No
+                // next-syllable guard on the extender: terminated() has
                 // already put one after every melisma, precisely because an
                 // extender nothing terminates is drawn to the end of the
                 // piece without a word of complaint.
-                boolean extender = syllable.melisma() && associatedVoice.isPresent();
-                line.append(joins ? " -- " : extender ? " __ " : " ");
+                line.append(syllable.hyphenated() ? " -- " : syllable.melisma() ? " __ " : " ");
                 cursor = until;
                 at++;
             }
