@@ -437,10 +437,25 @@ class RenderPartsTest {
             assertThat(workspace.resolve("out/lead.ly")).exists();
             assertThat(workspace.resolve("out/lead.musicxml")).doesNotExist();
             assertThat(render.err()).contains("lead.musicxml was not written");
-            // A refused twin does not warn about annotations it never carried.
-            CliRunner.Result tagged = CliRunner.run("render", workspace.toString(),
-                    "--parts", "lead", "--repeat-tags", "--no-pdf");
-            assertThat(tagged.err()).doesNotContain("#777");
+        }
+
+        @Test
+        @DisplayName("a refused chart twin does not warn about marks it never carried")
+        void aRefusedChartTwinIsNotWarnedAbout() {
+            // Words and no chords: the lyric sheet is producible, its LilyPond
+            // source is written, and its twin has no chart to write.
+            Path workspace = sungWorkspace("wordless-chart");
+            Workspace opened = Workspace.open(workspace);
+            opened.writeScore(opened.readScore().orElseThrow()
+                    .withChords(new ChordProgression(List.of(), Confidence.of(0.8))));
+
+            CliRunner.Result render = CliRunner.run("render", workspace.toString(),
+                    "--parts", "lyrics", "--repeat-tags", "--no-pdf");
+
+            assertThat(render.exitCode()).as(render.all()).isZero();
+            assertThat(workspace.resolve("out/chords-lyrics.ly")).exists();
+            assertThat(render.err()).contains("chords-lyrics.musicxml was not written")
+                    .doesNotContain("#777");
         }
 
         @Test

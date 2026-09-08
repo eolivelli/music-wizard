@@ -427,8 +427,7 @@ final class RenderCommand implements Callable<Integer> {
             // A chart's MusicXML twin carries neither annotation; a setting one
             // output honours and its twin discards in silence is the same
             // confident wrong answer, so it is said once, beside the files --
-            // and only about a twin that was written, carrying a mark the
-            // page drew.
+            // and only about a twin that was written.
             boolean marked = options.beatMarks() && score.beatGrid().isPresent()
                     || options.repeatTags();
             if (marked && written.stream().anyMatch(RenderCommand::isChartTwin)) {
@@ -820,7 +819,8 @@ final class RenderCommand implements Callable<Integer> {
      *
      * <p>The exit status stays zero, which is the command's existing rule rather
      * than a new one: non-zero is reserved for producing <em>nothing at all</em>,
-     * and the {@code .txt}, {@code .ly} and {@code .pdf} were all produced. The
+     * and the {@code .txt}, {@code .ly}, {@code .musicxml} and {@code .pdf} were
+     * all produced. The
      * argument for failing is that a wrong PDF is worse than a missing one; the
      * argument against, which wins here, is that the wrongness is in bars a user
      * can see named on this line, the other outputs are unaffected and useful,
@@ -863,7 +863,8 @@ final class RenderCommand implements Callable<Integer> {
                         + " only the first%n"
                         + "  such bar in a part, so treat that as a floor and check the rest"
                         + " of the page.%n"
-                        + "  The .txt and .ly are unaffected. This is a defect in the source"
+                        + "  The .txt, .ly and .musicxml are unaffected. This is a defect in"
+                        + " the source"
                         + " this tool%n"
                         + "  emitted rather than in your recording; please report it with %s"
                         + " attached.",

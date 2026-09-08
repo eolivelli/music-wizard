@@ -84,8 +84,8 @@ brew install lilypond      # macOS, or Homebrew on Linux
 apt install lilypond       # Debian or Ubuntu
 ```
 
-Without LilyPond everything still runs — you get the `.ly` source and engrave
-it elsewhere. Then:
+Without LilyPond everything still runs — you get the `.ly` and `.musicxml`
+sources and engrave them elsewhere. Then:
 
 ```sh
 mvn package -DskipTests    # produces mw-cli/target/mw.jar
