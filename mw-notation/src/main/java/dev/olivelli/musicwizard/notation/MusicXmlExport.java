@@ -217,8 +217,7 @@ public final class MusicXmlExport {
      * syllable rides the rest that begins on its unit — the rests being cut
      * there for the purpose — and the rests and the staff are marked not to
      * print, which leaves the chords and the words on the page, as the LilyPond
-     * sheet has them. The words are marked to print on their own, because a
-     * note that does not print takes its lyrics with it unless told otherwise.
+     * sheet has them.
      *
      * @throws IllegalArgumentException if the score holds no chords to chart
      */
@@ -709,6 +708,13 @@ public final class MusicXmlExport {
         /** This bar's syllables not yet written, at their offsets into the bar. */
         private List<SungAt> lyrics = new ArrayList<>();
 
+        /**
+         * The lanes whose last written syllable opened an extender, which the
+         * next closing of that lane stops. A closing with nothing to stop says
+         * nothing; a melisma closed on its own note opens nothing.
+         */
+        private final List<Integer> extending = new ArrayList<>();
+
         /** How far the bar's own start lies before its first written division: the pickup. */
         private int barShift;
 
@@ -828,10 +834,10 @@ public final class MusicXmlExport {
             // does close an extender, as the page's empty syllable does.
             List<Sung> closing = new ArrayList<>();
             for (SungAt at : lyricsDue(written, written + duration)) {
-                if (at.sung().closesExtender()) {
-                    closing.add(at.sung());
-                } else {
+                if (!at.sung().closesExtender()) {
                     spoken(measure, at.sung(), at.offset());
+                } else if (extending.remove(Integer.valueOf(at.sung().lane()))) {
+                    closing.add(at.sung());
                 }
             }
             // measure="yes" is the whole-bar rest: one symbol centred in the bar
@@ -1005,8 +1011,7 @@ public final class MusicXmlExport {
             }
             // Which syllables this note carries: per lane the first sung on it,
             // on its own onset if it is the far end of a tie, and never on a
-            // rest; a closing syllable wherever nothing else of its lane is on
-            // the note, a rest included. The rest are said at their moments.
+            // rest. The rest are said at their moments.
             List<Sung> carried = new ArrayList<>();
             List<Integer> lanesTaken = new ArrayList<>();
             List<SungAt> said = new ArrayList<>();
@@ -1023,10 +1028,28 @@ public final class MusicXmlExport {
                     said.add(at);
                 }
             }
+            // A closing on the note that carries its lane's syllable closes
+            // nothing the format can draw: a melisma ending inside its own
+            // note opens no extender, and one ending on the next syllable is
+            // ended by that syllable. Elsewhere it stops the lane's open
+            // extender, a rest included, and says nothing where none is open.
             for (SungAt at : note.lyrics) {
-                if (at.sung().closesExtender() && !lanesTaken.contains(at.sung().lane())) {
+                if (!at.sung().closesExtender()) {
+                    continue;
+                }
+                int lane = at.sung().lane();
+                if (lanesTaken.contains(lane)) {
+                    carried.replaceAll(sung -> sung.lane() == lane && sung.extendStart()
+                            ? new Sung(sung.lane(), sung.into(), sung.text(), sung.syllabic(), false)
+                            : sung);
+                } else if (extending.remove(Integer.valueOf(lane))) {
                     carried.add(at.sung());
-                    lanesTaken.add(at.sung().lane());
+                    lanesTaken.add(lane);
+                }
+            }
+            for (Sung sung : carried) {
+                if (sung.extendStart()) {
+                    extending.add(sung.lane());
                 }
             }
             for (SungAt at : said) {

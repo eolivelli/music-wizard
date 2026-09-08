@@ -390,6 +390,52 @@ class MusicXmlSheetsTest {
     }
 
     @Test
+    @DisplayName("a melisma ending inside its own note opens no extender")
+    void aMelismaInsideItsOwnNoteIsNotExtended() {
+        // The page writes the held syllable and closes it on the same note's
+        // span; the format has nothing to draw between the two.
+        QuantizedScore quantized = withWords(leadSheet(),
+                new LyricWord("la", 2, 3, java.util.Optional.empty(), java.util.Optional.empty(),
+                        false, true, Confidence.CERTAIN),
+                sung("no", 8, 12));
+        Document document = parse(MusicXmlExport.leadSheet(quantized, melodyOf(quantized)));
+
+        assertThat(lyricsOf(elements(document, "measure").get(1))).containsExactly("1 single la");
+        assertThat(elements(document, "extend")).isEmpty();
+    }
+
+    @Test
+    @DisplayName("a melisma ending in a silent bar is closed once, on the bar's rest")
+    void aMelismaIsClosedInASilentBar() {
+        // Two held words ending in the same silent bar: the first opens an
+        // extender the bar's rest stops; the second was said on the same note
+        // and opened none, so the rest has one stop and not two.
+        TempoMap map = TempoMap.constant(120, TimeSignature.FOUR_FOUR);
+        NoteTrack melody = new NoteTrack(PartRole.LEAD_VOCAL, "Voice", List.of(
+                note(0, 4, "C5"), note(8, 4, "D5")), Confidence.CERTAIN);
+        Score score = Score.empty(map, 60)
+                .withTrack(melody)
+                .withChords(new ChordProgression(List.of(
+                        chord("C4", ChordQuality.MAJOR, 0, 12)), Confidence.CERTAIN));
+        QuantizedScore quantized = withWords(
+                Fixtures.quantized(score, GridResolution.HALF_BEAT, GridResolution.HALF_BEAT,
+                        GridResolution.HALF_BEAT),
+                new LyricWord("la", 0, 2.5, java.util.Optional.empty(), java.util.Optional.empty(),
+                        false, true, Confidence.CERTAIN),
+                new LyricWord("li", 1, 3, java.util.Optional.empty(), java.util.Optional.empty(),
+                        false, true, Confidence.CERTAIN));
+
+        Document document = parse(MusicXmlExport.leadSheet(quantized, melodyOf(quantized)));
+
+        Element silent = elements(document, "measure").get(1);
+        Element rest = one(silent, "note");
+        assertThat(one(rest, "rest").getAttribute("measure")).isEqualTo("yes");
+        assertThat(childElements(rest, "lyric")).hasSize(1);
+        assertThat(one(one(rest, "lyric"), "extend").getAttribute("type")).isEqualTo("stop");
+        assertThat(elements(document, "extend")).hasSize(2);
+    }
+
+    @Test
     @DisplayName("a second syllable sung inside one note is said, not stacked")
     void aSecondSyllableOnOneNoteIsSaid() {
         // Two words over the one whole note of bar 1: the first rides it, the
