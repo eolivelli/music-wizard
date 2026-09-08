@@ -76,6 +76,12 @@ class LyricSheetTest {
     }
 
     @Test
+    @DisplayName("the whole page, so its MusicXML twin can be read against it")
+    void theSheetPage() {
+        Goldens.assertGolden("chords-over-lyrics", LyricSheet.toLilyPond(Fixtures.chordsOverLyrics()));
+    }
+
+    @Test
     @DisplayName("a chord stands over the word it arrives on")
     void chordSitsOverItsWord() {
         Score score = song(20, NoteLetter.C, 0.0, NoteLetter.G, 4.0)

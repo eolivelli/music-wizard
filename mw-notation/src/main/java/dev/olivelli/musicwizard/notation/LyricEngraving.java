@@ -94,7 +94,7 @@ final class LyricEngraving {
      * extent (#597), which is where the extender drawn after it must stop
      * unless another syllable stops it sooner.
      */
-    private record Syllable(long unit, String text, boolean hyphenated, long heldTo) {
+    record Syllable(long unit, String text, boolean hyphenated, long heldTo) {
 
         boolean melisma() {
             return heldTo > unit;
@@ -161,6 +161,46 @@ final class LyricEngraving {
                                   Attachment attachment,
                                   Optional<StaffNotation.Pickup> pickup,
                                   Optional<String> associatedVoice) {
+        Optional<Placement> placement = place(score, bars, pickup, associatedVoice.isPresent());
+        if (placement.isEmpty()) {
+            return Optional.empty();
+        }
+        StringBuilder out = new StringBuilder();
+        for (List<Syllable> syllables : placement.get().lanes()) {
+            lane(out, syllables, bars, placement.get().barStart(), attachment,
+                    placement.get().opening(), associatedVoice);
+        }
+        return Optional.of(out.toString());
+    }
+
+    /**
+     * Every syllable of the score on the chart's grid, as the page places it:
+     * which unit, which lane, joined to the next or not, held to where.
+     *
+     * <p>Decided once, here, and read by both spellings of the page — the
+     * LilyPond lanes and {@link MusicXmlExport} — so the two cannot put a word
+     * in different bars.
+     *
+     * @param lanes    the syllables, one list per lane, each in strictly
+     *                 increasing unit order
+     * @param barStart the grid unit each chart bar begins on, with one more
+     *                 entry for the end of the last
+     * @param extended whether melismas are drawn, which is when each is also
+     *                 closed by a syllable of empty text on its ending unit
+     */
+    record Placement(List<List<Syllable>> lanes, Opening opening, long[] barStart,
+                     boolean extended) {
+    }
+
+    /**
+     * The placement, or empty when there is nothing to place under the bars.
+     *
+     * @param closesMelismas whether the page draws extenders, which it can only
+     *                       beside a staff; see the class javadoc
+     */
+    static Optional<Placement> place(Score score, List<ChartLayout.Bar> bars,
+                                     Optional<StaffNotation.Pickup> pickup,
+                                     boolean closesMelismas) {
         if (score.lyrics().isEmpty() || bars.isEmpty()) {
             return Optional.empty();
         }
@@ -170,15 +210,10 @@ final class LyricEngraving {
         if (lanes.isEmpty()) {
             return Optional.empty();
         }
-        if (associatedVoice.isPresent()) {
+        if (closesMelismas) {
             lanes = lanes.stream().map(LyricEngraving::terminated).toList();
         }
-
-        StringBuilder out = new StringBuilder();
-        for (List<Syllable> syllables : lanes) {
-            lane(out, syllables, bars, barStart, attachment, opening, associatedVoice);
-        }
-        return Optional.of(out.toString());
+        return Optional.of(new Placement(lanes, opening, barStart, closesMelismas));
     }
 
     /**
@@ -196,7 +231,7 @@ final class LyricEngraving {
      *                            pickup lands on the grid
      * @param residualDenominator that fraction's denominator
      */
-    private record Opening(long unit, long residualNumerator, long residualDenominator) {
+    record Opening(long unit, long residualNumerator, long residualDenominator) {
 
         /** The opening for a pickup, whose length the grid can rarely name exactly. */
         static Opening of(long[] barStart, Optional<StaffNotation.Pickup> pickup) {

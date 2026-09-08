@@ -19,12 +19,16 @@ package dev.olivelli.musicwizard.notation;
 import dev.olivelli.musicwizard.arrange.BarGrid;
 import dev.olivelli.musicwizard.arrange.GridResolution;
 import dev.olivelli.musicwizard.arrange.QuantizedScore;
+import dev.olivelli.musicwizard.arrange.Quantizer;
 import dev.olivelli.musicwizard.arrange.SwingFeel;
 import dev.olivelli.musicwizard.core.model.Chord;
 import dev.olivelli.musicwizard.core.model.ChordProgression;
 import dev.olivelli.musicwizard.core.model.ChordQuality;
 import dev.olivelli.musicwizard.core.model.Confidence;
 import dev.olivelli.musicwizard.core.model.Key;
+import dev.olivelli.musicwizard.core.model.LyricLine;
+import dev.olivelli.musicwizard.core.model.LyricWord;
+import dev.olivelli.musicwizard.core.model.Lyrics;
 import dev.olivelli.musicwizard.core.model.Mode;
 import dev.olivelli.musicwizard.core.model.Note;
 import dev.olivelli.musicwizard.core.model.NoteTrack;
@@ -35,6 +39,7 @@ import dev.olivelli.musicwizard.core.model.TempoMap;
 import dev.olivelli.musicwizard.core.model.TimeSignature;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Music that more than one emitter's tests engrave.
@@ -131,6 +136,80 @@ final class Fixtures {
 
     private static Chord chord(String root, ChordQuality quality, double from, double to) {
         return Chord.ofSeconds(PitchSpelling.parse(root), quality, from, to, Confidence.CERTAIN);
+    }
+
+    /**
+     * The chart with words under it: one sung on a cell's first moment, two
+     * joined halves of a word cutting a cell in two, and one sung inside the
+     * estimated silence.
+     */
+    static Score chordsOverLyrics() {
+        List<LyricWord> words = List.of(
+                LyricWord.ofSeconds("Sing", 0, 1, Confidence.CERTAIN),
+                new LyricWord("hap", 1, 1.5, Optional.empty(), Optional.empty(),
+                        true, false, Confidence.CERTAIN),
+                LyricWord.ofSeconds("py", 1.5, 2, Confidence.CERTAIN),
+                LyricWord.ofSeconds("song", 2, 4, Confidence.CERTAIN),
+                LyricWord.ofSeconds("now", 6.5, 7, Confidence.CERTAIN));
+        return chordChart().withLyrics(new Lyrics(
+                List.of(new LyricLine(words, Confidence.CERTAIN)), "en", Confidence.CERTAIN));
+    }
+
+    /**
+     * A melody entering on beat four, with words under it, the first of them
+     * sung at {@code firstWordBeat}.
+     *
+     * <p>The pair the defect needed and no fixture had (#601): a staff that
+     * opens with a pickup and a lyric lane that has to open with it. The first
+     * word's beat is the parameter because a word sung inside the pickup and a
+     * word sung before the staff enters are the two cases the opening decides
+     * between. {@code LeadSheetTest} holds its LilyPond golden and
+     * {@code MusicXmlSheetsTest} its MusicXML one, from this one score.
+     */
+    static QuantizedScore leadSheetWithPickupAndLyrics(double firstWordBeat) {
+        TempoMap map = TempoMap.constant(120, TimeSignature.FOUR_FOUR);
+        NoteTrack voice = new NoteTrack(PartRole.LEAD_VOCAL, "Voice", List.of(
+                noteAt(map, 3, 1, "G4"),
+                noteAt(map, 4, 4, "C5"),
+                noteAt(map, 8, 4, "E5"),
+                noteAt(map, 12, 4, "D5")), Confidence.CERTAIN);
+        String[] sung = {"one", "two", "three", "four"};
+        double[] at = {firstWordBeat, 4, 8, 12};
+        double[] until = {4, 8, 12, 16};
+        List<LyricWord> words = new ArrayList<>();
+        for (int i = 0; i < sung.length; i++) {
+            words.add(LyricWord.ofSeconds(sung[i], map.beatsToSeconds(at[i]),
+                    map.beatsToSeconds(until[i]), Confidence.CERTAIN));
+        }
+        Score score = Score.empty(map, 16 / (120 / 60.0))
+                .withTrack(voice)
+                .withChords(new ChordProgression(List.of(
+                        chordAt(map, "C4", ChordQuality.MAJOR, 0, 4),
+                        chordAt(map, "F4", ChordQuality.MAJOR, 4, 8),
+                        chordAt(map, "G4", ChordQuality.DOMINANT_SEVENTH, 8, 12),
+                        chordAt(map, "C4", ChordQuality.MAJOR, 12, 16)),
+                        Confidence.of(0.9)))
+                .withLyrics(new Lyrics(List.of(new LyricLine(words, Confidence.CERTAIN)),
+                        "en", Confidence.CERTAIN));
+        return Quantizer.quantize(score);
+    }
+
+    /** A note timed by the map, as the lead-sheet fixtures are. */
+    private static Note noteAt(TempoMap map, double onsetBeat, double beats, String spelling) {
+        PitchSpelling written = PitchSpelling.parse(spelling);
+        return Note.ofSeconds(map.beatsToSeconds(onsetBeat),
+                        map.beatsToSeconds(onsetBeat + beats) - map.beatsToSeconds(onsetBeat),
+                        written.midiPitch(), Confidence.CERTAIN)
+                .quantizedTo(onsetBeat, beats)
+                .spelledAs(written);
+    }
+
+    private static Chord chordAt(TempoMap map, String root, ChordQuality quality,
+                                 double fromBeat, double toBeat) {
+        return Chord.ofSeconds(PitchSpelling.parse(root), quality,
+                        map.beatsToSeconds(fromBeat), map.beatsToSeconds(toBeat),
+                        Confidence.of(0.9))
+                .quantizedTo(fromBeat, toBeat);
     }
 
     /** A note with musical timing, as the quantizer would leave it. */
