@@ -217,6 +217,19 @@ separation model — so read premerge's output rather than CI for melody
 movement. *When* a sung note starts is
 genuinely ambiguous and #497 records the limit.
 
+**Every engraved part has a MusicXML twin** (#771): `chords.musicxml`,
+`chords-lyrics.musicxml`, `lead.musicxml`, `lead-playable.musicxml` and
+`voice.musicxml` beside the `.ly` of the same name, from the same
+`StaffLayout`, `ChartLayout` and `LyricEngraving` decisions, so the two cannot
+disagree about a bar, a chord or a syllable. The chart is rests under chord
+symbols; the lyric sheet hides its rests and hangs the words on them. Not
+carried: beat marks and repeat tags (#777); chords and words past the staff's
+last bar on the lead sheet, which the `.ly` prints in its running chord
+context (#778); an extender ended by a syllable said as text (#789); a chart
+bar longer than its staff bar is refused rather than misplaced (#787). A held
+chord reprinted after a system break on the page is unlabelled in the
+document, since readers do not reprint.
+
 Still missing: melody accuracy on a real mix, which is separation's quality
 problem rather than the tracker's (#575), piano
 (#10), advisor (#11). The symbolic track (#1) is four-fifths landed and parked.

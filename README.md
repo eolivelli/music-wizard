@@ -136,7 +136,7 @@ Where this is going, in rough order of pull:
 
 Not built yet, named so nothing has to be discovered by trying it: the
 **bass** and **piano** parts (`render` refuses them by name and says why),
-**drums**, **MusicXML and MIDI export** as finished routes, and a **web UI**.
+**drums**, **MIDI export** as a finished route, and a **web UI**.
 The CLI is the product today.
 
 ## Licence

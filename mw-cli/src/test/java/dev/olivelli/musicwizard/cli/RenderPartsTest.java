@@ -31,6 +31,7 @@ import dev.olivelli.musicwizard.core.model.PartRole;
 import dev.olivelli.musicwizard.core.model.PitchSpelling;
 import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.model.TempoMap;
+import dev.olivelli.musicwizard.core.model.TimeSignature;
 import dev.olivelli.musicwizard.core.workspace.RunManifest;
 import dev.olivelli.musicwizard.core.workspace.Workspace;
 import dev.olivelli.musicwizard.testkit.MidiFixtures;
@@ -354,6 +355,114 @@ class RenderPartsTest {
                     .isEqualTo(picocli.CommandLine.ExitCode.SOFTWARE);
             assertThat(render.out()).contains("Nothing could be written.");
             assertThat(workspace.resolve("out/chords.txt")).doesNotExist();
+        }
+    }
+
+    @Nested
+    @DisplayName("the MusicXML twins")
+    class MusicXml {
+
+        @Test
+        @DisplayName("a chart is written beside its LilyPond source, and said so")
+        void theChartTwin() {
+            Path workspace = audioWorkspace("twin", fourChords());
+
+            CliRunner.Result render = CliRunner.run(
+                    "render", workspace.toString(), "--no-pdf");
+
+            assertThat(render.exitCode()).as(render.all()).isZero();
+            Path twin = workspace.resolve("out/chords.musicxml");
+            assertThat(render.out()).contains("Wrote " + twin);
+            assertThat(wellFormed(twin)).contains("<harmony>");
+        }
+
+        @Test
+        @DisplayName("the lyric sheet gets one, and only the parts asked for do")
+        void theLyricSheetTwin() {
+            Path workspace = sungWorkspace("asked");
+
+            CliRunner.Result render = CliRunner.run(
+                    "render", workspace.toString(), "--parts", "lyrics", "--no-pdf");
+
+            assertThat(render.exitCode()).as(render.all()).isZero();
+            assertThat(wellFormed(workspace.resolve("out/chords-lyrics.musicxml")))
+                    .contains("print-object=\"no\"").contains("<lyric");
+            assertThat(workspace.resolve("out/chords.musicxml")).doesNotExist();
+        }
+
+        @Test
+        @DisplayName("the staff parts get theirs, with and without the chords and words")
+        void theStaffTwins() {
+            Path workspace = sungWorkspace("staves");
+
+            CliRunner.Result render = CliRunner.run("render", workspace.toString(),
+                    "--parts", "lead,voice,playable", "--no-pdf");
+
+            assertThat(render.exitCode()).as(render.all()).isZero();
+            for (String name : List.of("lead", "lead-playable", "voice")) {
+                assertThat(render.out()).contains("Wrote "
+                        + workspace.resolve("out/" + name + ".musicxml"));
+            }
+            assertThat(wellFormed(workspace.resolve("out/lead.musicxml")))
+                    .contains("<harmony>").contains("<lyric");
+            assertThat(wellFormed(workspace.resolve("out/voice.musicxml")))
+                    .doesNotContain("<harmony>").doesNotContain("<lyric");
+        }
+
+        @Test
+        @DisplayName("a twin that cannot be written is named, and the run goes on")
+        void aTwinThatCannotBeWritten() {
+            // The chart's first bar is the bar its first chord falls in, and
+            // that bar is wider than the staff's first: a chord lands past its
+            // staff bar, and the page misaligns where the document refuses
+            // (#787).
+            Path workspace = workspaceWith("misaligned", new ChordProgression(List.of(
+                    chord("C", NoteLetter.C, ChordQuality.MAJOR, 1, 2),
+                    chord("G", NoteLetter.G, ChordQuality.MAJOR, 2, 3)), Confidence.of(0.8)),
+                    List.of(new NoteTrack(PartRole.LEAD_VOCAL, "Voice", List.of(
+                            Note.ofSeconds(0.0, 1.0, 64, Confidence.CERTAIN),
+                            Note.ofSeconds(1.0, 1.0, 67, Confidence.CERTAIN),
+                            Note.ofSeconds(2.0, 1.0, 69, Confidence.CERTAIN),
+                            Note.ofSeconds(3.0, 1.0, 71, Confidence.CERTAIN)),
+                            Confidence.CERTAIN)));
+            Workspace opened = Workspace.open(workspace);
+            Score score = opened.readScore().orElseThrow();
+            opened.writeScore(score.withTempoMap(TempoMap.constant(120, new TimeSignature(2, 4))
+                    .withMeterChange(1, TimeSignature.FOUR_FOUR)));
+
+            CliRunner.Result render = CliRunner.run("render", workspace.toString(),
+                    "--parts", "lead", "--no-pdf");
+
+            assertThat(render.exitCode()).as(render.all()).isZero();
+            assertThat(workspace.resolve("out/lead.ly")).exists();
+            assertThat(workspace.resolve("out/lead.musicxml")).doesNotExist();
+            assertThat(render.err()).contains("lead.musicxml was not written");
+        }
+
+        @Test
+        @DisplayName("an annotation the twin does not carry is said once")
+        void annotationsNotCarriedAreSaid() {
+            Path workspace = audioWorkspace("marked", fourChords());
+
+            CliRunner.Result render = CliRunner.run("render", workspace.toString(),
+                    "--repeat-tags", "--no-pdf");
+
+            assertThat(render.exitCode()).as(render.all()).isZero();
+            assertThat(render.err()).contains("#777");
+        }
+
+        /** The file's text, having been parsed as XML first. */
+        private static String wellFormed(Path file) {
+            try {
+                javax.xml.parsers.DocumentBuilderFactory factory =
+                        javax.xml.parsers.DocumentBuilderFactory.newInstance();
+                factory.setFeature(
+                        "http://apache.org/xml/features/nonvalidating/load-external-dtd", false);
+                factory.newDocumentBuilder().parse(file.toFile());
+                return java.nio.file.Files.readString(file);
+            } catch (Exception e) {
+                throw new AssertionError(file + " is not well-formed XML", e);
+            }
         }
     }
 
