@@ -13,7 +13,7 @@ song.mwz/
   score/score.json   the transcription
   run/manifest.json  what the last analysis actually ran
   run/traces.json    the evidence its stages weighed
-  out/               .txt, .ly and .pdf per part (staff parts: no .txt)
+  out/               .txt, .ly, .musicxml and .pdf per part (staff parts: no .txt)
 ```
 
 The cache is keyed on the recording's digest and the options that shaped
@@ -103,7 +103,7 @@ implemented (`--parts piano`) and it says so and why rather than listing it
 and writing nothing.
 
 PDF needs [LilyPond](https://lilypond.org) on the `PATH` (or
-`notation.lilypondPath`); without it the tool still writes the `.ly` source
-and says so. LilyPond is run with its message locale
+`notation.lilypondPath`); without it the tool still writes the `.ly` and
+`.musicxml` sources and says so. LilyPond is run with its message locale
 pinned to `C`, because MW decides whether engraving went well by reading
 LilyPond's output, and LilyPond translates that output.

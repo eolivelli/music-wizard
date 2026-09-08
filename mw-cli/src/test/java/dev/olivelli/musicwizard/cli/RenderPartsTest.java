@@ -437,6 +437,38 @@ class RenderPartsTest {
             assertThat(workspace.resolve("out/lead.ly")).exists();
             assertThat(workspace.resolve("out/lead.musicxml")).doesNotExist();
             assertThat(render.err()).contains("lead.musicxml was not written");
+            // A refused twin does not warn about annotations it never carried.
+            CliRunner.Result tagged = CliRunner.run("render", workspace.toString(),
+                    "--parts", "lead", "--repeat-tags", "--no-pdf");
+            assertThat(tagged.err()).doesNotContain("#777");
+        }
+
+        @Test
+        @DisplayName("a refusal removes the twin an earlier run wrote")
+        void aRefusalRemovesTheStaleTwin() throws java.io.IOException {
+            Path workspace = sungWorkspace("stale");
+            CliRunner.Result first = CliRunner.run("render", workspace.toString(),
+                    "--parts", "lead", "--no-pdf");
+            assertThat(first.exitCode()).as(first.all()).isZero();
+            Path twin = workspace.resolve("out/lead.musicxml");
+            assertThat(twin).exists();
+            // The same score, its chart now a bar wider than the staff (#787).
+            Workspace opened = Workspace.open(workspace);
+            Score score = opened.readScore().orElseThrow();
+            List<Chord> late = List.of(
+                    chord("C", NoteLetter.C, ChordQuality.MAJOR, 1, 2),
+                    chord("G", NoteLetter.G, ChordQuality.MAJOR, 2, 3));
+            opened.writeScore(score
+                    .withChords(new ChordProgression(late, Confidence.of(0.8)))
+                    .withTempoMap(TempoMap.constant(120, new TimeSignature(2, 4))
+                            .withMeterChange(1, TimeSignature.FOUR_FOUR)));
+
+            CliRunner.Result second = CliRunner.run("render", workspace.toString(),
+                    "--parts", "lead", "--no-pdf");
+
+            assertThat(second.exitCode()).as(second.all()).isZero();
+            assertThat(second.err()).contains("lead.musicxml was not written");
+            assertThat(twin).as("a document from the run before").doesNotExist();
         }
 
         @Test
@@ -449,6 +481,20 @@ class RenderPartsTest {
 
             assertThat(render.exitCode()).as(render.all()).isZero();
             assertThat(render.err()).contains("#777");
+        }
+
+        @Test
+        @DisplayName("a mark the page did not draw either is not said twice")
+        void aMarkNotDrawnIsSaidOnce() {
+            // A planted score has no tracked beats, so the page draws no beat
+            // marks and says so; the twin has nothing further to add.
+            Path workspace = audioWorkspace("unmarked", fourChords());
+
+            CliRunner.Result render = CliRunner.run("render", workspace.toString(),
+                    "--beat-marks", "--no-pdf");
+
+            assertThat(render.exitCode()).as(render.all()).isZero();
+            assertThat(render.err()).contains("no beat marks were drawn").doesNotContain("#777");
         }
 
         /** The file's text, having been parsed as XML first. */

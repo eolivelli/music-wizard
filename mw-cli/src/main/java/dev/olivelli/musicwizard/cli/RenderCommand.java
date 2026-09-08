@@ -418,20 +418,22 @@ final class RenderCommand implements Callable<Integer> {
                         + " this score has none, which is the case for every score read from"
                         + " a MIDI file, where the beats are declared rather than heard");
             }
-            // The MusicXML twins carry neither annotation; a setting one output
-            // honours and its twin discards in silence is the same confident
-            // wrong answer, so it is said once, beside the files.
-            if ((options.beatMarks() || options.repeatTags())
-                    && producible.stream().anyMatch(part -> part == Part.CHORDS
-                            || part == Part.LYRICS)) {
-                warnings.add("the .musicxml files carry neither beat marks nor repeat tags"
-                        + " (#777)");
-            }
             for (Part part : producible) {
                 Emitted emitted = part.emit(workspace, score, lilypond, options);
                 written.addAll(emitted.files());
                 warnings.addAll(emitted.warnings());
                 chartWritten |= part == Part.CHORDS;
+            }
+            // A chart's MusicXML twin carries neither annotation; a setting one
+            // output honours and its twin discards in silence is the same
+            // confident wrong answer, so it is said once, beside the files --
+            // and only about a twin that was written, carrying a mark the
+            // page drew.
+            boolean marked = options.beatMarks() && score.beatGrid().isPresent()
+                    || options.repeatTags();
+            if (marked && written.stream().anyMatch(RenderCommand::isChartTwin)) {
+                warnings.add("the .musicxml files carry neither beat marks nor repeat tags"
+                        + " (#777)");
             }
         }
 
@@ -734,11 +736,13 @@ final class RenderCommand implements Callable<Integer> {
     /**
      * Writes a source's MusicXML twin, or says in one line why there is none.
      *
-     * <p>The export refuses a score it cannot spell — no chords to chart, a
-     * chart bar past its staff bar (#787) — where the LilyPond source is still
-     * written. A refusal is reported beside the files rather than failing the
-     * run, under the rule the class javadoc states for the engraver: the other
-     * outputs are intact.
+     * <p>The export refuses two things the LilyPond source still writes: a
+     * score with nothing to chart, and a chart bar past its staff bar (#787).
+     * A refusal is reported beside the files rather than failing the run,
+     * under the rule the class javadoc states for the engraver: the other
+     * outputs are intact. Anything else the export throws is a defect and
+     * propagates. A twin an earlier run wrote is removed, so a refusal never
+     * leaves a stale document beside a fresh source.
      */
     private static void writeMusicXml(Path file, Supplier<String> export,
                                       List<Path> written, List<String> warnings)
@@ -746,12 +750,18 @@ final class RenderCommand implements Callable<Integer> {
         String xml;
         try {
             xml = export.get();
-        } catch (IllegalArgumentException | IllegalStateException e) {
+        } catch (IllegalArgumentException | MusicXmlExport.Refused e) {
+            Files.deleteIfExists(file);
             warnings.add(file.getFileName() + " was not written: " + e.getMessage());
             return;
         }
         Files.writeString(file, xml);
         written.add(file);
+    }
+
+    private static boolean isChartTwin(Path file) {
+        String name = file.getFileName().toString();
+        return name.equals("chords.musicxml") || name.equals("chords-lyrics.musicxml");
     }
 
     /**

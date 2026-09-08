@@ -110,6 +110,18 @@ public final class MusicXmlExport {
     }
 
     /**
+     * The export declining to write a document that would put a symbol in the
+     * wrong bar, which a caller may report and carry on from — unlike any
+     * other failure here, which is a defect.
+     */
+    public static final class Refused extends IllegalStateException {
+
+        Refused(String message) {
+            super(message);
+        }
+    }
+
+    /**
      * One part, as a complete MusicXML document.
      *
      * <p>Tuplets are not represented, for the reason
@@ -180,10 +192,10 @@ public final class MusicXmlExport {
      *
      * @throws IllegalArgumentException if the track is percussion, or holds a
      *         note that has not been quantized
-     * @throws IllegalStateException if a chart bar runs past the staff bar of
-     *         the same index, which the two axes allow when the meter changes
-     *         and the first chord falls after bar 0: the page then misaligns
-     *         where this refuses to write a symbol in the wrong bar (#787)
+     * @throws Refused if a chart bar runs past the staff bar of the same
+     *         index, which the two axes allow when the meter changes and the
+     *         first chord falls after bar 0: the page then misaligns where this
+     *         refuses to write a symbol in the wrong bar (#787)
      */
     public static String leadSheet(QuantizedScore quantized, NoteTrack melody) {
         Objects.requireNonNull(quantized, "quantized");
@@ -868,13 +880,13 @@ public final class MusicXmlExport {
                                 + "; the layout and this export disagree about its length");
             }
             if (!harmonies.isEmpty()) {
-                throw new IllegalStateException(
+                throw new Refused(
                         "measure " + number() + " of " + meter + " has a chord change at division "
                                 + harmonies.getFirst().offset() + ", outside its span;"
                                 + " the chart and the staff disagree about this bar");
             }
             if (!lyrics.isEmpty()) {
-                throw new IllegalStateException(
+                throw new Refused(
                         "measure " + number() + " of " + meter + " has a syllable at division "
                                 + lyrics.getFirst().offset() + ", outside its span;"
                                 + " the chart and the staff disagree about this bar");
