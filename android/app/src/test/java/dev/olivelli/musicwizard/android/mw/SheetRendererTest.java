@@ -65,8 +65,8 @@ public class SheetRendererTest {
 
         assertNull(result.warnings().toString(), result.failure());
         assertTrue(result.totalHeight() > 0);
-        // The chart's four bars lay out on one system; the title is a chunk of
-        // its own and holds no bar.
+        // The chart lays out on one system; the title and footer are chunks
+        // of their own and hold no bar.
         assertEquals(1, result.partials().stream().filter(SheetRenderer.Partial::isSystem).count());
         String svg = result.partials().stream()
                 .map(partial -> String.valueOf(partial.result()))

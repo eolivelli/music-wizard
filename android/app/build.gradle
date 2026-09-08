@@ -92,8 +92,8 @@ android {
     }
 
     androidResources {
-        // alphaTab ships two soundfonts for its synthesizer, which the app
-        // never plays, and the soundfonts' licence file; its music font stays,
+        // alphaTab ships soundfonts for its synthesizer, which the app never
+        // plays, and the soundfonts' licence file; its music font stays,
         // with the font's own licence beside it from this app's assets. The
         // rest of the pattern is aapt's default list, which setting the
         // property replaces.
@@ -166,9 +166,9 @@ dependencies {
     // plugin. Its licence is the one exception noted above. Of what it
     // declares, core-ktx and appcompat serve only its AlphaTabView widget,
     // which the app never creates (and that core-ktx wants a newer
-    // compileSdk than this build's); the two alphaSkia artifacts are the
-    // natives behind its "skia" engine, and the app draws with its "android"
-    // engine, which needs none.
+    // compileSdk than this build's); the alphaSkia artifacts are the natives
+    // behind its "skia" engine, and the app draws with its "android" engine,
+    // which needs none.
     implementation('net.alphatab:alphaTab:1.8.4') {
         exclude group: 'androidx.core', module: 'core-ktx'
         exclude group: 'androidx.appcompat'

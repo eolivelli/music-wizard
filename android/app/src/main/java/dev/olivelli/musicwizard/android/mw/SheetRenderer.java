@@ -33,8 +33,8 @@ import kotlin.Unit;
 
 /**
  * Engraves MusicXML with alphaTab, one result per drawn chunk, on whatever
- * thread calls it; renders are serialized, since alphaTab's logger and settings
- * tables are process-wide.
+ * thread calls it; renders are serialized, since alphaTab's logger is
+ * process-wide.
  *
  * <p>alphaTab reports a failure on an event and otherwise returns nothing, so a
  * caller that only read the results would take an empty page for a healthy one.
