@@ -18,6 +18,8 @@ package dev.olivelli.musicwizard.android;
 
 import android.content.Intent;
 import android.graphics.Bitmap;
+import android.graphics.drawable.BitmapDrawable;
+import android.graphics.drawable.Drawable;
 import android.os.Bundle;
 import android.view.View;
 import android.widget.Button;
@@ -51,7 +53,7 @@ public final class ResultActivity extends MwActivity
     /** How much one zoom step enlarges the engraving, and how far it may go. */
     private static final double ZOOM_STEP = 1.25;
     private static final double ZOOM_MIN = 0.5;
-    private static final double ZOOM_MAX = 4;
+    private static final double ZOOM_MAX = 2;
 
     /** Absolute path of the WAV to show. */
     public static final String EXTRA_WAV = "wav";
@@ -67,10 +69,17 @@ public final class ResultActivity extends MwActivity
     private View textScroll;
     private LinearLayout sheet;
 
-    /** The score on screen, re-engraved on every zoom; null when there is none. */
+    /** The score on screen, re-engraved on every zoom. */
     private Score shown;
     private double zoom = 1;
     private boolean sheetVisible;
+
+    /** What the pane was last asked to draw, so a resume does not draw it again. */
+    private Score engraved;
+    private double engravedZoom;
+
+    /** Whether the user tapped over to the text, which a new engraving respects. */
+    private boolean textChosen;
 
     /** The text on screen, kept so that "share" sends exactly what is shown. */
     private String shareable = "";
@@ -105,9 +114,13 @@ public final class ResultActivity extends MwActivity
         sheet = findViewById(R.id.sheet);
         analyzeButton.setOnClickListener(view -> analyze());
         shareButton.setOnClickListener(view -> shareText());
-        viewButton.setOnClickListener(view -> showSheet(!sheetVisible));
+        viewButton.setOnClickListener(view -> {
+            textChosen = sheetVisible;
+            showSheet(!sheetVisible);
+        });
         findViewById(R.id.zoomInButton).setOnClickListener(view -> rezoom(ZOOM_STEP));
         findViewById(R.id.zoomOutButton).setOnClickListener(view -> rezoom(1 / ZOOM_STEP));
+        clearSheet();
         // Not gated on there being an analysis: the recording alone is the
         // ground truth worth moving, and the chart is whatever the phone
         // happened to make of it.
@@ -163,6 +176,8 @@ public final class ResultActivity extends MwActivity
     protected void onPause() {
         super.onPause();
         AnalysisJobs.get().stopObserving(this);
+        SheetJobs.get().cancel();
+        engraved = null;
         if (wav != null) {
             saveNotes();
         }
@@ -201,6 +216,7 @@ public final class ResultActivity extends MwActivity
     private void showRunning() {
         analyzeButton.setEnabled(false);
         shareButton.setEnabled(false);
+        SheetJobs.get().cancel();
         String line = AnalysisJobs.get().progressOf(wav);
         status.setText(line.isEmpty() ? getString(R.string.analyzing) : line);
     }
@@ -236,15 +252,20 @@ public final class ResultActivity extends MwActivity
         engrave();
     }
 
-    /** Asks for the engraving at the pane's width, once the pane has one. */
+    /** Asks for the engraving at the width the pane will have: its parent's, inside the padding. */
     private void engrave() {
         Score score = shown;
-        if (score == null) {
+        if (score == null || (score == engraved && zoom == engravedZoom)) {
             return;
         }
+        engraved = score;
+        engravedZoom = zoom;
         sheetScroll.post(() -> {
-            int width = sheetScroll.getWidth() > 0 ? sheetScroll.getWidth()
-                    : getResources().getDisplayMetrics().widthPixels;
+            View parent = (View) sheetScroll.getParent();
+            int width = parent.getWidth() - parent.getPaddingLeft() - parent.getPaddingRight();
+            if (width <= 0) {
+                width = getResources().getDisplayMetrics().widthPixels;
+            }
             double density = getResources().getDisplayMetrics().density;
             SheetJobs.get().render(getApplicationContext(), score, width, density * zoom, this);
         });
@@ -260,7 +281,7 @@ public final class ResultActivity extends MwActivity
         if (isFinishing() || isDestroyed()) {
             return;
         }
-        sheet.removeAllViews();
+        releaseSystems();
         for (SheetRenderer.Partial system : systems) {
             ImageView image = new ImageView(this);
             image.setImageBitmap((Bitmap) system.result());
@@ -270,7 +291,7 @@ public final class ResultActivity extends MwActivity
                     LinearLayout.LayoutParams.WRAP_CONTENT));
         }
         viewButton.setEnabled(true);
-        showSheet(true);
+        showSheet(!textChosen);
     }
 
     @Override
@@ -278,16 +299,37 @@ public final class ResultActivity extends MwActivity
         if (isFinishing() || isDestroyed()) {
             return;
         }
-        clearSheet();
+        // The score stays, so a zoom step out can try again.
+        engraved = null;
+        hideSheet();
         status.setText(status.getText() + "\n" + getString(R.string.sheet_failed, why));
     }
 
-    /** Text only, until the next engraving arrives. */
+    /** No score to engrave: text only, until a new analysis arrives. */
     private void clearSheet() {
         shown = null;
-        sheet.removeAllViews();
+        engraved = null;
+        SheetJobs.get().cancel();
+        hideSheet();
+    }
+
+    private void hideSheet() {
+        releaseSystems();
         viewButton.setEnabled(false);
         showSheet(false);
+    }
+
+    /** Frees the drawn systems' bitmaps before the views that hold them go. */
+    private void releaseSystems() {
+        for (int i = 0; i < sheet.getChildCount(); i++) {
+            ImageView image = (ImageView) sheet.getChildAt(i);
+            Drawable drawable = image.getDrawable();
+            image.setImageDrawable(null);
+            if (drawable instanceof BitmapDrawable bitmap && bitmap.getBitmap() != null) {
+                bitmap.getBitmap().recycle();
+            }
+        }
+        sheet.removeAllViews();
     }
 
     private void showSheet(boolean engraved) {

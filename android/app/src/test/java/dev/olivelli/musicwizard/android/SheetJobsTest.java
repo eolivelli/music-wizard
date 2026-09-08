@@ -30,6 +30,8 @@ import dev.olivelli.musicwizard.core.model.PitchSpelling;
 import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.model.TempoMap;
 import dev.olivelli.musicwizard.core.model.TimeSignature;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -94,6 +96,35 @@ public class SheetJobsTest {
 
         assertNotNull(outcome.failure.get());
         assertNull(outcome.systems.get());
+    }
+
+    @Test
+    public void aResultOvertakenBeforeItIsDeliveredIsDropped() throws InterruptedException {
+        List<Runnable> queue = Collections.synchronizedList(new ArrayList<>());
+        SheetJobs jobs = new SheetJobs(SheetRenderer.ENGINE_SVG, queue::add);
+        Outcome first = new Outcome();
+        Outcome second = new Outcome();
+
+        jobs.render(null, chart(), 1200, 1, first);
+        awaitQueued(queue, 1);
+        // The first has rendered and posted; a newer request lands before
+        // its delivery runs.
+        jobs.render(null, chart(), 800, 1, second);
+        queue.remove(0).run();
+        assertEquals("the overtaken result must not report", 1, first.done.getCount());
+
+        awaitQueued(queue, 1);
+        queue.remove(0).run();
+        assertNull(second.failure.get());
+        assertEquals(1, second.systems.get().size());
+    }
+
+    private static void awaitQueued(List<Runnable> queue, int count) throws InterruptedException {
+        long deadline = System.currentTimeMillis() + 30_000;
+        while (queue.size() < count && System.currentTimeMillis() < deadline) {
+            Thread.sleep(20);
+        }
+        assertEquals(count, queue.size());
     }
 
     @Test

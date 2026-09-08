@@ -41,7 +41,7 @@ final class SheetJobs {
         void onSheetFailed(String why);
     }
 
-    /** Where callbacks land; a test drains its own queue. */
+    /** Where callbacks land. */
     interface Dispatcher {
         void post(Runnable action);
     }
@@ -69,6 +69,11 @@ final class SheetJobs {
     SheetJobs(String engine, Dispatcher dispatcher) {
         this.engine = engine;
         this.dispatcher = dispatcher;
+    }
+
+    /** Drops whatever is queued or running: its result reaches no listener. */
+    void cancel() {
+        latest.incrementAndGet();
     }
 
     /**
@@ -102,7 +107,7 @@ final class SheetJobs {
                     }
                 }
             } catch (IllegalArgumentException e) {
-                failure = e.getMessage();
+                failure = e.getMessage() == null ? "nothing to engrave" : e.getMessage();
             } catch (Throwable t) {
                 failure = t.toString();
             }
