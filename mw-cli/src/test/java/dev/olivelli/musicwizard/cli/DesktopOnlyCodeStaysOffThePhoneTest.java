@@ -65,7 +65,7 @@ import org.junit.jupiter.api.io.TempDir;
  *       method of {@link dev.olivelli.musicwizard.transcribe.AudioTranscriber}
  *       calls {@code AudioDecoder} — both overloads are in one class file.
  *   <li><b>Reachability</b>, by running the seam under a classloader that
- *       refuses all four families. Resolution is what a call triggers, so this
+ *       refuses all five families. Resolution is what a call triggers, so this
  *       sees past the class file: a decode from the {@code AudioBuffer} overload
  *       fails here with {@code NoClassDefFoundError} while confinement stays
  *       green. Its limit is the other side of the same coin — it sees the calls
@@ -118,7 +118,7 @@ class DesktopOnlyCodeStaysOffThePhoneTest {
          * The needle in source form, which has two readers: the phone
          * classloader refuses a class whose name starts with it, and {@link
          * #isNamedIn} looks for it in a constant pool beside the internal form.
-         * A prefix of a package for three of the four families and of a class
+         * A prefix of a package for four of the five families and of a class
          * name for {@code java.lang.Process}.
          */
         String dottedPrefix() {
@@ -154,7 +154,12 @@ class DesktopOnlyCodeStaysOffThePhoneTest {
                     List.of()),
             new DesktopOnly("process invocation", "java/lang/Process",
                     "java.lang.ProcessBuilder",
-                    List.of("dev.olivelli.musicwizard.notation.LilyPondRenderer")));
+                    List.of("dev.olivelli.musicwizard.notation.LilyPondRenderer")),
+            new DesktopOnly("StAX", "javax/xml/stream/",
+                    "javax.xml.stream.XMLOutputFactory",
+                    // Android has no StAX, which is why MusicXML is written as
+                    // text; nothing may reach for the streaming API instead.
+                    List.of()));
 
     /**
      * Everything the phone classloader may see: the six modules, from {@link
@@ -217,7 +222,7 @@ class DesktopOnlyCodeStaysOffThePhoneTest {
     @Test
     @DisplayName("each needle matches the API it is meant to name")
     void theNeedlesMatchTheApisTheyName() throws Exception {
-        // Two of the four families are expected to be named by nothing, and a
+        // Three of the five families are expected to be named by nothing, and a
         // mistyped needle produces exactly that answer. A class of each family
         // carries its own name in its own constant pool, so its class file is
         // the one input where every needle must hit.
@@ -228,7 +233,7 @@ class DesktopOnlyCodeStaysOffThePhoneTest {
             Class<?> probe = Class.forName(family.probe(), false,
                     DesktopOnlyCodeStaysOffThePhoneTest.class.getClassLoader());
             // Asked of the class itself rather than of a classloader, because
-            // two of the four live in a JDK module rather than on a classpath.
+            // three of the five live in a JDK module rather than on a classpath.
             // A .class file is readable either way; other resources are not.
             byte[] classFile;
             try (InputStream in = probe.getResourceAsStream(
@@ -373,7 +378,7 @@ class DesktopOnlyCodeStaysOffThePhoneTest {
         void run() throws Exception;
     }
 
-    /** The loader the seam runs under: the app's classpath, refusing the four. */
+    /** The loader the seam runs under: the app's classpath, refusing the five. */
     private static URLClassLoader phoneClassLoader() throws Exception {
         return seamLoader(true, List.of());
     }
@@ -420,7 +425,7 @@ class DesktopOnlyCodeStaysOffThePhoneTest {
 
     /**
      * The jars the desktop-only families ship in, for the loaders that must see
-     * them. Two of the four are JDK modules and have no code source; the
+     * them. Three of the five are JDK modules and have no code source; the
      * platform parent supplies those.
      */
     private static List<URL> desktopCodeSources() throws Exception {
@@ -454,7 +459,7 @@ class DesktopOnlyCodeStaysOffThePhoneTest {
 
     /**
      * The class a class file belongs to: {@code
-     * dev.olivelli.musicwizard.notation.MusicXmlExport$Context} is part of
+     * dev.olivelli.musicwizard.notation.MusicXmlExport$MusicXmlStaffWriter} is part of
      * {@code MusicXmlExport}, and the constant pool of a nested class is the
      * nested class's own.
      */

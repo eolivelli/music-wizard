@@ -105,7 +105,6 @@
     <jipes.version>0.9.17</jipes.version>                     <!-- LGPL-2.1 -->
     <ffsampledsp.version>0.9.56</ffsampledsp.version>         <!-- LGPL-2.1 -->
     <onnxruntime.version>1.27.0</onnxruntime.version>         <!-- MIT -->
-    <proxymusic.version>4.0.3</proxymusic.version>            <!-- LGPL-3.0 -->
     <anthropic.version>2.52.0</anthropic.version>             <!-- MIT -->
 
     <junit.version>6.1.2</junit.version>
@@ -222,13 +221,6 @@
         <groupId>com.microsoft.onnxruntime</groupId>
         <artifactId>onnxruntime</artifactId>
         <version>${onnxruntime.version}</version>
-      </dependency>
-
-      <!-- MusicXML 4.0 bindings -->
-      <dependency>
-        <groupId>org.audiveris</groupId>
-        <artifactId>proxymusic</artifactId>
-        <version>${proxymusic.version}</version>
       </dependency>
 
       <!-- Speech recognition -->

@@ -150,12 +150,12 @@ class ExportsAreSiblingsTest {
     }
 
     @Test
-    @DisplayName("the MusicXML exporter is the only thing that names proxymusic")
+    @DisplayName("the MusicXML exporter is the only thing that writes the format's root element")
     void onlyOneClassBindsToTheFormat() {
-        // A second class importing the bindings would be a second thing able to
-        // write MusicXML, which is how the parallel export becomes a stage.
+        // A second class writing <score-partwise> would be a second thing able
+        // to write MusicXML, which is how the parallel export becomes a stage.
         List<String> binding = sources()
-                .filter(path -> code(read(path)).contains("org.audiveris.proxymusic"))
+                .filter(path -> code(read(path)).contains("score-partwise"))
                 .map(path -> path.getFileName().toString())
                 .toList();
         assertThat(binding).containsExactly("MusicXmlExport.java");
