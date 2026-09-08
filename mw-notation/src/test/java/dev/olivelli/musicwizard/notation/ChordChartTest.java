@@ -58,6 +58,12 @@ class ChordChartTest {
     }
 
     @Test
+    @DisplayName("the whole page, so its MusicXML twin can be read against it")
+    void theChartPage() {
+        Goldens.assertGolden("chord-chart", ChordChart.toLilyPond(Fixtures.chordChart()));
+    }
+
+    @Test
     @DisplayName("the chart and the staff bar the same chords in the same bars")
     void theTwoBarAxesAgree() {
         // The two-axis divergence of #501 with no audio in it: a grid whose

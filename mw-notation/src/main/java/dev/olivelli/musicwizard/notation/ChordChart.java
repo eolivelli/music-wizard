@@ -167,7 +167,7 @@ public final class ChordChart {
      * counted differently. A chart holding several meters says so beside this
      * one; see {@link #meterChanges}.
      */
-    private static TimeSignature countedIn(Score score, List<ChartLayout.Bar> bars) {
+    static TimeSignature countedIn(Score score, List<ChartLayout.Bar> bars) {
         return bars.isEmpty()
                 ? score.tempoMap().initialTimeSignature()
                 : bars.get(0).meter();
@@ -213,7 +213,7 @@ public final class ChordChart {
      * left edge from the harmony instead lost exactly that, since the first bar
      * can open a bar before the first chord does.
      */
-    private static double opensAt(List<ChartLayout.Bar> bars) {
+    static double opensAt(List<ChartLayout.Bar> bars) {
         return bars.isEmpty() ? 0 : bars.get(0).startSeconds();
     }
 
@@ -457,7 +457,10 @@ public final class ChordChart {
             }
             out.append("      ");
             List<String> written = index == 0 && pickup.isPresent()
-                    ? intoPickup(bar, pickup.get())
+                    ? intoPickup(bar, pickup.get()).stream()
+                            .map(cut -> chordMode(cut.chord(),
+                                    LilyPondDuration.scaled(cut.length(), cut.perWhole())))
+                            .toList()
                     : bar.cells().stream().map(ChordChart::chordMode).toList();
             for (String token : written) {
                 out.append(token).append(' ');
@@ -482,7 +485,22 @@ public final class ChordChart {
     }
 
     /**
+     * A cell of the chart's first bar after the staff's pickup has cut it.
+     *
+     * @param length   how much of the pickup it fills, in {@code perWhole}ths
+     *                 of a whole note
+     * @param named    whether its symbol is printed: the chart's own answer,
+     *                 except that the first cell kept is always named, since
+     *                 whatever preceded it is no longer on the page
+     */
+    record Cut(Optional<Chord> chord, long length, long perWhole, boolean named) {
+    }
+
+    /**
      * The last of a bar's chords, filling exactly the staff's pickup.
+     *
+     * <p>Shared with {@link MusicXmlExport}, so that the two lead sheets of one
+     * score cut their first bar in one place.
      *
      * <p>Taken from the end rather than by dropping the chart's lead-in rest,
      * because the two quantities are not the same one: the chart leads in to its
@@ -500,7 +518,7 @@ public final class ChordChart {
      * {@link LilyPondDuration} refuses by throwing — so {@code render} exited
      * non-zero on the packages whose melody happens to enter inside a bracket.
      */
-    private static List<String> intoPickup(ChartLayout.Bar bar, StaffNotation.Pickup pickup) {
+    static List<Cut> intoPickup(ChartLayout.Bar bar, StaffNotation.Pickup pickup) {
         long units = leastCommonMultiple(LilyPondDuration.SHORTEST_DENOMINATOR,
                 pickup.wholeNoteDenominator());
         long barUnits = Math.round(bar.meter().quarterBeatsPerBar() * units / QUARTERS_PER_WHOLE);
@@ -513,13 +531,13 @@ public final class ChordChart {
         // needs a meter change and a chart beginning after it.
         long dropped = Math.max(0, barUnits
                 - pickup.wholeNoteNumerator() * (units / pickup.wholeNoteDenominator()));
-        List<String> written = new ArrayList<>();
+        List<Cut> written = new ArrayList<>();
         long at = 0;
         for (ChartLayout.Cell cell : bar.cells()) {
             long end = at + Math.round(cell.lengthQuarters() * units / QUARTERS_PER_WHOLE);
             if (end > dropped) {
-                written.add(chordMode(cell.chord(),
-                        LilyPondDuration.scaled(end - Math.max(at, dropped), units)));
+                written.add(new Cut(cell.chord(), end - Math.max(at, dropped), units,
+                        cell.named() || written.isEmpty()));
             }
             at = end;
         }

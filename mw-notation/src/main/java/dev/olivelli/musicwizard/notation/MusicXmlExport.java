@@ -17,12 +17,16 @@
 package dev.olivelli.musicwizard.notation;
 
 import dev.olivelli.musicwizard.arrange.QuantizedScore;
+import dev.olivelli.musicwizard.core.model.Chord;
+import dev.olivelli.musicwizard.core.model.ChordQuality;
 import dev.olivelli.musicwizard.core.model.Key;
 import dev.olivelli.musicwizard.core.model.NoteTrack;
 import dev.olivelli.musicwizard.core.model.PartRole;
 import dev.olivelli.musicwizard.core.model.PitchSpelling;
 import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.model.TimeSignature;
+import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -43,6 +47,9 @@ import java.util.Optional;
  * note is cut by a bar line, which bars carry a tuplet bracket, which notes
  * gather into a chord and where the pickup falls are all decided once, by
  * {@link StaffLayout}; this class only spells them. See {@link StaffWriter}.
+ * The chord symbols are {@link ChartLayout}'s cells for the same reason, and
+ * the chart's first bar is cut to a pickup by {@link ChordChart#intoPickup},
+ * the one place that decides it.
  *
  * <p><b>Written as text, with no binding library.</b> The phone links this
  * module, and Android has neither JAXB nor StAX; the text is also what a golden
@@ -54,7 +61,7 @@ import java.util.Optional;
  * cannot make — 61 is both C sharp and D flat — and a spelling dropped at this
  * boundary is a spelling lost to every editor downstream. So
  * {@link PitchSpelling} is written through and the MIDI number is never
- * consulted.
+ * consulted, for chord roots and basses as for notes.
  *
  * <p>What is <em>not</em> written, and why:
  *
@@ -95,6 +102,9 @@ public final class MusicXmlExport {
      */
     private static final String MUSICXML_VERSION = "4.0";
 
+    /** The name of the one part a chord chart has. */
+    private static final String CHORDS_PART = "Chords";
+
     private MusicXmlExport() {
     }
 
@@ -113,14 +123,14 @@ public final class MusicXmlExport {
     public static String toMusicXml(Score score, NoteTrack track) {
         Objects.requireNonNull(score, "score");
         Objects.requireNonNull(track, "track");
-        return document(score, List.of(track), TupletPlan.none());
+        return document(score, List.of(track), TupletPlan.none(), List.of());
     }
 
     /** The same, with the quantizer's per-bar grid honoured. */
     public static String toMusicXml(QuantizedScore quantized, NoteTrack track) {
         Objects.requireNonNull(quantized, "quantized");
         Objects.requireNonNull(track, "track");
-        return document(quantized.score(), List.of(track), TupletPlan.of(quantized));
+        return document(quantized.score(), List.of(track), TupletPlan.of(quantized), List.of());
     }
 
     /**
@@ -141,14 +151,63 @@ public final class MusicXmlExport {
      */
     public static String toMusicXml(Score score) {
         Objects.requireNonNull(score, "score");
-        return document(score, engravableTracks(score), TupletPlan.none());
+        return document(score, engravableTracks(score), TupletPlan.none(), List.of());
     }
 
     /** The same, with the quantizer's per-bar grid honoured. */
     public static String toMusicXml(QuantizedScore quantized) {
         Objects.requireNonNull(quantized, "quantized");
         return document(quantized.score(), engravableTracks(quantized.score()),
-                TupletPlan.of(quantized));
+                TupletPlan.of(quantized), List.of());
+    }
+
+    /**
+     * The lead sheet: the melody staff with the chart's chord symbols over it,
+     * which is what {@link LeadSheet} engraves.
+     *
+     * <p>The symbols are placed by the assumption the LilyPond page makes too:
+     * chart bar {@code k} is staff bar {@code k}, the first cut to the pickup
+     * (#501). A chord whose bar lies past the staff's last is not written,
+     * where the page prints it in its running chord context (#778).
+     *
+     * @throws IllegalArgumentException if the track is percussion, or holds a
+     *         note that has not been quantized
+     * @throws IllegalStateException if a chart bar runs past the staff bar of
+     *         the same index, which the two axes allow when the meter changes
+     *         and the first chord falls after bar 0: the page then misaligns
+     *         where this refuses to write a symbol in the wrong bar (#787)
+     */
+    public static String leadSheet(QuantizedScore quantized, NoteTrack melody) {
+        Objects.requireNonNull(quantized, "quantized");
+        Objects.requireNonNull(melody, "melody");
+        Score score = quantized.score();
+        return document(score, List.of(melody), TupletPlan.of(quantized), ChartLayout.of(score));
+    }
+
+    /**
+     * The chord chart: one part of rests under the chart's chord symbols, bar
+     * for bar what {@link ChordChart#toLilyPond(Score)} engraves.
+     *
+     * <p>Rests rather than nothing, because a reader attaches a chord symbol to
+     * the note or rest that follows it, and one rest per cell so that every
+     * symbol has its own. The rests carry their note values like any other: a
+     * reader that knows no measure rest would otherwise size the bar wrong.
+     *
+     * @throws IllegalArgumentException if the score holds no chords to chart
+     */
+    public static String chordChart(Score score) {
+        Objects.requireNonNull(score, "score");
+        List<ChartLayout.Bar> bars = ChartLayout.of(score);
+        if (bars.isEmpty()) {
+            throw new IllegalArgumentException(
+                    "this score holds no chords, so there is no chart to write");
+        }
+        XmlWriter xml = open(score);
+        partList(xml, List.of(CHORDS_PART));
+        xml.open("part", "id", partId(0));
+        writeChart(xml, score, bars);
+        xml.close("part");
+        return close(xml);
     }
 
     private static List<NoteTrack> engravableTracks(Score score) {
@@ -165,7 +224,21 @@ public final class MusicXmlExport {
 
     // -------------------------------------------------------------- document
 
-    private static String document(Score score, List<NoteTrack> tracks, TupletPlan tuplets) {
+    private static String document(Score score, List<NoteTrack> tracks, TupletPlan tuplets,
+                                   List<ChartLayout.Bar> chart) {
+        XmlWriter xml = open(score);
+        partList(xml, tracks.stream().map(NoteTrack::name).toList());
+        for (int i = 0; i < tracks.size(); i++) {
+            xml.open("part", "id", partId(i));
+            StaffLayout.write(score, tracks.get(i), tuplets,
+                    new MusicXmlStaffWriter(xml, TempoMark.headline(score, 0), chart));
+            xml.close("part");
+        }
+        return close(xml);
+    }
+
+    /** The document up to and including its header. */
+    private static XmlWriter open(Score score) {
         XmlWriter xml = new XmlWriter();
         xml.prolog("<?xml version=\"1.0\" encoding=\"UTF-8\"?>");
         xml.prolog("<!DOCTYPE score-partwise PUBLIC \"-//Recordare//DTD MusicXML "
@@ -182,20 +255,20 @@ public final class MusicXmlExport {
         score.artist().ifPresent(artist -> xml.open("identification")
                 .element("creator", artist, "type", "composer")
                 .close("identification"));
+        return xml;
+    }
 
+    private static void partList(XmlWriter xml, List<String> names) {
         xml.open("part-list");
-        for (int i = 0; i < tracks.size(); i++) {
+        for (int i = 0; i < names.size(); i++) {
             xml.open("score-part", "id", partId(i))
-                    .element("part-name", tracks.get(i).name())
+                    .element("part-name", names.get(i))
                     .close("score-part");
         }
         xml.close("part-list");
-        for (int i = 0; i < tracks.size(); i++) {
-            xml.open("part", "id", partId(i));
-            StaffLayout.write(score, tracks.get(i), tuplets,
-                    new MusicXmlStaffWriter(xml, TempoMark.headline(score, 0)));
-            xml.close("part");
-        }
+    }
+
+    private static String close(XmlWriter xml) {
         xml.close("score-partwise");
         return xml.toString();
     }
@@ -220,6 +293,200 @@ public final class MusicXmlExport {
         return ExportGrid.unitsOf(quarters);
     }
 
+    /** A length counted in {@code perWhole}ths of a whole note, as divisions. */
+    private static int divisionsOf(long length, long perWhole) {
+        return ExportGrid.unitsOf(length, perWhole);
+    }
+
+    // ----------------------------------------------------------------- chart
+
+    private static void writeChart(XmlWriter xml, Score score, List<ChartLayout.Bar> bars) {
+        TimeSignature counted = ChordChart.countedIn(score, bars);
+        double opensAt = ChordChart.opensAt(bars);
+        for (int i = 0; i < bars.size(); i++) {
+            ChartLayout.Bar bar = bars.get(i);
+            // The chart writes its first bar full and leads in with a rest, as
+            // its text and page do; there is no pickup to number from.
+            xml.open("measure", "number", String.valueOf(i + 1));
+            if (i == 0 || bar.meterChanged()) {
+                xml.open("attributes");
+                if (i == 0) {
+                    xml.element("divisions", String.valueOf(DIVISIONS_PER_QUARTER));
+                    keySignature(xml, score.primaryKey());
+                }
+                timeSignature(xml, bar.meter());
+                xml.close("attributes");
+            }
+            if (i == 0) {
+                TempoMark.of(score, counted, opensAt).ifPresent(mark ->
+                        tempo(xml, mark.unit(), mark.perMinute(),
+                                TempoMark.headline(score, opensAt)));
+            }
+            double at = 0;
+            for (ChartLayout.Cell cell : bar.cells()) {
+                if (cell.named()) {
+                    harmony(xml, cell.chord(), 0);
+                }
+                for (NoteValue value : MetricSplitter.split(
+                        bar.meter(), at, at + cell.lengthQuarters())) {
+                    rest(xml, value);
+                }
+                at += cell.lengthQuarters();
+            }
+            if (i == bars.size() - 1) {
+                finalBarLine(xml);
+            }
+            xml.close("measure");
+        }
+    }
+
+    // ---------------------------------------------------------------- pieces
+
+    /**
+     * A chord symbol, before the note or rest it sounds over.
+     *
+     * <p>The quality is written twice on purpose: as MusicXML's own kind, which
+     * is what a reader plays, and as the chart's symbol in {@code text}, which
+     * is what it prints — so the page and {@code chords.txt} agree letter for
+     * letter. Every quality has its own case and there is no {@code default},
+     * for the reason {@code ChordChart.lilyPondQuality} gives.
+     *
+     * <p>No chord — the lead-in gap and an estimated silence alike — is the
+     * format's own idiom for it, with a root that displays nothing.
+     */
+    private static void harmony(XmlWriter out, Optional<Chord> chord, int offsetDivisions) {
+        out.open("harmony");
+        if (chord.isEmpty() || chord.get().isNoChord()) {
+            out.open("root").element("root-step", "C", "text", "").close("root");
+            out.element("kind", "none", "text", ChordQuality.NONE.symbol());
+        } else {
+            Chord named = chord.get();
+            out.open("root");
+            step(out, "root-step", "root-alter", named.root());
+            out.close("root");
+            out.element("kind", kindOf(named.quality()), "text", named.quality().symbol());
+            if (named.isSlashChord()) {
+                out.open("bass");
+                step(out, "bass-step", "bass-alter", named.bass().orElseThrow());
+                out.close("bass");
+            }
+        }
+        if (offsetDivisions != 0) {
+            out.element("offset", String.valueOf(offsetDivisions));
+        }
+        out.close("harmony");
+    }
+
+    private static String kindOf(ChordQuality quality) {
+        return switch (quality) {
+            case MAJOR -> "major";
+            case MINOR -> "minor";
+            case DIMINISHED -> "diminished";
+            case AUGMENTED -> "augmented";
+            case SUSPENDED_SECOND -> "suspended-second";
+            case SUSPENDED_FOURTH -> "suspended-fourth";
+            case DOMINANT_SEVENTH -> "dominant";
+            case MAJOR_SEVENTH -> "major-seventh";
+            case MINOR_SEVENTH -> "minor-seventh";
+            case MINOR_MAJOR_SEVENTH -> "major-minor";
+            case HALF_DIMINISHED_SEVENTH -> "half-diminished";
+            case DIMINISHED_SEVENTH -> "diminished-seventh";
+            case SIXTH -> "major-sixth";
+            case MINOR_SIXTH -> "minor-sixth";
+            case NONE -> "none";
+        };
+    }
+
+    /** A step and its alteration, from the spelling and nothing else. */
+    private static void step(XmlWriter out, String stepTag, String alterTag,
+                             PitchSpelling spelling) {
+        out.element(stepTag, spelling.letter().name());
+        if (spelling.accidental().alteration() != 0) {
+            out.element(alterTag, String.valueOf(spelling.accidental().alteration()));
+        }
+    }
+
+    private static void rest(XmlWriter out, NoteValue value) {
+        out.open("note")
+                .empty("rest")
+                .element("duration", String.valueOf(divisionsOf(value.quarters())))
+                .element("voice", MusicXmlStaffWriter.VOICE)
+                .element("type", value.musicXmlType());
+        for (int dot = 0; dot < value.dots(); dot++) {
+            out.empty("dot");
+        }
+        out.close("note");
+    }
+
+    /**
+     * The key signature.
+     *
+     * <p>Zero sharps when the score claims no key, which is what the
+     * LilyPond side writes as {@code c \major}: no accidental is put on the
+     * page that the pipeline never decided on. The {@code <mode>} is left
+     * off in that case rather than guessed, since "no key was decided" and
+     * "the key is C major" are different claims and only the second one
+     * names a mode.
+     */
+    private static void keySignature(XmlWriter out, Optional<Key> key) {
+        out.open("key")
+                .element("fifths", String.valueOf(
+                        key.map(Key::keySignatureAccidentals).orElse(0)));
+        key.ifPresent(k -> out.element("mode", k.mode().lilyPondName()));
+        out.close("key");
+    }
+
+    /**
+     * The time signature.
+     *
+     * <p>The numerator and denominator as the model holds them.
+     * {@link TimeSignature#beatStructure()} has no MusicXML equivalent that
+     * a reader acts on — beam grouping there is expressed per note, by
+     * {@code <beam>} elements this does not write — so a reader beams the
+     * bar from the meter, which is where the grouping came from anyway.
+     */
+    private static void timeSignature(XmlWriter out, TimeSignature signature) {
+        out.open("time")
+                .element("beats", String.valueOf(signature.numerator()))
+                .element("beat-type", String.valueOf(signature.denominator()))
+                .close("time");
+    }
+
+    private static void tempo(XmlWriter out, NoteValue unit, long perMinute,
+                              double quarterBeatsPerMinute) {
+        out.open("direction", "placement", "above");
+        // The qualifier first, as its own direction-type -- the same word
+        // LilyPond prints, from the same constant: this file and the .ly
+        // are two spellings of one page, and a reader engraving this one
+        // would otherwise state as exact the figure the PDF marks as an
+        // estimate.
+        out.open("direction-type")
+                .element("words", TempoMark.ESTIMATE)
+                .close("direction-type");
+        out.open("direction-type").open("metronome")
+                .element("beat-unit", unit.musicXmlType());
+        for (int i = 0; i < unit.dots(); i++) {
+            out.empty("beat-unit-dot");
+        }
+        out.element("per-minute", String.valueOf(perMinute))
+                .close("metronome").close("direction-type");
+        // <sound tempo> is quarter notes a minute by definition, whatever
+        // unit the mark is printed in -- which is the trap the printed mark
+        // exists to avoid in the other direction. Taken from the model's own
+        // figure rather than reconstructed from the rounded mark, so that a
+        // 6/8 score plays at the tempo it was transcribed at rather than at
+        // whatever three times a rounded dotted-quarter count comes to.
+        out.empty("sound", "tempo", String.valueOf(Math.round(quarterBeatsPerMinute)));
+        out.close("direction");
+    }
+
+    /** The double bar line at the end of the piece, which is what LilyPond's {@code \bar "|."} draws. */
+    private static void finalBarLine(XmlWriter out) {
+        out.open("barline", "location", "right")
+                .element("bar-style", "light-heavy")
+                .close("barline");
+    }
+
     // ---------------------------------------------------------------- writer
 
     /**
@@ -232,17 +499,23 @@ public final class MusicXmlExport {
      * until the next callback, because a tuplet bracket is stopped on its last
      * note and the layout says the bracket has closed only after that note has
      * gone by.
+     *
+     * <p>The chord symbols of a lead sheet ride along: each staff bar takes the
+     * chart bar of the same index and writes every named cell before the note
+     * sounding when it begins, offset into that note where the change falls
+     * inside it.
      */
     private static final class MusicXmlStaffWriter implements StaffWriter {
 
         /** The voice every note is in. One part, one voice: #93. */
-        private static final String VOICE = "1";
+        static final String VOICE = "1";
 
         /** The bracket number every tuplet carries. Brackets never nest here. */
         private static final String TUPLET_NUMBER = "1";
 
         private final XmlWriter part;
         private final double quarterBeatsPerMinute;
+        private final List<ChartLayout.Bar> chart;
 
         private StaffClef clef;
         private Optional<Key> key = Optional.empty();
@@ -277,9 +550,14 @@ public final class MusicXmlExport {
         /** Whether the note written next is the far end of a tie. */
         private boolean tiedFromPrevious;
 
-        MusicXmlStaffWriter(XmlWriter part, double quarterBeatsPerMinute) {
+        /** The chord symbols of this bar not yet written, in order. */
+        private List<Placed> harmonies = new ArrayList<>();
+
+        MusicXmlStaffWriter(XmlWriter part, double quarterBeatsPerMinute,
+                            List<ChartLayout.Bar> chart) {
             this.part = part;
             this.quarterBeatsPerMinute = quarterBeatsPerMinute;
+            this.chart = chart;
         }
 
         @Override
@@ -295,15 +573,16 @@ public final class MusicXmlExport {
             index = barIndex;
             written = 0;
             expected = divisionsOf(barMeter.quarterBeatsPerBar());
+            harmonies = barIndex < chart.size() ? placed(chart.get(barIndex)) : new ArrayList<>();
             boolean first = bars == 0;
             bars++;
             if (first || meterChanged) {
                 measure.open("attributes");
                 if (first) {
                     measure.element("divisions", String.valueOf(DIVISIONS_PER_QUARTER));
-                    keySignature();
+                    keySignature(measure, key);
                 }
-                timeSignature(barMeter);
+                timeSignature(measure, barMeter);
                 if (first) {
                     clefElement();
                 }
@@ -314,30 +593,7 @@ public final class MusicXmlExport {
 
         @Override
         public void tempo(NoteValue unit, long perMinute) {
-            measure.open("direction", "placement", "above");
-            // The qualifier first, as its own direction-type -- the same word
-            // LilyPond prints, from the same constant: this file and the .ly
-            // are two spellings of one page, and a reader engraving this one
-            // would otherwise state as exact the figure the PDF marks as an
-            // estimate.
-            measure.open("direction-type")
-                    .element("words", TempoMark.ESTIMATE)
-                    .close("direction-type");
-            measure.open("direction-type").open("metronome")
-                    .element("beat-unit", unit.musicXmlType());
-            for (int i = 0; i < unit.dots(); i++) {
-                measure.empty("beat-unit-dot");
-            }
-            measure.element("per-minute", String.valueOf(perMinute))
-                    .close("metronome").close("direction-type");
-            // <sound tempo> is quarter notes a minute by definition, whatever
-            // unit the mark is printed in -- which is the trap the printed mark
-            // exists to avoid in the other direction. Taken from the model's own
-            // figure rather than reconstructed from the rounded mark, so that a
-            // 6/8 score plays at the tempo it was transcribed at rather than at
-            // whatever three times a rounded dotted-quarter count comes to.
-            measure.empty("sound", "tempo", String.valueOf(Math.round(quarterBeatsPerMinute)));
-            measure.close("direction");
+            MusicXmlExport.tempo(measure, unit, perMinute, quarterBeatsPerMinute);
         }
 
         @Override
@@ -357,6 +613,10 @@ public final class MusicXmlExport {
             // no double holds that; the multiplication below is exact for every
             // fraction that reaches here, since the division is the last step.
             expected = divisionsOf(4.0 * wholeNotesNumerator / wholeNotesDenominator);
+            if (!chart.isEmpty()) {
+                harmonies = placed(ChordChart.intoPickup(chart.get(0),
+                        new StaffNotation.Pickup(wholeNotesNumerator, wholeNotesDenominator)));
+            }
         }
 
         @Override
@@ -381,7 +641,7 @@ public final class MusicXmlExport {
             flush();
             int duration = divisionsOf(soundingQuarters);
             pending = new PendingNote(pitches, value, duration, tiedFromPrevious, tied,
-                    tuplet, tuplet != null && !tupletHasNote);
+                    tuplet, tuplet != null && !tupletHasNote, due(written, written + duration));
             tupletHasNote = true;
             // A chord sounds once, however many note heads it has: only the
             // first carries the measure forward, and MusicXML says the same by
@@ -394,6 +654,9 @@ public final class MusicXmlExport {
         public void wholeBarRest(long wholeNotesNumerator, long wholeNotesDenominator) {
             flush();
             int duration = divisionsOf(4.0 * wholeNotesNumerator / wholeNotesDenominator);
+            for (Placed placed : due(written, written + duration)) {
+                harmony(measure, placed.chord(), placed.offset());
+            }
             // measure="yes" is the whole-bar rest: one symbol centred in the bar
             // whatever the meter, which is what LilyPond's R means too. No
             // <type>: a measure rest has no note value, and naming one would
@@ -418,6 +681,12 @@ public final class MusicXmlExport {
                                 + " divisions where it should hold " + expected
                                 + "; the layout and this export disagree about its length");
             }
+            if (!harmonies.isEmpty()) {
+                throw new IllegalStateException(
+                        "measure " + number() + " of " + meter + " has a chord change at division "
+                                + harmonies.getFirst().offset() + ", past its end;"
+                                + " the chart and the staff disagree about this bar");
+            }
         }
 
         @Override
@@ -428,11 +697,7 @@ public final class MusicXmlExport {
                                 + " the layout ended mid-tie");
             }
             if (measure != null) {
-                // The double bar line at the end of the piece, which is what
-                // LilyPond's \bar "|." draws. On the last measure only.
-                measure.open("barline", "location", "right")
-                        .element("bar-style", "light-heavy")
-                        .close("barline");
+                finalBarLine(measure);
             }
             emitMeasure();
         }
@@ -457,6 +722,49 @@ public final class MusicXmlExport {
             return String.valueOf(pickupBar ? index : index + 1);
         }
 
+        /** The named cells of a chart bar, at their offsets into it. */
+        private static List<Placed> placed(ChartLayout.Bar bar) {
+            List<Placed> placed = new ArrayList<>();
+            int at = 0;
+            for (ChartLayout.Cell cell : bar.cells()) {
+                if (cell.named()) {
+                    placed.add(new Placed(at, cell.chord()));
+                }
+                at += divisionsOf(cell.lengthQuarters());
+            }
+            return placed;
+        }
+
+        /** The same, for the first bar as the pickup cut it. */
+        private static List<Placed> placed(List<ChordChart.Cut> cuts) {
+            List<Placed> placed = new ArrayList<>();
+            int at = 0;
+            for (ChordChart.Cut cut : cuts) {
+                if (cut.named()) {
+                    placed.add(new Placed(at, cut.chord()));
+                }
+                at += divisionsOf(cut.length(), cut.perWhole());
+            }
+            return placed;
+        }
+
+        /**
+         * The chord symbols beginning within {@code [from, to)}, taken out of
+         * the bar's list and offset from {@code from}.
+         */
+        private List<Placed> due(int from, int to) {
+            List<Placed> due = new ArrayList<>();
+            Iterator<Placed> remaining = harmonies.iterator();
+            while (remaining.hasNext()) {
+                Placed placed = remaining.next();
+                if (placed.offset() >= from && placed.offset() < to) {
+                    due.add(new Placed(placed.offset() - from, placed.chord()));
+                    remaining.remove();
+                }
+            }
+            return due;
+        }
+
         /** Writes the held note, one {@code <note>} per note head. */
         private void flush() {
             if (pending == null) {
@@ -464,6 +772,9 @@ public final class MusicXmlExport {
             }
             PendingNote note = pending;
             pending = null;
+            for (Placed placed : note.harmonies) {
+                harmony(measure, placed.chord(), placed.offset());
+            }
             for (int i = 0; i < Math.max(1, note.pitches.size()); i++) {
                 measure.open("note");
                 if (i > 0) {
@@ -521,40 +832,6 @@ public final class MusicXmlExport {
             }
         }
 
-        /**
-         * The key signature.
-         *
-         * <p>Zero sharps when the score claims no key, which is what the
-         * LilyPond side writes as {@code c \major}: no accidental is put on the
-         * page that the pipeline never decided on. The {@code <mode>} is left
-         * off in that case rather than guessed, since "no key was decided" and
-         * "the key is C major" are different claims and only the second one
-         * names a mode.
-         */
-        private void keySignature() {
-            measure.open("key")
-                    .element("fifths", String.valueOf(
-                            key.map(Key::keySignatureAccidentals).orElse(0)));
-            key.ifPresent(k -> measure.element("mode", k.mode().lilyPondName()));
-            measure.close("key");
-        }
-
-        /**
-         * The time signature.
-         *
-         * <p>The numerator and denominator as the model holds them.
-         * {@link TimeSignature#beatStructure()} has no MusicXML equivalent that
-         * a reader acts on — beam grouping there is expressed per note, by
-         * {@code <beam>} elements this does not write — so a reader beams the
-         * bar from the meter, which is where the grouping came from anyway.
-         */
-        private void timeSignature(TimeSignature signature) {
-            measure.open("time")
-                    .element("beats", String.valueOf(signature.numerator()))
-                    .element("beat-type", String.valueOf(signature.denominator()))
-                    .close("time");
-        }
-
         private void clefElement() {
             measure.open("clef")
                     .element("sign", clef.sign() == 'F' ? "F" : "G")
@@ -576,11 +853,13 @@ public final class MusicXmlExport {
          * convention MusicXML uses, so it passes straight through.
          */
         private void pitch(PitchSpelling spelling) {
-            measure.open("pitch").element("step", spelling.letter().name());
-            if (spelling.accidental().alteration() != 0) {
-                measure.element("alter", String.valueOf(spelling.accidental().alteration()));
-            }
+            measure.open("pitch");
+            step(measure, "step", "alter", spelling);
             measure.element("octave", String.valueOf(spelling.octave())).close("pitch");
+        }
+
+        /** A chord symbol and where it begins, in divisions. */
+        private record Placed(int offset, Optional<Chord> chord) {
         }
 
         /** A note held back until the callback after it, which may stop its bracket. */
@@ -593,10 +872,12 @@ public final class MusicXmlExport {
             final boolean tiedOut;
             final int[] tuplet;
             final boolean tupletStart;
+            final List<Placed> harmonies;
             boolean tupletStop;
 
             PendingNote(List<PitchSpelling> pitches, NoteValue value, int duration,
-                        boolean tiedIn, boolean tiedOut, int[] tuplet, boolean tupletStart) {
+                        boolean tiedIn, boolean tiedOut, int[] tuplet, boolean tupletStart,
+                        List<Placed> harmonies) {
                 this.pitches = pitches;
                 this.value = value;
                 this.duration = duration;
@@ -604,6 +885,7 @@ public final class MusicXmlExport {
                 this.tiedOut = tiedOut;
                 this.tuplet = tuplet;
                 this.tupletStart = tupletStart;
+                this.harmonies = harmonies;
             }
         }
     }

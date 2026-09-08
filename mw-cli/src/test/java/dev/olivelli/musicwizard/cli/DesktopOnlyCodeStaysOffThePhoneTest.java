@@ -295,6 +295,12 @@ class DesktopOnlyCodeStaysOffThePhoneTest {
             assertThat((String) chart.getMethod("toLilyPond", scoreClass).invoke(null, score))
                     .describedAs("the LilyPond source the app can share out")
                     .contains("\\version");
+            // What the app engraves from on the device: the chart as MusicXML,
+            // chord symbols included.
+            Class<?> export = phone.loadClass("dev.olivelli.musicwizard.notation.MusicXmlExport");
+            assertThat((String) export.getMethod("chordChart", scoreClass).invoke(null, score))
+                    .describedAs("the MusicXML the app engraves on the device")
+                    .contains("<harmony>");
         }
     }
 

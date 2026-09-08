@@ -73,7 +73,7 @@ final class Goldens {
      * there made the update mode a trap: every file was rewritten and then
      * compared against what {@code process-test-resources} had already staged.
      */
-    private static String read(String name, String extension) {
+    static String read(String name, String extension) {
         Optional<Path> onDisk = directory().map(dir -> dir.resolve(name + extension))
                 .filter(Files::isRegularFile);
         if (onDisk.isPresent()) {

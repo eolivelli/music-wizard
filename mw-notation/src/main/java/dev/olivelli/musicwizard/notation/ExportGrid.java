@@ -76,6 +76,31 @@ final class ExportGrid {
     }
 
     /**
+     * A length counted in {@code perWhole}ths of a whole note as whole grid
+     * units: exact or refused.
+     *
+     * <p>What is tested is the length itself, not the unit it is counted in — a
+     * unit no grid unit divides can still count lengths every grid unit does.
+     *
+     * @throws IllegalStateException if the length is not a whole number of
+     *         grid units
+     */
+    static int unitsOf(long length, long perWhole) {
+        if (length < 0 || perWhole <= 0) {
+            throw new IllegalArgumentException(
+                    "a length is a non-negative count of a positive unit, got " + length
+                            + "/" + perWhole);
+        }
+        long exact = Math.multiplyExact(length, 4L * PER_QUARTER);
+        if (exact % perWhole != 0) {
+            throw new IllegalStateException(
+                    "a length of " + length + "/" + perWhole + " whole notes is not a whole"
+                            + " number of grid units");
+        }
+        return Math.toIntExact(exact / perWhole);
+    }
+
+    /**
      * A length in quarter-note beats as whole grid units.
      *
      * <p><b>Exact, with no tolerance.</b> A claim about IEEE arithmetic and
