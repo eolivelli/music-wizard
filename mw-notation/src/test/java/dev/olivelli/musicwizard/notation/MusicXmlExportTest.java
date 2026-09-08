@@ -47,13 +47,13 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import javax.xml.XMLConstants;
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.parsers.ParserConfigurationException;
 import javax.xml.parsers.SAXParserFactory;
-import javax.xml.transform.Source;
 import javax.xml.transform.sax.SAXSource;
 import javax.xml.transform.stream.StreamSource;
 import javax.xml.validation.Schema;
@@ -65,6 +65,9 @@ import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
+import org.w3c.dom.bootstrap.DOMImplementationRegistry;
+import org.w3c.dom.ls.DOMImplementationLS;
+import org.w3c.dom.ls.LSInput;
 import org.xml.sax.InputSource;
 import org.xml.sax.SAXException;
 import org.xml.sax.XMLReader;
@@ -77,12 +80,11 @@ import org.xml.sax.XMLReader;
  * is unchanged. So every document these tests produce is also
  *
  * <ul>
- *   <li><b>validated against the MusicXML 4.0 XSD</b> that proxymusic ships in
- *       its own jar. That schema is the format's definition and the one
- *       authority here that this project did not write, so it is what "correct
- *       against the specification" means mechanically rather than by my reading
- *       of it. See {@code src/test/resources/xsd/README.md} for why it needs two
- *       companion namespaces to load;
+ *   <li><b>validated against the MusicXML 4.0 XSD</b>, vendored under
+ *       {@code src/test/resources/xsd}. That schema is the format's definition
+ *       and the one authority here that this project did not write, so it is
+ *       what "correct against the specification" means mechanically rather than
+ *       by my reading of it. Its README says how it loads offline;
  *   <li><b>re-parsed and re-added up</b>, measure by measure, from the emitted
  *       {@code <duration>} elements. That is deliberately not the check the
  *       exporter runs on itself: this one reads the bytes that were written,
@@ -119,8 +121,12 @@ class MusicXmlExportTest {
      */
     private static final List<String> UNPAIRED = List.of();
 
-    /** The MusicXML schema, inside the proxymusic jar. */
-    private static final String MUSICXML_XSD = "META-INF/jaxb/xsd/musicxml.xsd";
+    private static final String MUSICXML_XSD = "xsd/musicxml.xsd";
+
+    /** The two namespaces the schema imports, and the vendored file for each. */
+    private static final Map<String, String> IMPORTED = Map.of(
+            XMLConstants.XML_NS_URI, "xsd/xml.xsd",
+            "http://www.w3.org/1999/xlink", "xsd/xlink.xsd");
 
     /** Loaded once: parsing a 380 KB schema per test dominates the run. */
     private static final Schema SCHEMA = loadSchema();
@@ -693,10 +699,9 @@ class MusicXmlExportTest {
                 + "<!DOCTYPE score-partwise PUBLIC"
                 + " \"-//Recordare//DTD MusicXML 4.0 Partwise//EN\""
                 + " \"http://www.musicxml.org/dtds/partwise.dtd\">\n");
-        // 4.0 and not proxymusic's 4.0.3, which is its own artifact version.
-        // MusicXML's versions are 1.0, 1.1, 2.0, 3.0, 3.1 and 4.0, and a reader
-        // that resolves the public identifier through a catalogue finds nothing
-        // under a DTD name that has never existed.
+        // A version of the format. MusicXML's are 1.0, 1.1, 2.0, 3.0, 3.1 and
+        // 4.0, and a reader that resolves the public identifier through a
+        // catalogue finds nothing under a DTD name that has never existed.
         assertThat(parse(xml).getDocumentElement().getAttribute("version")).isEqualTo("4.0");
         assertThat(xml).endsWith("\n");
     }
@@ -713,8 +718,8 @@ class MusicXmlExportTest {
         // that -- so if this passed, the validator above would be checking
         // nothing, which is exactly the failure a check nobody has seen fail
         // hides. The schema not loading at all is the realistic way in: its
-        // xml and xlink references are unresolvable without the two stubs in
-        // src/test/resources/xsd.
+        // xml and xlink imports are unresolvable offline without the resolver
+        // that maps them onto the files beside it.
         String broken = valid.replace("<type>whole</type>", "<type>crotchet</type>");
         assertThat(broken).isNotEqualTo(valid);
         assertThatThrownBy(() -> assertValidMusicXml("broken", broken))
@@ -811,32 +816,43 @@ class MusicXmlExportTest {
         }
     }
 
+    /**
+     * The schema, with its two imports resolved to the files beside it.
+     *
+     * <p>The parser would otherwise follow the networked locations the schema
+     * names, which is a download {@code mvn verify} must not depend on; a
+     * namespace this does not know is refused rather than fetched.
+     */
     private static Schema loadSchema() {
-        URL musicXml = MusicXmlExportTest.class.getClassLoader().getResource(MUSICXML_XSD);
-        if (musicXml == null) {
-            throw new AssertionError(
-                    "the MusicXML schema is not on the test classpath; it ships inside the"
-                            + " proxymusic jar at " + MUSICXML_XSD);
-        }
         try {
             SchemaFactory factory =
                     SchemaFactory.newInstance(XMLConstants.W3C_XML_SCHEMA_NS_URI);
-            return factory.newSchema(new Source[] {
-                    namespaceStub("xsd/xml.xsd"),
-                    namespaceStub("xsd/xlink.xsd"),
-                    new StreamSource(musicXml.toString()),
+            DOMImplementationLS dom = (DOMImplementationLS) DOMImplementationRegistry
+                    .newInstance().getDOMImplementation("LS");
+            factory.setResourceResolver((type, namespace, publicId, systemId, base) -> {
+                String vendored = IMPORTED.get(namespace);
+                if (vendored == null) {
+                    throw new AssertionError("the MusicXML schema imports " + systemId
+                            + ", which is not vendored beside it and must not be fetched");
+                }
+                LSInput input = dom.createLSInput();
+                input.setSystemId(resource(vendored).toString());
+                return input;
             });
+            return factory.newSchema(new StreamSource(resource(MUSICXML_XSD).toString()));
         } catch (SAXException e) {
             throw new AssertionError("could not load the MusicXML schema", e);
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException(e);
         }
     }
 
-    private static Source namespaceStub(String resource) {
-        URL url = MusicXmlExportTest.class.getClassLoader().getResource(resource);
+    private static URL resource(String name) {
+        URL url = MusicXmlExportTest.class.getClassLoader().getResource(name);
         if (url == null) {
-            throw new AssertionError("missing test resource " + resource);
+            throw new AssertionError("missing test resource " + name);
         }
-        return new StreamSource(url.toString());
+        return url;
     }
 
     // ------------------------------------------------------------------- XML

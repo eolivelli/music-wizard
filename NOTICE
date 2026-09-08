@@ -23,7 +23,6 @@ are deliberately excluded (see CONTRIBUTING.md).
   ch.qos.logback:logback-classic             EPL-1.0 / LGPL-2.1
   com.tagtraum:jipes                         LGPL-2.1
   com.tagtraum:ffsampledsp-complete          LGPL-2.1 (bundles FFmpeg natives, LGPL-2.1+)
-  org.audiveris:proxymusic                   LGPL-3.0
 
 One dependency is vendored as source rather than resolved from Maven Central,
 so the enforcer's banned-artifact list never sees it -- its licence position is
