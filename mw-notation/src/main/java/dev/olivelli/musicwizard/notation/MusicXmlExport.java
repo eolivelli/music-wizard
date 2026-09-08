@@ -175,9 +175,8 @@ public final class MusicXmlExport {
      * singer reads it. Where that note already carries one of the lane's
      * syllables, or is a rest, or is the far end of a tie the syllable does not
      * begin on, the syllable is written as text at its own moment instead —
-     * placed where the page places it. Within the staff's bars nothing is
-     * dropped; a syllable past the staff's last bar goes with the chords there
-     * (#778).
+     * placed where the page places it. A syllable past the staff's last bar
+     * goes with the chords there (#778).
      *
      * @throws IllegalArgumentException if the track is percussion, or holds a
      *         note that has not been quantized
@@ -709,9 +708,9 @@ public final class MusicXmlExport {
         private List<SungAt> lyrics = new ArrayList<>();
 
         /**
-         * The lanes whose last written syllable opened an extender, which the
-         * next closing of that lane stops. A closing with nothing to stop says
-         * nothing; a melisma closed on its own note opens nothing.
+         * The lanes with an extender open. One ends where the lane's next
+         * syllable is written, or where a closing stops it; a closing with
+         * nothing open says nothing.
          */
         private final List<Integer> extending = new ArrayList<>();
 
@@ -1028,20 +1027,30 @@ public final class MusicXmlExport {
                     said.add(at);
                 }
             }
+            // A syllable written ends whatever extender its lane had open.
+            for (Sung sung : carried) {
+                extending.remove(Integer.valueOf(sung.lane()));
+            }
             // A closing on the note that carries its lane's syllable closes
-            // nothing the format can draw: a melisma ending inside its own
-            // note opens no extender, and one ending on the next syllable is
-            // ended by that syllable. Elsewhere it stops the lane's open
-            // extender, a rest included, and says nothing where none is open.
+            // nothing the format can draw: after that syllable it is the
+            // syllable's own melisma ending inside its note, which opens no
+            // extender; before it, an earlier melisma the syllable ends.
+            // Elsewhere it stops the lane's open extender, a rest included,
+            // and says nothing where none is open.
             for (SungAt at : note.lyrics) {
                 if (!at.sung().closesExtender()) {
                     continue;
                 }
                 int lane = at.sung().lane();
-                if (lanesTaken.contains(lane)) {
-                    carried.replaceAll(sung -> sung.lane() == lane && sung.extendStart()
-                            ? new Sung(sung.lane(), sung.into(), sung.text(), sung.syllabic(), false)
-                            : sung);
+                Sung own = carried.stream()
+                        .filter(sung -> sung.lane() == lane && !sung.closesExtender())
+                        .findFirst().orElse(null);
+                if (own != null) {
+                    if (at.sung().into() > own.into()) {
+                        carried.replaceAll(sung -> sung == own
+                                ? new Sung(own.lane(), own.into(), own.text(), own.syllabic(), false)
+                                : sung);
+                    }
                 } else if (extending.remove(Integer.valueOf(lane))) {
                     carried.add(at.sung());
                     lanesTaken.add(lane);

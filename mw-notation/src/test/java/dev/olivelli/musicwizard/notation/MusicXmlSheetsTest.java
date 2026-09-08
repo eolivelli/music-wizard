@@ -407,9 +407,10 @@ class MusicXmlSheetsTest {
     @Test
     @DisplayName("a melisma ending in a silent bar is closed once, on the bar's rest")
     void aMelismaIsClosedInASilentBar() {
-        // Two held words ending in the same silent bar: the first opens an
-        // extender the bar's rest stops; the second was said on the same note
-        // and opened none, so the rest has one stop and not two.
+        // Two held words closing in the same silent bar: the first opened an
+        // extender the bar's rest stops; the second was said inside that bar
+        // and opened none, so its closing has nothing to stop and the rest
+        // carries one stop, not two.
         TempoMap map = TempoMap.constant(120, TimeSignature.FOUR_FOUR);
         NoteTrack melody = new NoteTrack(PartRole.LEAD_VOCAL, "Voice", List.of(
                 note(0, 4, "C5"), note(8, 4, "D5")), Confidence.CERTAIN);
@@ -420,10 +421,7 @@ class MusicXmlSheetsTest {
         QuantizedScore quantized = withWords(
                 Fixtures.quantized(score, GridResolution.HALF_BEAT, GridResolution.HALF_BEAT,
                         GridResolution.HALF_BEAT),
-                new LyricWord("la", 0, 2.5, java.util.Optional.empty(), java.util.Optional.empty(),
-                        false, true, Confidence.CERTAIN),
-                new LyricWord("li", 1, 3, java.util.Optional.empty(), java.util.Optional.empty(),
-                        false, true, Confidence.CERTAIN));
+                held("la", 0, 4.5), held("li", 5, 6));
 
         Document document = parse(MusicXmlExport.leadSheet(quantized, melodyOf(quantized)));
 
@@ -433,6 +431,39 @@ class MusicXmlSheetsTest {
         assertThat(childElements(rest, "lyric")).hasSize(1);
         assertThat(one(one(rest, "lyric"), "extend").getAttribute("type")).isEqualTo("stop");
         assertThat(elements(document, "extend")).hasSize(2);
+    }
+
+    @Test
+    @DisplayName("a syllable ends the extender before it and still opens its own")
+    void aSyllableEndsTheExtenderBeforeIt() {
+        // The first melisma's closing lands on the note that carries the next
+        // held word: that word ends the first extender by being written, and
+        // opens its own, which the note after stops.
+        TempoMap map = TempoMap.constant(120, TimeSignature.FOUR_FOUR);
+        NoteTrack melody = new NoteTrack(PartRole.LEAD_VOCAL, "Voice", List.of(
+                note(0, 1, "C5"), note(1, 3, "D5"), note(4, 4, "E5"), note(8, 4, "F5")),
+                Confidence.CERTAIN);
+        Score score = Score.empty(map, 60)
+                .withTrack(melody)
+                .withChords(new ChordProgression(List.of(
+                        chord("C4", ChordQuality.MAJOR, 0, 12)), Confidence.CERTAIN));
+        QuantizedScore quantized = withWords(
+                Fixtures.quantized(score, GridResolution.HALF_BEAT, GridResolution.HALF_BEAT,
+                        GridResolution.HALF_BEAT),
+                held("la", 0, 1.5), held("li", 2, 6));
+
+        Document document = parse(MusicXmlExport.leadSheet(quantized, melodyOf(quantized)));
+
+        List<Element> measures = elements(document, "measure");
+        List<Element> first = childElements(measures.get(0), "note");
+        assertThat(one(one(first.get(0), "lyric"), "extend").getAttribute("type"))
+                .isEqualTo("start");
+        assertThat(text(one(one(first.get(1), "lyric"), "text"))).isEqualTo("li");
+        assertThat(one(one(first.get(1), "lyric"), "extend").getAttribute("type"))
+                .isEqualTo("start");
+        Element second = one(measures.get(1), "note");
+        assertThat(one(one(second, "lyric"), "extend").getAttribute("type")).isEqualTo("stop");
+        assertThat(elements(document, "extend")).hasSize(3);
     }
 
     @Test
@@ -527,6 +558,12 @@ class MusicXmlSheetsTest {
     /** A word sung from one beat to another, at the fixtures' tempo. */
     private static LyricWord sung(String text, double fromBeat, double toBeat) {
         return LyricWord.ofSeconds(text, fromBeat / 2, toBeat / 2, Confidence.CERTAIN);
+    }
+
+    /** A word held past its own moment, to the beat its extent ends on. */
+    private static LyricWord held(String text, double fromBeat, double toBeat) {
+        return new LyricWord(text, fromBeat / 2, toBeat / 2, java.util.Optional.empty(),
+                java.util.Optional.empty(), false, true, Confidence.CERTAIN);
     }
 
     /** The same, continuing into the next word as one word's syllables do. */
