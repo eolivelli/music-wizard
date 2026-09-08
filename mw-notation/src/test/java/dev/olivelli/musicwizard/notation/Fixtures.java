@@ -20,6 +20,9 @@ import dev.olivelli.musicwizard.arrange.BarGrid;
 import dev.olivelli.musicwizard.arrange.GridResolution;
 import dev.olivelli.musicwizard.arrange.QuantizedScore;
 import dev.olivelli.musicwizard.arrange.SwingFeel;
+import dev.olivelli.musicwizard.core.model.Chord;
+import dev.olivelli.musicwizard.core.model.ChordProgression;
+import dev.olivelli.musicwizard.core.model.ChordQuality;
 import dev.olivelli.musicwizard.core.model.Confidence;
 import dev.olivelli.musicwizard.core.model.Key;
 import dev.olivelli.musicwizard.core.model.Mode;
@@ -107,6 +110,29 @@ final class Fixtures {
                 voice);
     }
 
+    /**
+     * Four bars of chords with no melody, for the chart and its MusicXML twin.
+     *
+     * <p>Two chords to a bar and one held across a bar line, so that a cell is
+     * named and the next is not; a slash chord; an estimated silence; and a
+     * flat root, which a spelling carries and a MIDI number does not.
+     */
+    static Score chordChart() {
+        List<Chord> chords = List.of(
+                chord("C4", ChordQuality.MAJOR, 0, 1),
+                chord("G4", ChordQuality.MAJOR, 1, 2).withBass(PitchSpelling.parse("B3")),
+                chord("A4", ChordQuality.MINOR_SEVENTH, 2, 6),
+                Chord.noChord(6, 7, Confidence.CERTAIN),
+                chord("Db4", ChordQuality.MAJOR, 7, 8));
+        return Score.empty(TempoMap.constant(120, TimeSignature.FOUR_FOUR), 8)
+                .withChords(new ChordProgression(chords, Confidence.CERTAIN))
+                .withMetadata("Chart Practice", "Anonymous");
+    }
+
+    private static Chord chord(String root, ChordQuality quality, double from, double to) {
+        return Chord.ofSeconds(PitchSpelling.parse(root), quality, from, to, Confidence.CERTAIN);
+    }
+
     /** A note with musical timing, as the quantizer would leave it. */
     private static Note note(double onsetBeat, double beats, String spelling) {
         PitchSpelling written = PitchSpelling.parse(spelling);
@@ -132,7 +158,7 @@ final class Fixtures {
      * quantizer happens to decide this week. The end-to-end proof that the two
      * agree is in {@code mw-it}.
      */
-    private static QuantizedScore quantized(Score score, GridResolution... perBar) {
+    static QuantizedScore quantized(Score score, GridResolution... perBar) {
         List<BarGrid> grids = new ArrayList<>(perBar.length);
         double startBeat = 0;
         for (int bar = 0; bar < perBar.length; bar++) {
