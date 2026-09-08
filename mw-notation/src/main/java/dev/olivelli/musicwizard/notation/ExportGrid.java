@@ -77,12 +77,10 @@ final class ExportGrid {
 
     /**
      * A length counted in {@code perWhole}ths of a whole note as whole grid
-     * units, by the same rule as {@link #unitsOf(double)}: exact or refused.
+     * units: exact or refused.
      *
-     * <p>The fraction form exists for the pickup, which travels as one because
-     * a pickup inside a triplet is no double; what is tested is the length
-     * itself, not the unit it is counted in — a unit no grid unit divides can
-     * still count lengths every grid unit does.
+     * <p>What is tested is the length itself, not the unit it is counted in — a
+     * unit no grid unit divides can still count lengths every grid unit does.
      *
      * @throws IllegalStateException if the length is not a whole number of
      *         grid units
