@@ -11,6 +11,7 @@ below, and #336):
 |---|---|
 | Apache-2.0, MIT, BSD | Yes |
 | LGPL | Yes, as an **unmodified library dependency** only |
+| MPL-2.0 | Yes, as an **unmodified library dependency** only; today alphaTab, in the Android app |
 | GPL, AGPL | **No** |
 | CC BY-NC-SA (models and datasets) | **No** |
 

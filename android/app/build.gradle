@@ -91,6 +91,12 @@ android {
         }
     }
 
+    androidResources {
+        // alphaTab ships two soundfonts for its synthesizer, which the app
+        // never plays; its music font stays.
+        ignoreAssetsPattern = '!sonivox.sf2:!sonivox.sf3'
+    }
+
     lint {
         // The MW jars are ordinary JVM code and lint has opinions about JVM
         // APIs it cannot see the guards for; the app's own sources are what
@@ -101,8 +107,10 @@ android {
 
 configurations.configureEach {
     // Everything shipped inside the APK stays Apache-2.0/BSD/MIT, the same
-    // discipline the reactor's enforcer applies. The reactor's LGPL
-    // dependencies are not reachable from the harmony path this app runs:
+    // discipline the reactor's enforcer applies, with one exception decided
+    // by Enrico (#771): alphaTab, MPL-2.0, unmodified, the engraver the app
+    // draws sheet music with. The reactor's LGPL dependencies are not
+    // reachable from the harmony path this app runs:
     //   * jipes         (LGPL-2.1) - declared by mw-dsp, referenced by no
     //                                source file in the repository.
     //   * ffsampledsp   (LGPL-2.1) - the MP3/FLAC provider AudioDecoder finds
@@ -114,6 +122,16 @@ configurations.configureEach {
     // alone.
     exclude group: 'com.tagtraum', module: 'jipes'
     exclude group: 'com.tagtraum', module: 'ffsampledsp-complete'
+
+    // alphaTab declares four dependencies the app does not use. core-ktx and
+    // appcompat serve only its AlphaTabView widget, which the app never
+    // creates, and the core-ktx it names wants a newer compileSdk than this
+    // build's. The two alphaSkia artifacts are the natives behind its "skia"
+    // engine; the app draws with its "android" engine, which needs none.
+    exclude group: 'androidx.core', module: 'core-ktx'
+    exclude group: 'androidx.appcompat'
+    exclude group: 'net.alphatab', module: 'alphaSkia-android'
+    exclude group: 'net.alphatab', module: 'alphaSkia'
 
     // A backstop, not the fix: #247 removed mw-ml -- and with it ONNX Runtime's
     // desktop natives -- from mw-transcribe's own dependencies, and the reactor
@@ -148,6 +166,11 @@ dependencies {
     // out is how a phone recording reaches the desktop corpus, so it is worth
     // the one dependency rather than a hand-rolled ContentProvider.
     implementation 'androidx.core:core:1.13.1'
+
+    // The engraver: reads the MusicXML the notation module writes and draws
+    // it on the device. Kotlin, consumed as ordinary classes; no Kotlin
+    // plugin. Its licence is the one exception noted above.
+    implementation 'net.alphatab:alphaTab:1.8.4'
 
     coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.5'
 
