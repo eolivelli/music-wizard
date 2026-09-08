@@ -17,19 +17,25 @@
 package dev.olivelli.musicwizard.android;
 
 import android.content.Intent;
+import android.graphics.Bitmap;
 import android.os.Bundle;
+import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.ImageView;
+import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 import dev.olivelli.musicwizard.android.mw.MwAnalysis;
 import dev.olivelli.musicwizard.android.mw.RecordingStore;
+import dev.olivelli.musicwizard.android.mw.SheetRenderer;
 import dev.olivelli.musicwizard.core.model.Score;
 import java.io.File;
 import java.io.IOException;
+import java.util.List;
 
 /**
- * The result screen: tempo, meter, and the chart as text.
+ * The result screen: tempo, meter, and the chart, engraved and as text.
  *
  * <p>An analysis is cached in {@code <name>.score.json} beside its audio, so
  * opening a take that has been analysed once is instant, and "re-analyze"
@@ -39,7 +45,13 @@ import java.io.IOException;
  * still shown and the screen says so; {@code MwAnalysis.writeCache} records why
  * that is the usual case on Android today.
  */
-public final class ResultActivity extends MwActivity implements AnalysisJobs.Listener {
+public final class ResultActivity extends MwActivity
+        implements AnalysisJobs.Listener, SheetJobs.Listener {
+
+    /** How much one zoom step enlarges the engraving, and how far it may go. */
+    private static final double ZOOM_STEP = 1.25;
+    private static final double ZOOM_MIN = 0.5;
+    private static final double ZOOM_MAX = 4;
 
     /** Absolute path of the WAV to show. */
     public static final String EXTRA_WAV = "wav";
@@ -50,6 +62,15 @@ public final class ResultActivity extends MwActivity implements AnalysisJobs.Lis
     private EditText notes;
     private Button analyzeButton;
     private Button shareButton;
+    private Button viewButton;
+    private View sheetScroll;
+    private View textScroll;
+    private LinearLayout sheet;
+
+    /** The score on screen, re-engraved on every zoom; null when there is none. */
+    private Score shown;
+    private double zoom = 1;
+    private boolean sheetVisible;
 
     /** The text on screen, kept so that "share" sends exactly what is shown. */
     private String shareable = "";
@@ -78,8 +99,15 @@ public final class ResultActivity extends MwActivity implements AnalysisJobs.Lis
 
         loadedNotes = RecordingStore.readNotes(new RecordingStore.Recording(wav));
         notes.setText(loadedNotes);
+        viewButton = findViewById(R.id.viewButton);
+        sheetScroll = findViewById(R.id.sheetScroll);
+        textScroll = findViewById(R.id.textScroll);
+        sheet = findViewById(R.id.sheet);
         analyzeButton.setOnClickListener(view -> analyze());
         shareButton.setOnClickListener(view -> shareText());
+        viewButton.setOnClickListener(view -> showSheet(!sheetVisible));
+        findViewById(R.id.zoomInButton).setOnClickListener(view -> rezoom(ZOOM_STEP));
+        findViewById(R.id.zoomOutButton).setOnClickListener(view -> rezoom(1 / ZOOM_STEP));
         // Not gated on there being an analysis: the recording alone is the
         // ground truth worth moving, and the chart is whatever the phone
         // happened to make of it.
@@ -184,6 +212,7 @@ public final class ResultActivity extends MwActivity implements AnalysisJobs.Lis
         status.setText(R.string.not_analyzed);
         chart.setText("");
         shareable = "";
+        clearSheet();
     }
 
     /**
@@ -203,6 +232,69 @@ public final class ResultActivity extends MwActivity implements AnalysisJobs.Lis
                 : MwAnalysis.summary(score) + "\n" + cacheNote);
         shareable = MwAnalysis.chartText(score);
         chart.setText(shareable);
+        shown = score;
+        engrave();
+    }
+
+    /** Asks for the engraving at the pane's width, once the pane has one. */
+    private void engrave() {
+        Score score = shown;
+        if (score == null) {
+            return;
+        }
+        sheetScroll.post(() -> {
+            int width = sheetScroll.getWidth() > 0 ? sheetScroll.getWidth()
+                    : getResources().getDisplayMetrics().widthPixels;
+            double density = getResources().getDisplayMetrics().density;
+            SheetJobs.get().render(getApplicationContext(), score, width, density * zoom, this);
+        });
+    }
+
+    private void rezoom(double factor) {
+        zoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, zoom * factor));
+        engrave();
+    }
+
+    @Override
+    public void onSheet(List<SheetRenderer.Partial> systems) {
+        if (isFinishing() || isDestroyed()) {
+            return;
+        }
+        sheet.removeAllViews();
+        for (SheetRenderer.Partial system : systems) {
+            ImageView image = new ImageView(this);
+            image.setImageBitmap((Bitmap) system.result());
+            image.setAdjustViewBounds(true);
+            sheet.addView(image, new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT));
+        }
+        viewButton.setEnabled(true);
+        showSheet(true);
+    }
+
+    @Override
+    public void onSheetFailed(String why) {
+        if (isFinishing() || isDestroyed()) {
+            return;
+        }
+        clearSheet();
+        status.setText(status.getText() + "\n" + getString(R.string.sheet_failed, why));
+    }
+
+    /** Text only, until the next engraving arrives. */
+    private void clearSheet() {
+        shown = null;
+        sheet.removeAllViews();
+        viewButton.setEnabled(false);
+        showSheet(false);
+    }
+
+    private void showSheet(boolean engraved) {
+        sheetVisible = engraved;
+        sheetScroll.setVisibility(engraved ? View.VISIBLE : View.GONE);
+        textScroll.setVisibility(engraved ? View.GONE : View.VISIBLE);
+        viewButton.setText(engraved ? R.string.show_text : R.string.show_sheet);
     }
 
     private void shareText() {
@@ -240,5 +332,6 @@ public final class ResultActivity extends MwActivity implements AnalysisJobs.Lis
         status.setText("analysis failed: " + message);
         chart.setText("");
         shareable = "";
+        clearSheet();
     }
 }

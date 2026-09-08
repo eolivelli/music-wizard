@@ -23,9 +23,11 @@ the dependency rule matters: `mw-cli` is the only module that depends on
 `mw-ml`, so ONNX Runtime's desktop natives never enter the app's compile
 closure. A test (`DesktopOnlyCodeStaysOffThePhoneTest`) holds the seam:
 the phone path must not reach `javax.sound`, desktop natives or LilyPond.
+The engraver, alphaTab, lives in the app alone, outside the reactor.
 
-On the device the pipeline runs decode → beats → chords → chart text — the
-same estimators as the desktop, no PDF and no LilyPond.
+On the device the pipeline runs decode → beats → chords → chart — the same
+estimators as the desktop, the chart engraved by alphaTab from the MusicXML
+the notation module writes; no LilyPond, and no PDF yet (#776).
 
 ## Getting takes off the phone
 
