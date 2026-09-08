@@ -105,6 +105,18 @@ public class MwAnalysisTest {
         }
     }
 
+    /** The engraver's "skia" natives are excluded; the app draws with its "android" engine. */
+    @Test
+    public void alphaSkiaIsNotOnTheClasspath() {
+        try {
+            Class.forName("alphaTab.alphaSkia.AlphaSkiaCanvas");
+            fail("alphaSkia is on the app's classpath; the exclusion in"
+                    + " app/build.gradle has stopped working");
+        } catch (ClassNotFoundException expected) {
+            // Exactly what the exclusion is for.
+        }
+    }
+
     /**
      * The whole harmony path runs with {@code mw-ml} excluded.
      *
