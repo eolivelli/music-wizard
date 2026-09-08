@@ -65,7 +65,7 @@ import org.junit.jupiter.api.io.TempDir;
  *       method of {@link dev.olivelli.musicwizard.transcribe.AudioTranscriber}
  *       calls {@code AudioDecoder} — both overloads are in one class file.
  *   <li><b>Reachability</b>, by running the seam under a classloader that
- *       refuses all five families. Resolution is what a call triggers, so this
+ *       refuses every family. Resolution is what a call triggers, so this
  *       sees past the class file: a decode from the {@code AudioBuffer} overload
  *       fails here with {@code NoClassDefFoundError} while confinement stays
  *       green. Its limit is the other side of the same coin — it sees the calls
@@ -118,8 +118,8 @@ class DesktopOnlyCodeStaysOffThePhoneTest {
          * The needle in source form, which has two readers: the phone
          * classloader refuses a class whose name starts with it, and {@link
          * #isNamedIn} looks for it in a constant pool beside the internal form.
-         * A prefix of a package for four of the five families and of a class
-         * name for {@code java.lang.Process}.
+         * A package prefix for most families, and a class-name prefix for
+         * {@code java.lang.Process}.
          */
         String dottedPrefix() {
             return needle.replace('/', '.');
@@ -222,7 +222,7 @@ class DesktopOnlyCodeStaysOffThePhoneTest {
     @Test
     @DisplayName("each needle matches the API it is meant to name")
     void theNeedlesMatchTheApisTheyName() throws Exception {
-        // Three of the five families are expected to be named by nothing, and a
+        // Some families are expected to be named by nothing, and a
         // mistyped needle produces exactly that answer. A class of each family
         // carries its own name in its own constant pool, so its class file is
         // the one input where every needle must hit.
@@ -233,7 +233,7 @@ class DesktopOnlyCodeStaysOffThePhoneTest {
             Class<?> probe = Class.forName(family.probe(), false,
                     DesktopOnlyCodeStaysOffThePhoneTest.class.getClassLoader());
             // Asked of the class itself rather than of a classloader, because
-            // three of the five live in a JDK module rather than on a classpath.
+            // some live in a JDK module rather than on a classpath.
             // A .class file is readable either way; other resources are not.
             byte[] classFile;
             try (InputStream in = probe.getResourceAsStream(
@@ -378,7 +378,7 @@ class DesktopOnlyCodeStaysOffThePhoneTest {
         void run() throws Exception;
     }
 
-    /** The loader the seam runs under: the app's classpath, refusing the five. */
+    /** The loader the seam runs under: the app's classpath, refusing every family. */
     private static URLClassLoader phoneClassLoader() throws Exception {
         return seamLoader(true, List.of());
     }
@@ -425,8 +425,8 @@ class DesktopOnlyCodeStaysOffThePhoneTest {
 
     /**
      * The jars the desktop-only families ship in, for the loaders that must see
-     * them. Three of the five are JDK modules and have no code source; the
-     * platform parent supplies those.
+     * them. A family in a JDK module has no code source; the platform parent
+     * supplies those.
      */
     private static List<URL> desktopCodeSources() throws Exception {
         List<URL> jars = new ArrayList<>();
