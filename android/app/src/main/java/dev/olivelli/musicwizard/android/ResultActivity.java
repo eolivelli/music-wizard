@@ -265,7 +265,8 @@ public final class ResultActivity extends MwActivity
     /** Asks for the engraving at the width the pane will have: its parent's, inside the padding. */
     private void engrave() {
         Score score = shown;
-        if (score == null || (score == engraved && zoom == engravedZoom)) {
+        // By value: a score read back from the cache is a new object each time.
+        if (score == null || (score.equals(engraved) && zoom == engravedZoom)) {
             return;
         }
         engraved = score;
