@@ -21,8 +21,7 @@ package dev.olivelli.musicwizard.notation;
  *
  * <p>Text rather than a DOM handed to a serializer, because the JDK's and
  * Android's serializers indent differently and a golden file has to describe
- * the bytes the phone writes too. Escaping is {@link HtmlWriter}'s: the two
- * documents this project writes have the same five characters to fear.
+ * the bytes the phone writes too. Escaping is {@link HtmlWriter}'s.
  */
 final class XmlWriter {
 
