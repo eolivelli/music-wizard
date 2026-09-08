@@ -137,8 +137,9 @@ by Enrico's decision and under his responsibility:
 
 LilyPond source is emitted **directly from the domain model**, not via
 `musicxml2ly`, which is lossy. MusicXML is a parallel export, not the route to
-PDF, and is not yet wired to the CLI. Without the LilyPond binary the tool
-still writes the `.ly` source and says so rather than failing.
+PDF; `mw render` writes it beside every `.ly`, and it is what anything but
+LilyPond engraves from (#771). Without the LilyPond binary the tool still
+writes both sources and says so rather than failing.
 
 Discovery checks, in order: the `notation.lilypondPath` config key, `$PATH`,
 then — on POSIX only — Homebrew and `/usr/local` prefixes. **LilyPond runs

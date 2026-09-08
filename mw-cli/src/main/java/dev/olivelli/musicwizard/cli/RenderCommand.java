@@ -38,6 +38,7 @@ import dev.olivelli.musicwizard.notation.ChordChart;
 import dev.olivelli.musicwizard.notation.LeadSheet;
 import dev.olivelli.musicwizard.notation.LilyPondRenderer;
 import dev.olivelli.musicwizard.notation.LyricSheet;
+import dev.olivelli.musicwizard.notation.MusicXmlExport;
 import dev.olivelli.musicwizard.notation.StaffNotation;
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -50,6 +51,7 @@ import java.util.Locale;
 import java.util.Optional;
 import java.util.concurrent.Callable;
 import java.util.function.BiFunction;
+import java.util.function.Supplier;
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Model.CommandSpec;
@@ -63,8 +65,9 @@ import picocli.CommandLine.Spec;
  * <p>LilyPond source is written for every part that can be produced; the PDF is
  * produced only if a LilyPond binary can be found. A missing binary degrades the
  * output rather than failing the command, since the source is still useful on
- * its own. MusicXML and MIDI export are named in the epic and are not written by
- * anything yet, so this says so rather than listing them.
+ * its own. A MusicXML twin is written beside every LilyPond source, being the
+ * route by which anything but LilyPond engraves (#771); the MIDI export exists
+ * in the notation layer and is not written here (#790).
  *
  * <p>The same posture governs the parts themselves, which is what #82 was
  * about. This command used to announce {@code voice, piano, bass, chords} and
@@ -421,6 +424,16 @@ final class RenderCommand implements Callable<Integer> {
                 warnings.addAll(emitted.warnings());
                 chartWritten |= part == Part.CHORDS;
             }
+            // A chart's MusicXML twin carries neither annotation; a setting one
+            // output honours and its twin discards in silence is the same
+            // confident wrong answer, so it is said once, beside the files --
+            // and only about a twin that was written.
+            boolean marked = options.beatMarks() && score.beatGrid().isPresent()
+                    || options.repeatTags();
+            if (marked && written.stream().anyMatch(RenderCommand::isChartTwin)) {
+                warnings.add("the .musicxml files carry neither beat marks nor repeat tags"
+                        + " (#777)");
+            }
         }
 
         if (semitones != 0 && !producible.isEmpty()
@@ -514,11 +527,10 @@ final class RenderCommand implements Callable<Integer> {
         System.out.println("Engraver   not found");
         System.out.println();
         System.out.println("LilyPond is not installed, so no PDF will be produced.");
-        // Named exactly, and no longer ".ly, .musicxml and .midi": nothing emits
-        // MusicXML or MIDI yet, and this command promising two files it does not
-        // write is the same defect as the parts list #82 was filed for.
-        System.out.println("The .ly source is still written, and can be engraved");
-        System.out.println("elsewhere. To install it:");
+        // Named exactly: the two sources this command writes, and no third it
+        // does not, which is the defect the parts list #82 was filed for.
+        System.out.println("The .ly and .musicxml sources are still written, and can be");
+        System.out.println("engraved elsewhere. To install it:");
         System.out.println("  brew install lilypond      (macOS, or Homebrew on Linux)");
         System.out.println("  apt install lilypond       (Debian or Ubuntu)");
         System.out.println("Or set notation.lilypondPath in the workspace config.");
@@ -540,6 +552,8 @@ final class RenderCommand implements Callable<Integer> {
             Path ly = out.resolve("chords.ly");
             Files.writeString(ly, ChordChart.toLilyPond(score, options));
             written.add(ly);
+            writeMusicXml(out.resolve("chords.musicxml"),
+                    () -> MusicXmlExport.chordChart(score), written, warnings);
 
             Emitted engraved = engrave(lilypond, ly);
             written.addAll(engraved.files());
@@ -565,6 +579,8 @@ final class RenderCommand implements Callable<Integer> {
             Path ly = out.resolve("chords-lyrics.ly");
             Files.writeString(ly, LyricSheet.toLilyPond(score, options));
             written.add(ly);
+            writeMusicXml(out.resolve("chords-lyrics.musicxml"),
+                    () -> MusicXmlExport.lyricSheet(score), written, warnings);
 
             Emitted engraved = engrave(lilypond, ly);
             written.addAll(engraved.files());
@@ -586,7 +602,8 @@ final class RenderCommand implements Callable<Integer> {
             Workspace workspace, Score score, Optional<Path> lilypond, ChartOptions options) {
         return writeStaffOutput(workspace, score, lilypond, "lead",
                 QuantizationSettings.DEFAULT,
-                (quantized, melody) -> LeadSheet.toLilyPond(quantized, melody));
+                (quantized, melody) -> LeadSheet.toLilyPond(quantized, melody),
+                (quantized, melody) -> MusicXmlExport.leadSheet(quantized, melody));
     }
 
     /**
@@ -605,7 +622,8 @@ final class RenderCommand implements Callable<Integer> {
             Workspace workspace, Score score, Optional<Path> lilypond, ChartOptions options) {
         return writeStaffOutput(workspace, score.withTrack(PlayableMelody.reduce(score)),
                 lilypond, "lead-playable", QuantizationSettings.READING,
-                (quantized, melody) -> LeadSheet.toLilyPond(quantized, melody));
+                (quantized, melody) -> LeadSheet.toLilyPond(quantized, melody),
+                (quantized, melody) -> MusicXmlExport.leadSheet(quantized, melody));
     }
 
     /**
@@ -679,13 +697,15 @@ final class RenderCommand implements Callable<Integer> {
             Workspace workspace, Score score, Optional<Path> lilypond, ChartOptions options) {
         return writeStaffOutput(workspace, score, lilypond, "voice",
                 QuantizationSettings.DEFAULT,
-                (quantized, melody) -> StaffNotation.toLilyPond(quantized, melody));
+                (quantized, melody) -> StaffNotation.toLilyPond(quantized, melody),
+                (quantized, melody) -> MusicXmlExport.toMusicXml(quantized, melody));
     }
 
-    /** What the melody outputs share: quantize, spell, write, engrave. */
+    /** What the melody outputs share: quantize, spell, write both sources, engrave. */
     private static Emitted writeStaffOutput(Workspace workspace, Score score,
             Optional<Path> lilypond, String name, QuantizationSettings settings,
-            BiFunction<QuantizedScore, NoteTrack, String> engraving) {
+            BiFunction<QuantizedScore, NoteTrack, String> engraving,
+            BiFunction<QuantizedScore, NoteTrack, String> musicXml) {
         Path out = workspace.outputDirectory();
         List<Path> written = new ArrayList<>();
         List<String> warnings = new ArrayList<>();
@@ -700,6 +720,8 @@ final class RenderCommand implements Callable<Integer> {
             Path ly = out.resolve(name + ".ly");
             Files.writeString(ly, engraving.apply(quantized, melody));
             written.add(ly);
+            writeMusicXml(out.resolve(name + ".musicxml"),
+                    () -> musicXml.apply(quantized, melody), written, warnings);
 
             Emitted engraved = engrave(lilypond, ly);
             written.addAll(engraved.files());
@@ -708,6 +730,37 @@ final class RenderCommand implements Callable<Integer> {
             throw new UncheckedIOException("could not write output", e);
         }
         return new Emitted(written, warnings);
+    }
+
+    /**
+     * Writes a source's MusicXML twin, or says in one line why there is none.
+     *
+     * <p>The export refuses two things the LilyPond source still writes: a
+     * score with nothing to chart, and a chart bar past its staff bar (#787).
+     * A refusal is reported beside the files rather than failing the run,
+     * under the rule the class javadoc states for the engraver: the other
+     * outputs are intact. Anything else the export throws is a defect and
+     * propagates. A twin an earlier run wrote is removed, so a refusal never
+     * leaves a stale document beside a fresh source.
+     */
+    private static void writeMusicXml(Path file, Supplier<String> export,
+                                      List<Path> written, List<String> warnings)
+            throws IOException {
+        String xml;
+        try {
+            xml = export.get();
+        } catch (IllegalArgumentException | MusicXmlExport.Refused e) {
+            Files.deleteIfExists(file);
+            warnings.add(file.getFileName() + " was not written: " + e.getMessage());
+            return;
+        }
+        Files.writeString(file, xml);
+        written.add(file);
+    }
+
+    private static boolean isChartTwin(Path file) {
+        String name = file.getFileName().toString();
+        return name.equals("chords.musicxml") || name.equals("chords-lyrics.musicxml");
     }
 
     /**
@@ -765,14 +818,13 @@ final class RenderCommand implements Callable<Integer> {
      * user to ignore the line that matters.
      *
      * <p>The exit status stays zero, which is the command's existing rule rather
-     * than a new one: non-zero is reserved for producing <em>nothing at all</em>,
-     * and the {@code .txt}, {@code .ly} and {@code .pdf} were all produced. The
-     * argument for failing is that a wrong PDF is worse than a missing one; the
-     * argument against, which wins here, is that the wrongness is in bars a user
-     * can see named on this line, the other outputs are unaffected and useful,
-     * and a script that chains {@code render} would lose all of them over a
-     * defect it cannot act on. It is the same posture a missing LilyPond binary
-     * gets: emit what you can, say plainly what is wrong.
+     * than a new one: non-zero is reserved for producing <em>nothing at all</em>.
+     * The argument for failing is that a wrong PDF is worse than a missing one;
+     * the argument against, which wins here, is that the wrongness is in bars a
+     * user can see named on this line, and a script that chains {@code render}
+     * would lose every output over a defect it cannot act on. It is the same
+     * posture a missing LilyPond binary gets: emit what you can, say plainly
+     * what is wrong.
      *
      * <p><b>The count is how many times LilyPond complained, not how many
      * bars are wrong, and the wording says so.</b> Newer LilyPonds report
@@ -809,10 +861,9 @@ final class RenderCommand implements Callable<Integer> {
                         + " only the first%n"
                         + "  such bar in a part, so treat that as a floor and check the rest"
                         + " of the page.%n"
-                        + "  The .txt and .ly are unaffected. This is a defect in the source"
-                        + " this tool%n"
-                        + "  emitted rather than in your recording; please report it with %s"
-                        + " attached.",
+                        + "  This is a defect in the source this tool emitted rather than in"
+                        + " your recording;%n"
+                        + "  please report it with %s attached.",
                 moments.size(), moments.size() == 1 ? "check" : "checks",
                 ly.getFileName(), named, ly.getFileName()));
     }

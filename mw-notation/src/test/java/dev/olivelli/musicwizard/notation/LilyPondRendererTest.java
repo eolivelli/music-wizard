@@ -597,7 +597,7 @@ class LilyPondRendererTest {
         @DisplayName("survives a column too large to be a number")
         void anUnparseableColumnIsNotAnException() {
             // This once got a NumberFormatException out of the accessor,
-            // which escapes render() after the .txt, .ly and .pdf are written --
+            // which escapes render() after every output is written --
             // neither of the two outcomes this class says it degrades between.
             // A column nothing can parse is a column no layout can be checked
             // against, so it counts as no column: no skip, and the echo is

@@ -37,8 +37,8 @@ decode ─ resample ─┬─ onset envelope ──┐
 8. **Key** — read from the estimated chords, not from chroma.
 9. **Score assembly** — everything lands in one `Score` on one time axis.
 10. **Quantize and engrave** — grid choice per bar, then LilyPond source and
-   PDF, emitted straight from the domain model (a MusicXML export exists in
-   the notation layer but is not yet wired to the CLI).
+   PDF, emitted straight from the domain model, with a MusicXML twin of every
+   source written beside it from the same layout decisions.
 
 A Standard MIDI File enters the same `Score` by a symbolic route instead:
 tempo, meter and keys are *read* rather than estimated, and only the chords
