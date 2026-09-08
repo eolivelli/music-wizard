@@ -107,7 +107,7 @@ final class SheetJobs {
                     }
                 }
             } catch (IllegalArgumentException e) {
-                failure = e.getMessage() == null ? "nothing to engrave" : e.getMessage();
+                failure = e.getMessage() == null ? e.toString() : e.getMessage();
             } catch (Throwable t) {
                 failure = t.toString();
             }

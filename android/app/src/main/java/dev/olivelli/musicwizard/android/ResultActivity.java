@@ -77,6 +77,10 @@ public final class ResultActivity extends MwActivity
     /** What the pane was last asked to draw, so a resume does not draw it again. */
     private Score engraved;
     private double engravedZoom;
+    private boolean engraving;
+
+    /** The status line without any engraving failure appended to it. */
+    private String summary = "";
 
     /** Whether the user tapped over to the text, which a new engraving respects. */
     private boolean textChosen;
@@ -176,8 +180,13 @@ public final class ResultActivity extends MwActivity
     protected void onPause() {
         super.onPause();
         AnalysisJobs.get().stopObserving(this);
+        // A render in flight is dropped and asked for again on resume; one
+        // already on screen stays.
         SheetJobs.get().cancel();
-        engraved = null;
+        if (engraving) {
+            engraved = null;
+            engraving = false;
+        }
         if (wav != null) {
             saveNotes();
         }
@@ -243,9 +252,10 @@ public final class ResultActivity extends MwActivity
         analyzeButton.setEnabled(true);
         analyzeButton.setText(R.string.reanalyze);
         shareButton.setEnabled(true);
-        status.setText(cacheNote == null
+        summary = cacheNote == null
                 ? MwAnalysis.summary(score)
-                : MwAnalysis.summary(score) + "\n" + cacheNote);
+                : MwAnalysis.summary(score) + "\n" + cacheNote;
+        status.setText(summary);
         shareable = MwAnalysis.chartText(score);
         chart.setText(shareable);
         shown = score;
@@ -260,6 +270,7 @@ public final class ResultActivity extends MwActivity
         }
         engraved = score;
         engravedZoom = zoom;
+        engraving = true;
         sheetScroll.post(() -> {
             View parent = (View) sheetScroll.getParent();
             int width = parent.getWidth() - parent.getPaddingLeft() - parent.getPaddingRight();
@@ -281,6 +292,8 @@ public final class ResultActivity extends MwActivity
         if (isFinishing() || isDestroyed()) {
             return;
         }
+        engraving = false;
+        status.setText(summary);
         releaseSystems();
         for (SheetRenderer.Partial system : systems) {
             ImageView image = new ImageView(this);
@@ -300,9 +313,10 @@ public final class ResultActivity extends MwActivity
             return;
         }
         // The score stays, so a zoom step out can try again.
+        engraving = false;
         engraved = null;
         hideSheet();
-        status.setText(status.getText() + "\n" + getString(R.string.sheet_failed, why));
+        status.setText(summary + "\n" + getString(R.string.sheet_failed, why));
     }
 
     /** No score to engrave: text only, until a new analysis arrives. */
@@ -332,11 +346,11 @@ public final class ResultActivity extends MwActivity
         sheet.removeAllViews();
     }
 
-    private void showSheet(boolean engraved) {
-        sheetVisible = engraved;
-        sheetScroll.setVisibility(engraved ? View.VISIBLE : View.GONE);
-        textScroll.setVisibility(engraved ? View.GONE : View.VISIBLE);
-        viewButton.setText(engraved ? R.string.show_text : R.string.show_sheet);
+    private void showSheet(boolean sheetOnTop) {
+        sheetVisible = sheetOnTop;
+        sheetScroll.setVisibility(sheetOnTop ? View.VISIBLE : View.GONE);
+        textScroll.setVisibility(sheetOnTop ? View.GONE : View.VISIBLE);
+        viewButton.setText(sheetOnTop ? R.string.show_text : R.string.show_sheet);
     }
 
     private void shareText() {
