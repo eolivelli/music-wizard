@@ -709,8 +709,9 @@ public final class MusicXmlExport {
 
         /**
          * The lanes with an extender open. One ends where the lane's next
-         * syllable is written, or where a closing stops it; a closing with
-         * nothing open says nothing.
+         * syllable rides a note, or where a closing stops it; a closing with
+         * nothing open says nothing, and a syllable said as text ends none
+         * (#789).
          */
         private final List<Integer> extending = new ArrayList<>();
 
@@ -1027,16 +1028,15 @@ public final class MusicXmlExport {
                     said.add(at);
                 }
             }
-            // A syllable written ends whatever extender its lane had open.
+            // A syllable riding this note ends whatever extender its lane had open.
             for (Sung sung : carried) {
                 extending.remove(Integer.valueOf(sung.lane()));
             }
             // A closing on the note that carries its lane's syllable closes
-            // nothing the format can draw: after that syllable it is the
-            // syllable's own melisma ending inside its note, which opens no
-            // extender; before it, an earlier melisma the syllable ends.
-            // Elsewhere it stops the lane's open extender, a rest included,
-            // and says nothing where none is open.
+            // nothing the format can draw: after that syllable, it cancels the
+            // extender the syllable would open; before it, it is an earlier
+            // melisma the syllable ends. Elsewhere it stops the lane's open
+            // extender, a rest included, and says nothing where none is open.
             for (SungAt at : note.lyrics) {
                 if (!at.sung().closesExtender()) {
                     continue;
