@@ -45,7 +45,8 @@ drive, and read by the pipeline unaided.
   asked for. `render --parts playable` engraves the same sheet from a melody
   reduced to what a player reads, beside the estimate rather than instead of
   it.
-- **Engraving**: a text chart, LilyPond source, and PDF via [LilyPond] — with
+- **Engraving**: a text chart, LilyPond and MusicXML sources, and PDF via
+  [LilyPond] — with
   `--transpose`, `--beat-marks` and `--repeat-tags`.
 - **An analysis report**: `render --parts report` writes one self-contained
   HTML page — the whole piece on a shared time axis, then each stage's inputs,

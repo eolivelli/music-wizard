@@ -863,11 +863,9 @@ final class RenderCommand implements Callable<Integer> {
                         + " only the first%n"
                         + "  such bar in a part, so treat that as a floor and check the rest"
                         + " of the page.%n"
-                        + "  The .txt, .ly and .musicxml are unaffected. This is a defect in"
-                        + " the source"
-                        + " this tool%n"
-                        + "  emitted rather than in your recording; please report it with %s"
-                        + " attached.",
+                        + "  This is a defect in the source this tool emitted rather than in"
+                        + " your recording;%n"
+                        + "  please report it with %s attached.",
                 moments.size(), moments.size() == 1 ? "check" : "checks",
                 ly.getFileName(), named, ly.getFileName()));
     }

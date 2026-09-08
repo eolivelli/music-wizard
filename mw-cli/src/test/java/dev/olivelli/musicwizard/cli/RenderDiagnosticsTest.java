@@ -152,10 +152,10 @@ class RenderDiagnosticsTest {
 
         CliRunner.Result render = CliRunner.run("render", workspace.toString());
 
-        // Zero, and the PDF listed: the .txt, .ly and .pdf were all produced,
-        // and this command reserves non-zero for producing nothing at all. The
+        // Zero, and the PDF listed: every output was produced, and this
+        // command reserves non-zero for producing nothing at all. The
         // wrongness is in bars the user can see named, and a script that lost
-        // all three files over a defect it cannot act on would be worse off
+        // every file over a defect it cannot act on would be worse off
         // than one told plainly what is wrong.
         assertThat(render.exitCode()).as(render.all()).isZero();
         assertThat(render.out()).contains("Wrote ", "chords.pdf");
