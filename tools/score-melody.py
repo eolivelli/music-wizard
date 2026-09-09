@@ -516,6 +516,8 @@ def main() -> None:
     # loops, because the pinned one has the same reason to ignore the machine.
     with tempfile.TemporaryDirectory() as tmp:
         config_home = Path(tmp)
+        if args.melody_floor:
+            print(f"(floor at {args.melody_floor}: a sweep, not the baselined reading)")
         if args.source == "vocadito":
             print("Melody, note by note against vocadito's annotations (real solo singing)")
             print("(the annotators column is one musician scored against the other by this")

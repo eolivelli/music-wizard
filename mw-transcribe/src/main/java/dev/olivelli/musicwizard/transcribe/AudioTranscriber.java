@@ -123,11 +123,8 @@ public final class AudioTranscriber {
      *                            averaging the two would let a confident wrong
      *                            estimate outvote them.
      * @param melodyFloorHz       the lowest pitch the melody may be, or null for
-     *                            the tracker's own bound. For a melody sounding
-     *                            over an accompaniment that stays below it: a
-     *                            chord is periodic under its root and a bass
-     *                            line is louder, and the monophonic tracker
-     *                            answers those unless told where the tune is.
+     *                            the tracker's own bound; what it is for is
+     *                            with {@link PitchTracker#track(AudioBuffer, double)}
      * @param trackMelody         whether to read a melody out of the audio.
      *                            Off by default, and that is not timidity: the
      *                            tracker is monophonic, so on a full mix it
@@ -171,6 +168,9 @@ public final class AudioTranscriber {
                         + PitchTracker.MIN_HZ + " and " + PitchTracker.MAX_HZ + " Hz, got: "
                         + melodyFloorHz);
             }
+            if (melodyFloorHz != null && !trackMelody) {
+                throw new IllegalArgumentException("a melody floor needs the melody stage");
+            }
         }
 
         /**
@@ -198,11 +198,13 @@ public final class AudioTranscriber {
         /**
          * The floor for a note the player names as the lowest the melody
          * reaches: half a semitone under it, so the note itself stays a
-         * candidate rather than sitting on the tracker's edge.
+         * candidate rather than sitting on the tracker's edge, and never
+         * under the tracker's own bound.
          */
         public static double floorUnder(PitchSpelling note) {
             Objects.requireNonNull(note, "note");
-            return 440.0 * Math.pow(2, (note.midiPitch() - 69 - 0.5) / 12.0);
+            return Math.max(PitchTracker.MIN_HZ,
+                    440.0 * Math.pow(2, (note.midiPitch() - 69 - 0.5) / 12.0));
         }
 
         /**

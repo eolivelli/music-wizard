@@ -70,21 +70,9 @@ public final class MwAnalysis {
     }
 
     /**
-     * Reads a recording, analyses it, and reports each stage as it starts.
-     *
-     * <p>From "detecting onsets" onwards the strings are the transcriber's own,
-     * the same ones {@code mw analyze} prints, so the phone and the desktop
-     * describe a run in the same words. The two lines before that are this
-     * method's: the desktop decodes where the phone reads a WAV it wrote, and
-     * it reports the file's rate before resampling rather than after.
-     */
-    /**
-     * What the analysis does about a melody: whether it tracks one, and the
-     * lowest note it may be. The floor is the player's knowledge of the
-     * recording, since a chord is periodic under its root and a bass line is
-     * louder, and the tracker answers those unless told where the tune lies.
-     *
-     * @param floorHz the lowest pitch, or null for the tracker's own bound
+     * Whether the analysis tracks a melody, and the lowest pitch it may be;
+     * null for the tracker's own bound. What a floor is for is with
+     * {@code PitchTracker.track(AudioBuffer, double)}.
      */
     public record MelodyChoice(boolean tracked, Double floorHz) {
 
@@ -102,6 +90,15 @@ public final class MwAnalysis {
         }
     }
 
+    /**
+     * Reads a recording, analyses it, and reports each stage as it starts.
+     *
+     * <p>From "detecting onsets" onwards the strings are the transcriber's own,
+     * the same ones {@code mw analyze} prints, so the phone and the desktop
+     * describe a run in the same words. The two lines before that are this
+     * method's: the desktop decodes where the phone reads a WAV it wrote, and
+     * it reports the file's rate before resampling rather than after.
+     */
     public static Score analyze(File wav, Consumer<String> progress) throws IOException {
         return analyze(wav, MelodyChoice.off(), progress);
     }

@@ -390,6 +390,19 @@ class RunManifestCliTest {
                 "--melody", "--melody-floor", "high");
         assertThat(garbled.exitCode()).as(garbled.all()).isNotZero();
         assertThat(garbled.all()).contains("note name such as E3");
+
+        CliRunner.Result tooHigh = CliRunner.run("analyze", workspaceDirectory.toString(),
+                "--melody", "--melody-floor", "C7");
+        assertThat(tooHigh.exitCode()).as(tooHigh.all()).isNotZero();
+        assertThat(tooHigh.all()).contains("--melody-floor C7 is above");
+    }
+
+    @Test
+    @DisplayName("a floor at the tracker's own bottom is that bottom, not a refusal")
+    void aFloorAtTheBottomIsAccepted() {
+        analyze("--melody", "--skip-separation", "--melody-floor", "C2");
+
+        assertThat(stage("melody").facts()).containsEntry("floor", "65.4 Hz");
     }
 
     @Test

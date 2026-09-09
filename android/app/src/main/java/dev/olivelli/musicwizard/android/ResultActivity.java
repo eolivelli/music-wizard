@@ -281,7 +281,7 @@ public final class ResultActivity extends MwActivity
         String[] notes = floorNotes();
         String chosen = Preferences.melodyFloor(this);
         for (int i = 0; i < notes.length; i++) {
-            if (notes[i].equals(chosen)) {
+            if (java.util.Objects.equals(notes[i], chosen)) {
                 floorSpinner.setSelection(i);
                 return;
             }

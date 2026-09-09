@@ -32,6 +32,7 @@ import dev.olivelli.musicwizard.core.model.LyricWord;
 import dev.olivelli.musicwizard.core.model.Lyrics;
 import dev.olivelli.musicwizard.core.model.NoteTrack;
 import dev.olivelli.musicwizard.core.model.PitchSpelling;
+import dev.olivelli.musicwizard.dsp.PitchTracker;
 import dev.olivelli.musicwizard.core.model.Provenance;
 import dev.olivelli.musicwizard.core.model.PartRole;
 import dev.olivelli.musicwizard.core.model.Score;
@@ -1221,6 +1222,7 @@ final class AnalyzeCommand implements Callable<Integer> {
                     .with("meter", options.timeSignature())
                     .with("firstDownbeat", options.firstDownbeatSeconds())
                     .with("melody", melodySignal)
+                    .with("melodyFloor", options.melodyFloorHz())
                     .with("skipSeparation", skipSeparation);
         }
         return key;
@@ -1309,6 +1311,9 @@ final class AnalyzeCommand implements Callable<Integer> {
                         "%.3f s", analysis.firstDownbeatSecondsOverride()));
             }
             settings.put("melody", melody ? "read from the recording" : "not read");
+            if (melody && melodyFloor != null && !melodyFloor.isBlank()) {
+                settings.put("melody floor", melodyFloor.trim() + " and up");
+            }
         }
         settings.put("advisor", config.isLlmEnabled() ? "enabled" : "disabled");
         if (force) {
@@ -1642,6 +1647,13 @@ final class AnalyzeCommand implements Callable<Integer> {
                         + " the melody role, so no lead sheet can be rendered from one"
                         + " (#500)");
             }
+            if (melodyFloor != null && !melodyFloor.isBlank()) {
+                // Checked as on the audio path, so a mistyped note is refused
+                // here too rather than passing in silence.
+                melodyFloorHz();
+                System.err.println("warning: --melody-floor has no effect on a MIDI"
+                        + " workspace; there is no recording to track a melody in");
+            }
         }
         if (skipSeparationRequested(config)
                 && !(kind == SourceKind.AUDIO && (transcriptionRequested() || melody))) {
@@ -1702,12 +1714,19 @@ final class AnalyzeCommand implements Callable<Integer> {
         if (!melody) {
             throw new IllegalArgumentException("--melody-floor needs --melody");
         }
+        PitchSpelling note;
         try {
-            return AudioTranscriber.Options.floorUnder(PitchSpelling.parse(melodyFloor.trim()));
+            note = PitchSpelling.parse(melodyFloor.trim());
         } catch (IllegalArgumentException e) {
             throw new IllegalArgumentException(
                     "--melody-floor wants a note name such as E3, got: " + melodyFloor);
         }
+        double floor = AudioTranscriber.Options.floorUnder(note);
+        if (!(floor < PitchTracker.MAX_HZ)) {
+            throw new IllegalArgumentException("--melody-floor " + melodyFloor.trim()
+                    + " is above the highest note the tracker reads");
+        }
+        return floor;
     }
 
     /** The typed meter, or null for "read it off the recording" (#700). */

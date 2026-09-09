@@ -337,11 +337,18 @@ class TranscriptionCacheTest {
                 .isNotEqualTo(plain);
         // The melody stage genuinely changes what the cached score holds, which
         // makes this the one component here that is not keyed against a future.
-        assertThat(AnalyzeCommand.transcriptionKey(SourceKind.AUDIO, source,
+        String melody = AnalyzeCommand.transcriptionKey(SourceKind.AUDIO, source,
                 new AudioTranscriber.Options(null, null, null, true), false, true,
-                "mix").digest())
+                "mix").digest();
+        assertThat(melody)
                 .as("--melody adds a note track to the analysis")
                 .isNotEqualTo(plain);
+        // The floor changes which notes that track holds, over the same signal.
+        assertThat(AnalyzeCommand.transcriptionKey(SourceKind.AUDIO, source,
+                new AudioTranscriber.Options(null, null, null, true, 160.0), false, true,
+                "mix").digest())
+                .as("--melody-floor changes the note track")
+                .isNotEqualTo(melody);
         // The advisor is keyed on both paths: #11 advises on meter, structure
         // and spelling, all of which a symbolic import produces too.
         assertThat(AnalyzeCommand.transcriptionKey(
