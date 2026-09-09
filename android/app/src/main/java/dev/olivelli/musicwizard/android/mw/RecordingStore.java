@@ -116,6 +116,11 @@ public final class RecordingStore {
             return sibling(".source.txt");
         }
 
+        /** The engraved chart as shared and bundled; recomputable, so never authoritative. */
+        public File pdfFile() {
+            return sibling(".chords.pdf");
+        }
+
         private File sibling(String suffix) {
             String name = wav.getName();
             int dot = name.lastIndexOf('.');
@@ -232,8 +237,17 @@ public final class RecordingStore {
             //noinspection ResultOfMethodCallIgnored
             renamed.sourceFile().delete();
         }
+        File oldPdf = recording.pdfFile();
+        if (!oldPdf.isFile()) {
+            //noinspection ResultOfMethodCallIgnored
+            renamed.pdfFile().delete();
+        }
         if (!recording.wav().renameTo(target)) {
             throw new IOException("could not rename " + recording.displayName());
+        }
+        if (oldPdf.isFile() && !oldPdf.renameTo(renamed.pdfFile())) {
+            //noinspection ResultOfMethodCallIgnored
+            oldPdf.delete();
         }
         if (oldScore.isFile() && !oldScore.renameTo(renamed.scoreFile())) {
             // The audio moved and its analysis did not. Drop the stale cache
@@ -277,6 +291,8 @@ public final class RecordingStore {
     public void delete(Recording recording) {
         //noinspection ResultOfMethodCallIgnored
         recording.scoreFile().delete();
+        //noinspection ResultOfMethodCallIgnored
+        recording.pdfFile().delete();
         //noinspection ResultOfMethodCallIgnored
         recording.notesFile().delete();
         //noinspection ResultOfMethodCallIgnored

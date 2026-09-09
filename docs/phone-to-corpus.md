@@ -27,7 +27,7 @@ phone and on the desktop, with what was played written down beside it.
 
 Long-press the take in the library and choose **Share bundle** — that is the
 corpus-export path. It is one zip holding the WAV, the chart the phone made of
-it, the cached `score.json` where one could be written, the note typed on the
+it as text, MusicXML and PDF, the cached `score.json` where one could be written, the note typed on the
 result screen when there is one ("what was played", in the player's words), and
 an info file with the duration, the recorded date, the tempo and meter, and the
 app version. The file is `<take>.mwz.zip`, so a Drive search for `mwz` answers

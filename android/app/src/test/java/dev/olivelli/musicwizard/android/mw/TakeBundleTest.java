@@ -48,18 +48,22 @@ public class TakeBundleTest {
     }
 
     @Test
-    public void aFullBundleHoldsAllFiveEntriesUnderTheTakesName() throws IOException {
+    public void aFullBundleHoldsAllSevenEntriesUnderTheTakesName() throws IOException {
         File score = temp.newFile("take.score.json");
         Files.write(score.toPath(), "{\"score\":true}".getBytes(StandardCharsets.UTF_8));
+        File pdf = temp.newFile("take.chords.pdf");
+        Files.write(pdf.toPath(), new byte[] {'%', 'P', 'D', 'F'});
         File zip = new File(temp.getRoot(), "take.zip");
 
-        TakeBundle.write(zip, "take", wav(), score, "| C | G |",
+        TakeBundle.write(zip, "take", wav(), score, "| C | G |", "<score-partwise/>", pdf,
                 "G C D, twice round", "take  ·  0:01\n");
 
         try (ZipFile in = new ZipFile(zip)) {
-            assertEquals(5, in.size());
+            assertEquals(7, in.size());
             assertArrayEquals(AUDIO, bytesOf(in, "take.wav"));
             assertEquals("| C | G |", textOf(in, "take.chords.txt"));
+            assertEquals("<score-partwise/>", textOf(in, "take.chords.musicxml"));
+            assertArrayEquals(new byte[] {'%', 'P', 'D', 'F'}, bytesOf(in, "take.chords.pdf"));
             assertEquals("G C D, twice round", textOf(in, "take.notes.txt"));
             assertEquals("{\"score\":true}", textOf(in, "take.score.json"));
             assertEquals("take  ·  0:01\n", textOf(in, "take.info.txt"));
@@ -75,12 +79,15 @@ public class TakeBundleTest {
         File zip = new File(temp.getRoot(), "take.zip");
 
         TakeBundle.write(zip, "take", wav(),
-                new File(temp.getRoot(), "absent.score.json"), null, null, "info\n");
+                new File(temp.getRoot(), "absent.score.json"), null, null,
+                new File(temp.getRoot(), "absent.chords.pdf"), null, "info\n");
 
         try (ZipFile in = new ZipFile(zip)) {
             assertEquals(2, in.size());
             assertArrayEquals(AUDIO, bytesOf(in, "take.wav"));
             assertNull(in.getEntry("take.chords.txt"));
+            assertNull(in.getEntry("take.chords.musicxml"));
+            assertNull(in.getEntry("take.chords.pdf"));
             assertNull(in.getEntry("take.notes.txt"));
             assertNull(in.getEntry("take.score.json"));
         }
@@ -96,7 +103,7 @@ public class TakeBundleTest {
 
         assertThrows(IOException.class, () -> TakeBundle.write(
                 zip, "take", new File(temp.getRoot(), "no-such.wav"),
-                null, "chart", null, "info"));
+                null, "chart", null, null, null, "info"));
 
         assertFalse("a half-written bundle must be deleted, not offered", zip.exists());
         assertFalse("nor left behind under the temp name",
@@ -110,10 +117,11 @@ public class TakeBundleTest {
     @Test
     public void aFailedWriteLeavesThePreviousBundleIntact() throws IOException {
         File zip = new File(temp.getRoot(), "take.zip");
-        TakeBundle.write(zip, "take", wav(), null, "the good chart", null, null);
+        TakeBundle.write(zip, "take", wav(), null, "the good chart", null, null, null, null);
 
         assertThrows(IOException.class, () -> TakeBundle.write(
-                zip, "take", new File(temp.getRoot(), "no-such.wav"), null, null, null, null));
+                zip, "take", new File(temp.getRoot(), "no-such.wav"), null, null, null, null,
+                null, null));
 
         try (ZipFile in = new ZipFile(zip)) {
             assertEquals("the good chart", textOf(in, "take.chords.txt"));
@@ -131,7 +139,7 @@ public class TakeBundleTest {
         assertTrue(wav.setLastModified(recorded));
         File zip = new File(temp.getRoot(), "take.zip");
 
-        TakeBundle.write(zip, "take", wav, null, null, null, null);
+        TakeBundle.write(zip, "take", wav, null, null, null, null, null, null);
 
         try (ZipFile in = new ZipFile(zip)) {
             long entryTime = in.getEntry("take.wav").getTime();
@@ -155,7 +163,7 @@ public class TakeBundleTest {
     public void entriesCarryTheTakesName() throws IOException {
         File zip = new File(temp.getRoot(), "bundle.zip");
 
-        TakeBundle.write(zip, "wednesday-blues", wav(), null, "chart", null, null);
+        TakeBundle.write(zip, "wednesday-blues", wav(), null, "chart", null, null, null, null);
 
         try (ZipFile in = new ZipFile(zip)) {
             assertEquals("chart", textOf(in, "wednesday-blues.chords.txt"));

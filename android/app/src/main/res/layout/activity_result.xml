@@ -32,6 +32,13 @@
             android:text="@string/share_chart" />
 
         <Button
+            android:id="@+id/pdfButton"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="wrap_content"
+            android:text="@string/share_pdf" />
+
+        <Button
             android:id="@+id/bundleButton"
             android:layout_width="0dp"
             android:layout_weight="1"

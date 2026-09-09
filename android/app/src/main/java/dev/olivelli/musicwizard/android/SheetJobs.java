@@ -22,6 +22,7 @@ import android.os.Looper;
 import dev.olivelli.musicwizard.android.mw.SheetRenderer;
 import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.notation.MusicXmlExport;
+import java.io.File;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
@@ -39,6 +40,12 @@ final class SheetJobs {
         void onSheet(List<SheetRenderer.Partial> systems);
 
         void onSheetFailed(String why);
+    }
+
+    interface PdfListener {
+        void onPdf(File pdf);
+
+        void onPdfFailed(String why);
     }
 
     /** Where callbacks land. */
@@ -64,7 +71,6 @@ final class SheetJobs {
     private final String engine;
     private final Dispatcher dispatcher;
     private final AtomicInteger latest = new AtomicInteger();
-    private boolean fontsLoaded;
 
     SheetJobs(String engine, Dispatcher dispatcher) {
         this.engine = engine;
@@ -90,9 +96,8 @@ final class SheetJobs {
             String failure;
             List<SheetRenderer.Partial> systems = List.of();
             try {
-                if (context != null && !fontsLoaded) {
+                if (context != null) {
                     SheetRenderer.initialize(context);
-                    fontsLoaded = true;
                 }
                 byte[] musicXml = MusicXmlExport.chordChart(score)
                         .getBytes(StandardCharsets.UTF_8);
@@ -121,6 +126,27 @@ final class SheetJobs {
                     listener.onSheet(drawn);
                 } else {
                     listener.onSheetFailed(why);
+                }
+            });
+        });
+    }
+
+    /** Writes the chart as a PDF at {@code target}; not superseded by later sheet requests. */
+    void pdf(Context context, Score score, File target, PdfListener listener) {
+        worker.execute(() -> {
+            String failure = null;
+            try {
+                SheetRenderer.initialize(context);
+                SheetPdf.write(score, target);
+            } catch (Throwable t) {
+                failure = t.getMessage() == null ? t.toString() : t.getMessage();
+            }
+            String why = failure;
+            dispatcher.post(() -> {
+                if (why == null) {
+                    listener.onPdf(target);
+                } else {
+                    listener.onPdfFailed(why);
                 }
             });
         });

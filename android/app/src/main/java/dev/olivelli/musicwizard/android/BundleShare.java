@@ -28,9 +28,11 @@ import android.widget.Toast;
 import androidx.core.content.FileProvider;
 import dev.olivelli.musicwizard.android.mw.MwAnalysis;
 import dev.olivelli.musicwizard.android.mw.RecordingStore;
+import dev.olivelli.musicwizard.android.mw.SheetRenderer;
 import dev.olivelli.musicwizard.android.mw.TakeSource;
 import dev.olivelli.musicwizard.android.mw.TakeBundle;
 import dev.olivelli.musicwizard.core.model.Score;
+import dev.olivelli.musicwizard.notation.MusicXmlExport;
 import java.io.File;
 import java.io.IOException;
 import java.time.Instant;
@@ -143,7 +145,21 @@ final class BundleShare {
                     throw new IOException("could not create " + directory);
                 }
                 prune(directory);
-                TakeBundle.write(zip, take, wav, scoreFile, chart, notes, info);
+                // The engraving is as optional as the chart: a score the
+                // export refuses still bundles as audio, text and cache.
+                String musicXml = null;
+                File pdf = null;
+                if (score != null) {
+                    try {
+                        musicXml = MusicXmlExport.chordChart(score);
+                        SheetRenderer.initialize(application);
+                        SheetPdf.write(score, recording.pdfFile());
+                        pdf = recording.pdfFile();
+                    } catch (IOException | IllegalArgumentException | IllegalStateException e) {
+                        pdf = null;
+                    }
+                }
+                TakeBundle.write(zip, take, wav, scoreFile, chart, musicXml, pdf, notes, info);
             } catch (Throwable t) {
                 // Throwable for the same reason as AnalysisJobs.run: an
                 // Exception-only catch lets an Error vanish into the executor's
