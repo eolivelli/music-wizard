@@ -26,15 +26,14 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
-import java.util.ArrayList;
 import java.util.List;
 
 /**
  * Writes the engraving as a vector PDF: every chunk alphaTab draws is
  * recorded as a picture and replayed onto A4 pages, in order, breaking where
  * the next does not fit. Text stays text, so it prints at any size. The
- * chart comes first; the playable part, when asked for and heard, starts a
- * page of its own.
+ * document is the playable part when it was asked for and heard, since the
+ * lead sheet carries the chords over the staff; the chart alone otherwise.
  */
 final class SheetPdf {
 
@@ -42,6 +41,13 @@ final class SheetPdf {
     private static final int PAGE_WIDTH = 595;
     private static final int PAGE_HEIGHT = 842;
     private static final int MARGIN = 36;
+
+    /**
+     * How large the engraving is drawn, where one is alphaTab's own size. Its
+     * own size puts a few bars on a system of this width; this brings the
+     * staff close to the desktop's, so a song's chart is a page or two.
+     */
+    private static final double PAGE_SCALE = 0.6;
 
     /** The result screen and the bundle builder both write a take's PDF; one at a time. */
     private static final Object WRITING = new Object();
@@ -52,13 +58,12 @@ final class SheetPdf {
     /**
      * Renders and writes, replacing whatever was at {@code target} in one
      * move; a failure leaves the previous file in place and nothing
-     * half-written. The chart is the document: without it nothing is
-     * written, while a playable part that cannot be made is left out and
-     * said.
+     * half-written. A playable part that cannot be made leaves the chart as
+     * the document, and is said.
      *
-     * @param playable whether to add the playable part after the chart
-     * @return why the playable part is not in the file, or null when it is
-     *         or was not asked for
+     * @param playable whether the document is the playable part
+     * @return why the file holds the chart rather than the playable part, or
+     *         null when it holds the part or the part was not asked for
      * @throws IOException with the export's or alphaTab's reason, or the filesystem's
      */
     static String write(Score score, boolean playable, File target) throws IOException {
@@ -81,21 +86,18 @@ final class SheetPdf {
         }
     }
 
-    /** What goes into the file, and why the playable part does not when it does not. */
+    /** What goes into the file, and why it is the chart when the part was wanted. */
     record Documents(List<byte[]> musicXml, String omitted) {
     }
 
     static Documents documents(byte[] chart, Score score, boolean playable) {
-        List<byte[]> documents = new ArrayList<>();
-        documents.add(chart);
         if (!playable) {
-            return new Documents(documents, null);
+            return new Documents(List.of(chart), null);
         }
         try {
-            documents.add(SheetDocuments.playable(score));
-            return new Documents(documents, null);
+            return new Documents(List.of(SheetDocuments.playable(score)), null);
         } catch (IllegalArgumentException | IllegalStateException e) {
-            return new Documents(documents, reasonOf(e));
+            return new Documents(List.of(chart), reasonOf(e));
         }
     }
 
@@ -116,7 +118,7 @@ final class SheetPdf {
             int pageNumber = 0;
             for (byte[] musicXml : documents) {
                 SheetRenderer.Result result = SheetRenderer.render(musicXml,
-                        SheetRenderer.ENGINE_PICTURE, PAGE_WIDTH - 2 * MARGIN, 1);
+                        SheetRenderer.ENGINE_PICTURE, PAGE_WIDTH - 2 * MARGIN, PAGE_SCALE);
                 if (!result.succeeded()) {
                     if (pageNumber == 0) {
                         throw new IOException(result.failure());

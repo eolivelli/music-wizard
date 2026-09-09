@@ -16,6 +16,7 @@
 package dev.olivelli.musicwizard.android;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
@@ -32,6 +33,7 @@ import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.model.TempoMap;
 import dev.olivelli.musicwizard.core.model.TimeSignature;
 import java.util.ArrayList;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import org.junit.Test;
 
@@ -57,11 +59,14 @@ public class SheetPdfTest {
     }
 
     @Test
-    public void thePlayablePartFollowsTheChartWhenHeard() {
-        SheetPdf.Documents documents =
-                SheetPdf.documents(SheetDocuments.chart(sung()), sung(), true);
-        assertEquals(2, documents.musicXml().size());
+    public void thePlayablePartIsTheDocumentWhenHeard() {
+        byte[] chart = SheetDocuments.chart(sung());
+        SheetPdf.Documents documents = SheetPdf.documents(chart, sung(), true);
+        assertEquals(1, documents.musicXml().size());
         assertNull(documents.omitted());
+        String text = new String(documents.musicXml().get(0), StandardCharsets.UTF_8);
+        assertTrue(text, text.contains("<pitch>"));
+        assertFalse(java.util.Arrays.equals(chart, documents.musicXml().get(0)));
     }
 
     @Test

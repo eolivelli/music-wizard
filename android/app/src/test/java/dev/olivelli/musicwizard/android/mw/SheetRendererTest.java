@@ -83,6 +83,17 @@ public class SheetRendererTest {
                 result.warnings().stream().noneMatch(w -> w.startsWith("MusicXML")));
     }
 
+    /** alphaTab draws a track's name beside its first system, where a long one is cut short. */
+    @Test
+    public void trackNamesAreLeftOffThePage() {
+        SheetRenderer.Result result =
+                SheetRenderer.render(chart(), SheetRenderer.ENGINE_SVG, 1200, 1);
+        String svg = result.partials().stream().map(p -> String.valueOf(p.result()))
+                .reduce("", String::concat);
+        assertTrue(result.failure(), result.succeeded());
+        assertFalse(svg, svg.contains(">Chords<"));
+    }
+
     @Test
     public void noChordIsPrintedAsTheChartPrintsIt() {
         List<Chord> chords = List.of(
