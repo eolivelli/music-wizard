@@ -41,7 +41,9 @@ drive, and read by the pipeline unaided.
 - **Melody**: `analyze --melody` reads the sung line and `render --parts lead`
   engraves a lead sheet. The tracker is monophonic, so it is pointed at the
   separated vocal where a separation provider can be had; pass
-  `--skip-separation` for a recording whose melody is not a voice. Off unless
+  `--skip-separation` for a recording whose melody is not a voice, and
+  `--melody-floor E3` (any note name) for an instrument whose accompaniment
+  stays under the tune, so the chords and the bass are not what it reads. Off unless
   asked for. `render --parts playable` engraves the same sheet from a melody
   reduced to what a player reads, beside the estimate rather than instead of
   it.

@@ -138,6 +138,7 @@ public final class PitchTracker {
     private static final double EMISSION_FLOOR = 1e-12;
 
     private final int sampleRate;
+    private final double minHz;
     private final int minLag;
     private final int maxLag;
     private final int binCount;
@@ -148,11 +149,12 @@ public final class PitchTracker {
     private final double[] rowLogNormaliser;
     private final DoubleFFT_1D fft;
 
-    private PitchTracker(int sampleRate) {
+    private PitchTracker(int sampleRate, double minHz) {
         this.sampleRate = sampleRate;
+        this.minHz = minHz;
         this.minLag = (int) Math.floor(sampleRate / MAX_HZ);
-        this.maxLag = (int) Math.ceil(sampleRate / MIN_HZ);
-        this.binCount = (int) Math.round(12 * BINS_PER_SEMITONE * log2(MAX_HZ / MIN_HZ)) + 1;
+        this.maxLag = (int) Math.ceil(sampleRate / minHz);
+        this.binCount = (int) Math.round(12 * BINS_PER_SEMITONE * log2(MAX_HZ / minHz)) + 1;
         this.bandWidth = MAX_SEMITONE_STEP * BINS_PER_SEMITONE;
         this.thresholds = new double[THRESHOLD_COUNT];
         this.thresholdWeights = new double[THRESHOLD_COUNT];
@@ -196,12 +198,30 @@ public final class PitchTracker {
      * @throws IllegalArgumentException if the audio is not at the analysis rate
      */
     public static PitchTrack track(AudioBuffer audio) {
+        return track(audio, MIN_HZ);
+    }
+
+    /**
+     * The same with the lowest answer raised: no lag below {@code minHz} is a
+     * candidate, so a chord's period two octaves under its root, or a bass
+     * line, cannot be the answer. For a melody sounding over an accompaniment
+     * that stays below it; the floor is the caller's knowledge of the
+     * recording, since nothing here could infer it.
+     *
+     * @throws IllegalArgumentException if the floor is not between the
+     *         tracker's own bounds
+     */
+    public static PitchTrack track(AudioBuffer audio, double minHz) {
         Objects.requireNonNull(audio, "audio");
         if (audio.sampleRate() != AudioDecoder.ANALYSIS_SAMPLE_RATE) {
             throw new IllegalArgumentException("pitch tracking expects audio at "
                     + AudioDecoder.ANALYSIS_SAMPLE_RATE + " Hz, got: " + audio.sampleRate());
         }
-        return new PitchTracker(audio.sampleRate()).run(audio);
+        if (!(minHz >= MIN_HZ) || !(minHz < MAX_HZ)) {
+            throw new IllegalArgumentException("the floor must lie between " + MIN_HZ
+                    + " and " + MAX_HZ + " Hz, got: " + minHz);
+        }
+        return new PitchTracker(audio.sampleRate(), minHz).run(audio);
     }
 
     private PitchTrack run(AudioBuffer audio) {
@@ -448,11 +468,11 @@ public final class PitchTracker {
     }
 
     private double binOf(double frequencyHz) {
-        return 12 * BINS_PER_SEMITONE * log2(frequencyHz / MIN_HZ);
+        return 12 * BINS_PER_SEMITONE * log2(frequencyHz / minHz);
     }
 
     private double frequencyOfBin(int bin) {
-        return MIN_HZ * Math.pow(2, (double) bin / (12 * BINS_PER_SEMITONE));
+        return minHz * Math.pow(2, (double) bin / (12 * BINS_PER_SEMITONE));
     }
 
     private static double log2(double value) {

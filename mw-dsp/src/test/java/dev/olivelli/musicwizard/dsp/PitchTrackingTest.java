@@ -17,6 +17,7 @@
 package dev.olivelli.musicwizard.dsp;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
 
 import dev.olivelli.musicwizard.audio.AudioBuffer;
@@ -71,6 +72,80 @@ class PitchTrackingTest {
 
     private static PitchTrack track(float[] samples) {
         return PitchTracker.track(new AudioBuffer(samples, RATE));
+    }
+
+    private static float[] mix(float[] a, float[] b) {
+        float[] out = new float[Math.min(a.length, b.length)];
+        for (int i = 0; i < out.length; i++) {
+            out[i] = a[i] + b[i];
+        }
+        return out;
+    }
+
+    /**
+     * A tune two octaves over a harmonic note, which is what a chord's
+     * subharmonic does to a melody sounding above it: the whole is periodic
+     * at the low note, so the tracker answers that until told the tune lies
+     * above it.
+     */
+    @Nested
+    @DisplayName("a floor under the melody")
+    class Floor {
+        private final float[] twoHands = mix(harmonicNote(SignalFactory.midiToHz(45), 2.0),
+                sine(SignalFactory.midiToHz(69), 2.0, 1.2f));
+
+        private float[] sine(double hz, double seconds, float amplitude) {
+            float[] out = new float[(int) Math.round(seconds * RATE)];
+            for (int i = 0; i < out.length; i++) {
+                out[i] = (float) (amplitude * Math.sin(2 * Math.PI * hz * i / RATE));
+            }
+            return out;
+        }
+
+        private List<Integer> framePitches(PitchTrack track) {
+            List<Integer> pitches = new ArrayList<>();
+            for (int f = 0; f < track.frameCount(); f++) {
+                if (track.voiced()[f]) {
+                    pitches.add((int) Math.round(track.midiPitchAt(f)));
+                }
+            }
+            return pitches;
+        }
+
+        @Test
+        @DisplayName("turns the low note's answer into the tune's, at the confidence the tune earns")
+        void theTuneIsAnsweredOnceTheLowNoteCannotBe() {
+            double floor = SignalFactory.midiToHz(52);
+            PitchTrack raised = PitchTracker.track(new AudioBuffer(twoHands, RATE), floor);
+
+            assertThat(framePitches(track(twoHands))).isNotEmpty()
+                    .allMatch(pitch -> pitch < 52);
+            assertThat(framePitches(raised)).isNotEmpty().allMatch(pitch -> pitch == 69);
+        }
+
+        @Test
+        @DisplayName("leaves a chord with nothing above it unanswered rather than answered below")
+        void aChordUnderTheFloorIsSilence() {
+            float[] chord = mix(mix(harmonicNote(SignalFactory.midiToHz(48), 2.0),
+                    harmonicNote(SignalFactory.midiToHz(64), 2.0)),
+                    harmonicNote(SignalFactory.midiToHz(67), 2.0));
+            PitchTrack raised = PitchTracker.track(new AudioBuffer(chord, RATE),
+                    SignalFactory.midiToHz(52));
+
+            // Two octaves under its root: the period the whole triad shares.
+            assertThat(framePitches(track(chord))).isNotEmpty().allMatch(pitch -> pitch == 36);
+            assertThat(framePitches(raised)).isEmpty();
+        }
+
+        @Test
+        @DisplayName("must lie between the tracker's own bounds")
+        void refusesAFloorOutsideTheRange() {
+            AudioBuffer audio = new AudioBuffer(twoHands, RATE);
+            assertThatThrownBy(() -> PitchTracker.track(audio, PitchTracker.MIN_HZ / 2))
+                    .isInstanceOf(IllegalArgumentException.class);
+            assertThatThrownBy(() -> PitchTracker.track(audio, PitchTracker.MAX_HZ))
+                    .isInstanceOf(IllegalArgumentException.class);
+        }
     }
 
     /** The rounded MIDI pitch of every voiced frame, in order. */

@@ -135,6 +135,13 @@ final class AnalyzeCommand implements Callable<Integer> {
                     + "the voice, rather than failing. Audio only.")
     boolean melody;
 
+    @Option(names = "--melody-floor", paramLabel = "NOTE",
+            description = "The lowest note the melody can be, such as E3: nothing below it "
+                    + "is a candidate. For an instrument whose accompaniment stays under "
+                    + "the tune, where the tracker would otherwise answer the chord or "
+                    + "the bass. With --melody, audio only.")
+    String melodyFloor;
+
     @Option(names = "--skip-separation",
             description = "Analyse the mix directly instead of separating stems. Makes "
                     + "--melody and lyric transcription hear the full mix; chords "
@@ -1214,6 +1221,7 @@ final class AnalyzeCommand implements Callable<Integer> {
                     .with("meter", options.timeSignature())
                     .with("firstDownbeat", options.firstDownbeatSeconds())
                     .with("melody", melodySignal)
+                    .with("melodyFloor", options.melodyFloorHz())
                     .with("skipSeparation", skipSeparation);
         }
         return key;
@@ -1302,6 +1310,9 @@ final class AnalyzeCommand implements Callable<Integer> {
                         "%.3f s", analysis.firstDownbeatSecondsOverride()));
             }
             settings.put("melody", melody ? "read from the recording" : "not read");
+            if (melody && melodyFloor != null && !melodyFloor.isBlank()) {
+                settings.put("melody floor", melodyFloor.trim() + " and up");
+            }
         }
         settings.put("advisor", config.isLlmEnabled() ? "enabled" : "disabled");
         if (force) {
@@ -1635,6 +1646,13 @@ final class AnalyzeCommand implements Callable<Integer> {
                         + " the melody role, so no lead sheet can be rendered from one"
                         + " (#500)");
             }
+            if (melodyFloor != null && !melodyFloor.isBlank()) {
+                // Checked as on the audio path, so a mistyped note is refused
+                // here too rather than passing in silence.
+                melodyFloorHz();
+                System.err.println("warning: --melody-floor has no effect on a MIDI"
+                        + " workspace; there is no recording to track a melody in");
+            }
         }
         if (skipSeparationRequested(config)
                 && !(kind == SourceKind.AUDIO && (transcriptionRequested() || melody))) {
@@ -1683,7 +1701,30 @@ final class AnalyzeCommand implements Callable<Integer> {
                 analysis != null ? analysis.tempoOverride() : null,
                 meter,
                 analysis != null ? analysis.firstDownbeatSecondsOverride() : null,
-                melody);
+                melody,
+                melodyFloorHz());
+    }
+
+    /** The typed floor as a frequency, or null for none. */
+    private Double melodyFloorHz() {
+        if (melodyFloor == null || melodyFloor.isBlank()) {
+            return null;
+        }
+        if (!melody) {
+            throw new IllegalArgumentException("--melody-floor needs --melody");
+        }
+        PitchSpelling note;
+        try {
+            note = PitchSpelling.parse(melodyFloor.trim());
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException(
+                    "--melody-floor wants a note name such as E3, got: " + melodyFloor);
+        }
+        try {
+            return AudioTranscriber.Options.floorUnder(note);
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("--melody-floor " + e.getMessage());
+        }
     }
 
     /** The typed meter, or null for "read it off the recording" (#700). */

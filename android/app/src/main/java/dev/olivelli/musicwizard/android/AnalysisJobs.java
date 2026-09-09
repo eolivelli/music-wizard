@@ -84,7 +84,8 @@ final class AnalysisJobs {
      * second of real DSP to get there.
      */
     interface Analyzer {
-        Score analyze(File wav, boolean melody, Consumer<String> progress) throws Exception;
+        Score analyze(File wav, MwAnalysis.MelodyChoice melody, Consumer<String> progress)
+                throws Exception;
     }
 
     /**
@@ -207,9 +208,9 @@ final class AnalysisJobs {
      * <p>Whether the result could be cached is passed on rather than assumed —
      * see {@link MwAnalysis#writeCache}.
      *
-     * @param melody whether the run also tracks the melody
+     * @param melody whether the run also tracks the melody, and from where up
      */
-    void start(File wav, boolean melody, Listener listener) {
+    void start(File wav, MwAnalysis.MelodyChoice melody, Listener listener) {
         String key = key(wav);
         Job existing = jobs.get(key);
         if (existing != null && existing.running) {
@@ -320,7 +321,7 @@ final class AnalysisJobs {
         }
     }
 
-    private void run(File wav, boolean melody, Job job) {
+    private void run(File wav, MwAnalysis.MelodyChoice melody, Job job) {
         Score analysed = null;
         String note = null;
         String failure = null;

@@ -31,7 +31,9 @@ the notation module writes and shared as a vector PDF through Android's
 `PdfDocument`; no LilyPond. The melody stage runs too when the result
 screen's **Playable part** is on, which it is by default: pure DSP on the
 mix, so a solo take yields its tune and a band yields whatever is loudest,
-and the PDF then carries the playable part after the chart.
+and the PDF then carries the playable part after the chart. The register
+choice beside it is `--melody-floor` on the phone: the lowest note the
+melody may be, which is what keeps a piano's chords and left hand out of it.
 
 ## Getting takes off the phone
 

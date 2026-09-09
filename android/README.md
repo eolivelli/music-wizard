@@ -10,7 +10,10 @@ device by alphaTab and shared as a vector PDF drawn through Android's own
 `PdfDocument`; no LilyPond. With **Playable part** on (the default) the
 analysis also tracks the melody, from the mix since the phone separates
 nothing, and the PDF carries the part reduced from it after the chart; a
-take analysed with it off gets the chart alone until it is re-analysed.
+take analysed with it off gets the chart alone until it is re-analysed. The
+register beside it is the lowest note the melody may be: on a piano take
+the tracker otherwise answers the chords and the left hand, so choose the
+note under which only the accompaniment plays.
 
 ## Getting a take off the phone
 

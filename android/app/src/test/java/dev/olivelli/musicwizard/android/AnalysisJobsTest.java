@@ -112,18 +112,19 @@ public class AnalysisJobsTest {
 
     @Test
     public void theMelodyChoiceReachesTheAnalyzerAsMade() {
-        List<Boolean> asked = new ArrayList<>();
+        List<MwAnalysis.MelodyChoice> asked = new ArrayList<>();
         AnalysisJobs jobs = new AnalysisJobs(mainThread::add, (file, melody, progress) -> {
             asked.add(melody);
             return aScore();
         });
 
-        jobs.start(wav, true, new Screen());
+        jobs.start(wav, MwAnalysis.MelodyChoice.tracked("E3"), new Screen());
         pumpUntil(() -> jobs.lastResult(wav) != null);
-        jobs.start(wav, false, new Screen());
+        jobs.start(wav, MwAnalysis.MelodyChoice.off(), new Screen());
         pumpUntil(() -> asked.size() == 2);
 
-        assertEquals(List.of(true, false), asked);
+        assertEquals(List.of(MwAnalysis.MelodyChoice.tracked("E3"), MwAnalysis.MelodyChoice.off()),
+                asked);
     }
 
     /**
@@ -145,7 +146,7 @@ public class AnalysisJobsTest {
         });
 
         Screen leaving = new Screen();
-        jobs.start(wav, false, leaving);
+        jobs.start(wav, MwAnalysis.MelodyChoice.off(), leaving);
         jobs.stopObserving(leaving);
         pumpUntil(() -> jobs.lastResult(wav) != null);
 
@@ -163,13 +164,13 @@ public class AnalysisJobsTest {
         File other = folder.newFile("other.wav");
 
         Screen screen = new Screen();
-        jobs.start(wav, false, screen);
+        jobs.start(wav, MwAnalysis.MelodyChoice.off(), screen);
         pumpUntil(() -> screen.finished != null);
         assertNotNull(jobs.lastResult(wav));
         assertNull("a different take has no result of its own", jobs.lastResult(other));
 
         Screen second = new Screen();
-        jobs.start(other, false, second);
+        jobs.start(other, MwAnalysis.MelodyChoice.off(), second);
         pumpUntil(() -> second.finished != null);
         assertNotNull(jobs.lastResult(other));
         assertNull("the previous take's result should not be held for ever",
@@ -191,7 +192,7 @@ public class AnalysisJobsTest {
         AnalysisJobs jobs = new AnalysisJobs(mainThread::add, (file, melody, progress) -> aScore());
 
         Screen screen = new Screen();
-        jobs.start(unwritable, false, screen);
+        jobs.start(unwritable, MwAnalysis.MelodyChoice.off(), screen);
         pumpUntil(() -> screen.finished != null);
 
         assertEquals(MwAnalysis.CACHE_UNAVAILABLE_NOTE, screen.cacheNote);
@@ -223,7 +224,7 @@ public class AnalysisJobsTest {
         });
 
         Screen first = new Screen();
-        jobs.start(wav, false, first);
+        jobs.start(wav, MwAnalysis.MelodyChoice.off(), first);
         pumpUntil(() -> first.failure != null);
 
         assertNotNull("an Error escaped instead of reaching the screen", first.failure);
@@ -236,7 +237,7 @@ public class AnalysisJobsTest {
 
         // And the take is not wedged: a second attempt actually runs.
         Screen retry = new Screen();
-        jobs.start(wav, false, retry);
+        jobs.start(wav, MwAnalysis.MelodyChoice.off(), retry);
         pumpUntil(() -> retry.finished != null);
         assertEquals(2, attempts.size());
         assertSame(eventually, retry.finished);
@@ -250,7 +251,7 @@ public class AnalysisJobsTest {
         });
 
         Screen screen = new Screen();
-        jobs.start(wav, false, screen);
+        jobs.start(wav, MwAnalysis.MelodyChoice.off(), screen);
         pumpUntil(() -> screen.failure != null);
         assertEquals("the recording holds no audio", screen.failure);
     }
@@ -265,11 +266,11 @@ public class AnalysisJobsTest {
         });
 
         Screen screen = new Screen();
-        jobs.start(wav, false, screen);
+        jobs.start(wav, MwAnalysis.MelodyChoice.off(), screen);
         // Before the worker's completion post is drained, the job is still
         // running as far as this class is concerned.
         Screen second = new Screen();
-        jobs.start(wav, false, second);
+        jobs.start(wav, MwAnalysis.MelodyChoice.off(), second);
         pumpUntil(() -> screen.finished != null || second.finished != null);
 
         assertEquals("the analysis should have been started once", 1, attempts.size());
@@ -299,7 +300,7 @@ public class AnalysisJobsTest {
                 jobs.observe(wav, never));
 
         Screen leaving = new Screen();
-        jobs.start(wav, false, leaving);
+        jobs.start(wav, MwAnalysis.MelodyChoice.off(), leaving);
         jobs.stopObserving(leaving);
 
         Screen returning = new Screen();
@@ -342,7 +343,7 @@ public class AnalysisJobsTest {
         });
 
         Screen screen = new Screen();
-        jobs.start(wav, false, screen);
+        jobs.start(wav, MwAnalysis.MelodyChoice.off(), screen);
         pumpUntil(() -> screen.failure != null || screen.finished != null);
 
         assertNull("a completion with no score is not a finished analysis", screen.finished);
@@ -351,7 +352,7 @@ public class AnalysisJobsTest {
         assertNotNull(jobs.lastResult(wav).failure);
 
         Screen retry = new Screen();
-        jobs.start(wav, false, retry);
+        jobs.start(wav, MwAnalysis.MelodyChoice.off(), retry);
         pumpUntil(() -> retry.finished != null);
         assertSame(eventually, retry.finished);
     }
@@ -378,12 +379,12 @@ public class AnalysisJobsTest {
         });
 
         Screen screen = new Screen();
-        jobs.start(wav, false, screen);
+        jobs.start(wav, MwAnalysis.MelodyChoice.off(), screen);
         pumpUntil(() -> screen.finished != null);
         assertSame(first, jobs.lastResult(wav).score);
 
         Screen reanalyzing = new Screen();
-        jobs.start(wav, false, reanalyzing);
+        jobs.start(wav, MwAnalysis.MelodyChoice.off(), reanalyzing);
         jobs.stopObserving(reanalyzing);
         pumpUntil(() -> jobs.lastResult(wav) != null
                 && jobs.lastResult(wav).failure != null);
@@ -406,7 +407,7 @@ public class AnalysisJobsTest {
         File renamed = new File(folder.getRoot(), "renamed.wav");
 
         Screen screen = new Screen();
-        jobs.start(wav, false, screen);
+        jobs.start(wav, MwAnalysis.MelodyChoice.off(), screen);
         pumpUntil(() -> screen.finished != null);
 
         jobs.moved(wav, renamed);
@@ -424,7 +425,7 @@ public class AnalysisJobsTest {
         File renamed = new File(folder.getRoot(), "renamed.wav");
 
         Screen screen = new Screen();
-        jobs.start(wav, false, screen);
+        jobs.start(wav, MwAnalysis.MelodyChoice.off(), screen);
         jobs.stopObserving(screen);
         // Before anything is drained, so the completion is still in flight.
         jobs.moved(wav, renamed);
@@ -449,7 +450,7 @@ public class AnalysisJobsTest {
         AnalysisJobs jobs = new AnalysisJobs(dispatcher(), (file, melody, progress) -> result);
 
         Screen screen = new Screen();
-        jobs.start(wav, false, screen);
+        jobs.start(wav, MwAnalysis.MelodyChoice.off(), screen);
         pumpUntil(() -> screen.finished != null);
         jobs.forget(wav);
         assertNull("a deleted take has no analysis", jobs.lastResult(wav));
@@ -458,7 +459,7 @@ public class AnalysisJobsTest {
         // under the freed name afterwards.
         posts.set(0);
         Screen watching = new Screen();
-        jobs.start(wav, false, watching);
+        jobs.start(wav, MwAnalysis.MelodyChoice.off(), watching);
         jobs.forget(wav);
         pumpUntil(() -> posts.get() >= 1);
         assertNull("the analysis of a deleted take was filed under its name anyway",
@@ -486,7 +487,7 @@ public class AnalysisJobsTest {
         File renamed = new File(folder.getRoot(), "renamed.wav");
 
         Screen screen = new Screen();
-        jobs.start(wav, false, screen);
+        jobs.start(wav, MwAnalysis.MelodyChoice.off(), screen);
         jobs.stopObserving(screen);
         // Before anything is drained, so the rename lands while the analysis is
         // still in flight -- the realistic ordering for a minute of DSP.
@@ -509,14 +510,14 @@ public class AnalysisJobsTest {
         // An undisturbed run first, so the absence below is the delete's doing
         // and not a cache that was never written.
         Screen undisturbed = new Screen();
-        jobs.start(wav, false, undisturbed);
+        jobs.start(wav, MwAnalysis.MelodyChoice.off(), undisturbed);
         pumpUntil(() -> undisturbed.finished != null);
         assertTrue(MwAnalysis.scoreFileFor(wav).isFile());
         assertTrue(MwAnalysis.scoreFileFor(wav).delete());
 
         posts.set(0);
         Screen screen = new Screen();
-        jobs.start(wav, false, screen);
+        jobs.start(wav, MwAnalysis.MelodyChoice.off(), screen);
         jobs.forget(wav);
         pumpUntil(() -> posts.get() >= 1);
 
@@ -548,7 +549,7 @@ public class AnalysisJobsTest {
         });
 
         Screen screen = new Screen();
-        jobs.start(wav, false, screen);
+        jobs.start(wav, MwAnalysis.MelodyChoice.off(), screen);
         jobs.stopObserving(screen);
         pumpUntil(() -> jobs.lastResult(wav) != null);
         assertTrue(screen.progress.toString(), screen.progress.isEmpty());

@@ -23,6 +23,7 @@ final class Preferences {
 
     private static final String FILE = "settings";
     private static final String PLAYABLE_PART = "playablePart";
+    private static final String MELODY_FLOOR = "melodyFloor";
 
     private Preferences() {
     }
@@ -34,6 +35,15 @@ final class Preferences {
 
     static void setPlayablePart(Context context, boolean on) {
         of(context).edit().putBoolean(PLAYABLE_PART, on).apply();
+    }
+
+    /** The lowest note the melody may be, as a note name, or blank for any. */
+    static String melodyFloor(Context context) {
+        return of(context).getString(MELODY_FLOOR, "");
+    }
+
+    static void setMelodyFloor(Context context, String note) {
+        of(context).edit().putString(MELODY_FLOOR, note == null ? "" : note).apply();
     }
 
     private static SharedPreferences of(Context context) {

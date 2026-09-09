@@ -212,7 +212,8 @@ NO_BEATS = "no beats found"
 
 
 def analyze(jar: Path, mp3: Path, separated: bool = False,
-            config_home: Path | None = None) -> tuple[dict | None, str | None]:
+            config_home: Path | None = None,
+            floor: str | None = None) -> tuple[dict | None, str | None]:
     """Runs the pipeline with the melody stage on, and reads the score back.
 
     Returns (score document, None), or (None, reason) when `separated` was
@@ -235,6 +236,10 @@ def analyze(jar: Path, mp3: Path, separated: bool = False,
     with tempfile.TemporaryDirectory() as tmp:
         ws = Path(tmp) / "w.mwz"
         melody = ["analyze", str(ws), "--melody"]
+        if floor:
+            # A sweep knob, never baselined: the committed rows are the
+            # tracker's own bound.
+            melody += ["--melody-floor", floor]
         report = ""
         for args in (["init", str(mp3), "--workspace", str(ws)],
                      melody if separated else melody + ["--skip-separation"]):
@@ -385,13 +390,13 @@ def missing_clip_line(clip: int) -> str:
 
 
 def score_clip(jar: Path, clip: int, separated: bool = False,
-               config_home: Path | None = None) -> str:
+               config_home: Path | None = None, floor: str | None = None) -> str:
     audio = VOCADITO / "Audio" / f"vocadito_{clip}.wav"
     first = VOCADITO / "Annotations" / "Notes" / f"vocadito_{clip}_notesA1.csv"
     second = VOCADITO / "Annotations" / "Notes" / f"vocadito_{clip}_notesA2.csv"
     if not audio.exists() or not first.exists() or not second.exists():
         return missing_clip_line(clip)
-    document, reason = analyze(jar, audio, separated, config_home)
+    document, reason = analyze(jar, audio, separated, config_home, floor)
     if reason is not None:
         return unavailable_line(f"vocadito_{clip}", reason)
     reference = vocadito_notes(first)
@@ -464,7 +469,7 @@ def unavailable_line(name: str, reason: str) -> str:
 
 
 def score_package(jar: Path, spec_file: Path, separated: bool = False,
-                  config_home: Path | None = None) -> str:
+                  config_home: Path | None = None, floor: str | None = None) -> str:
     name = spec_file.name.removesuffix(".spec.txt")
     mp3 = spec_file.with_name(name + ".mp3")
     midi = spec_file.with_name(name + ".mid")
@@ -474,7 +479,7 @@ def score_package(jar: Path, spec_file: Path, separated: bool = False,
     if not reference:
         return f"  {name}: no melody track; not scored"
 
-    document, reason = analyze(jar, mp3, separated, config_home)
+    document, reason = analyze(jar, mp3, separated, config_home, floor)
     if reason is not None:
         return unavailable_line(name, reason)
     estimate = estimated_notes(document)
@@ -498,6 +503,9 @@ def main() -> None:
     parser.add_argument("--separated", action="store_true",
                         help="read the melody through the separated vocal, as"
                              " analyze --melody does (#559)")
+    parser.add_argument("--melody-floor", metavar="NOTE",
+                        help="sweep knob: pass --melody-floor NOTE to analyze; the"
+                             " committed baselines are without one (#803)")
     args = parser.parse_args()
     jar = Path(args.jar)
     if not jar.exists():
@@ -508,6 +516,8 @@ def main() -> None:
     # loops, because the pinned one has the same reason to ignore the machine.
     with tempfile.TemporaryDirectory() as tmp:
         config_home = Path(tmp)
+        if args.melody_floor:
+            print(f"(floor at {args.melody_floor}: a sweep, not the baselined reading)")
         if args.source == "vocadito":
             print("Melody, note by note against vocadito's annotations (real solo singing)")
             print("(the annotators column is one musician scored against the other by this")
@@ -515,7 +525,7 @@ def main() -> None:
             if args.separated:
                 print("(read through the separated vocal: what analyze --melody now does)")
             for clip in range(1, VOCADITO_CLIPS + 1):
-                print(score_clip(jar, clip, args.separated, config_home))
+                print(score_clip(jar, clip, args.separated, config_home, args.melody_floor))
             return
 
         specs = sorted(CORPUS.glob("*.spec.txt"))
@@ -528,7 +538,8 @@ def main() -> None:
         if args.separated:
             print("(read through the separated vocal: what analyze --melody now does)")
         for spec_file in specs:
-            print(score_package(jar, spec_file, args.separated, config_home))
+            print(score_package(jar, spec_file, args.separated, config_home,
+                                args.melody_floor))
 
 
 if __name__ == "__main__":

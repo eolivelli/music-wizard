@@ -30,7 +30,21 @@
     <string name="pdf_failed">No PDF: %1$s</string>
     <string name="pdf_without_playable">PDF without the playable part: %1$s</string>
     <string name="playable_part">Playable part in the PDF (tracks the melody
-        when analyzing)</string>
+        when analyzing, from the chosen note up)</string>
+    <string-array name="melody_floor_labels">
+        <item>Any register</item>
+        <item>C3 and up</item>
+        <item>E3 and up</item>
+        <item>G3 and up</item>
+        <item>C4 and up</item>
+    </string-array>
+    <string-array name="melody_floor_notes" translatable="false">
+        <item></item>
+        <item>C3</item>
+        <item>E3</item>
+        <item>G3</item>
+        <item>C4</item>
+    </string-array>
     <string name="playable_untracked">No playable part yet: re-analyze with it on.</string>
     <string name="playable_unheard">No playable part: no melody was heard in this take.</string>
     <string name="share_bundle">Share bundle</string>

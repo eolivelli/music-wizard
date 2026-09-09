@@ -371,6 +371,63 @@ class RunManifestCliTest {
     }
 
     @Test
+    @DisplayName("the melody floor is written down as the frequency it became, and as typed")
+    void theMelodyFloorIsRecorded() {
+        analyze("--melody", "--skip-separation", "--melody-floor", "E3");
+
+        assertThat(stage("melody").facts()).containsEntry("floor", "160.1 Hz");
+        assertThat(manifest().settings()).containsEntry("melody floor", "E3 and up");
+    }
+
+    @Test
+    @DisplayName("on a MIDI workspace the floor is checked and then warned about, not obeyed")
+    void theMelodyFloorOnMidiIsCheckedAndWarnedAbout() {
+        Path source = MidiFixtures.write(
+                MidiFixtures.fourChordSong(), directory.resolve("floor.mid"));
+        workspaceDirectory = directory.resolve("floor.mwz");
+        assertThat(CliRunner.run("init", source.toString(), "-w",
+                workspaceDirectory.toString()).exitCode()).isZero();
+
+        CliRunner.Result garbled = CliRunner.run("analyze", workspaceDirectory.toString(),
+                "--melody", "--melody-floor", "high");
+        assertThat(garbled.exitCode()).as(garbled.all()).isNotZero();
+        assertThat(garbled.all()).contains("note name such as E3");
+
+        CliRunner.Result warned = CliRunner.run("analyze", workspaceDirectory.toString(),
+                "--melody", "--melody-floor", "E3");
+        assertThat(warned.exitCode()).as(warned.all()).isZero();
+        assertThat(warned.all()).contains("--melody-floor has no effect on a MIDI workspace");
+        assertThat(manifest().settings()).doesNotContainKey("melody floor");
+    }
+
+    @Test
+    @DisplayName("a floor without the melody stage, or one that is not a note, is refused")
+    void theMelodyFloorIsCheckedBeforeTheRun() {
+        CliRunner.Result alone = CliRunner.run("analyze", workspaceDirectory.toString(),
+                "--melody-floor", "E3");
+        assertThat(alone.exitCode()).as(alone.all()).isNotZero();
+        assertThat(alone.all()).contains("--melody-floor needs --melody");
+
+        CliRunner.Result garbled = CliRunner.run("analyze", workspaceDirectory.toString(),
+                "--melody", "--melody-floor", "high");
+        assertThat(garbled.exitCode()).as(garbled.all()).isNotZero();
+        assertThat(garbled.all()).contains("note name such as E3");
+
+        CliRunner.Result tooHigh = CliRunner.run("analyze", workspaceDirectory.toString(),
+                "--melody", "--melody-floor", "C7");
+        assertThat(tooHigh.exitCode()).as(tooHigh.all()).isNotZero();
+        assertThat(tooHigh.all()).contains("--melody-floor C7 is above");
+    }
+
+    @Test
+    @DisplayName("a floor at the tracker's own bottom is that bottom, not a refusal")
+    void aFloorAtTheBottomIsAccepted() {
+        analyze("--melody", "--skip-separation", "--melody-floor", "C2");
+
+        assertThat(stage("melody").facts()).containsEntry("floor", "65.4 Hz");
+    }
+
+    @Test
     @DisplayName("a run that was never asked for a melody records no melody trace")
     void aMelodyNeverAskedForRecordsNoTrace() {
         analyze();
