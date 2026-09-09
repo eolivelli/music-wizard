@@ -26,15 +26,15 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
-import java.util.ArrayList;
 import java.util.List;
 
 /**
  * Writes the engraving as a vector PDF: every chunk alphaTab draws is
  * recorded as a picture and replayed onto A4 pages, in order, breaking where
  * the next does not fit. Text stays text, so it prints at any size. The
- * chart comes first; the playable part, when asked for and heard, starts a
- * page of its own.
+ * document is the playable part when it was asked for and heard, since the
+ * lead sheet carries the chords over the staff; the chart otherwise, and
+ * also when the part will not engrave.
  */
 final class SheetPdf {
 
@@ -42,6 +42,12 @@ final class SheetPdf {
     private static final int PAGE_WIDTH = 595;
     private static final int PAGE_HEIGHT = 842;
     private static final int MARGIN = 36;
+
+    /**
+     * How large the engraving is drawn, where one is alphaTab's own size,
+     * which puts a few bars on a system of this width.
+     */
+    private static final double PAGE_SCALE = 0.6;
 
     /** The result screen and the bundle builder both write a take's PDF; one at a time. */
     private static final Object WRITING = new Object();
@@ -52,13 +58,12 @@ final class SheetPdf {
     /**
      * Renders and writes, replacing whatever was at {@code target} in one
      * move; a failure leaves the previous file in place and nothing
-     * half-written. The chart is the document: without it nothing is
-     * written, while a playable part that cannot be made is left out and
-     * said.
+     * half-written. A playable part that cannot be made leaves the chart as
+     * the document, and is said.
      *
-     * @param playable whether to add the playable part after the chart
-     * @return why the playable part is not in the file, or null when it is
-     *         or was not asked for
+     * @param playable whether the document is the playable part
+     * @return why the file holds the chart rather than the playable part, or
+     *         null when it holds the part or the part was not asked for
      * @throws IOException with the export's or alphaTab's reason, or the filesystem's
      */
     static String write(Score score, boolean playable, File target) throws IOException {
@@ -74,28 +79,39 @@ final class SheetPdf {
     /** The same over a chart already exported, so a caller that also bundles it exports once. */
     static String write(byte[] chart, Score score, boolean playable, File target)
             throws IOException {
-        Documents documents = documents(chart, score, playable);
+        Document document = document(chart, score, playable);
         synchronized (WRITING) {
-            String failed = engrave(documents.musicXml(), target);
-            return documents.omitted() != null ? documents.omitted() : failed;
+            String failed = engrave(document.musicXml(), target);
+            if (failed == null) {
+                return document.omitted();
+            }
+            if (!document.part()) {
+                throw new IOException(failed);
+            }
+            // The part would not engrave; the chart is the document after all.
+            String chartFailed = engrave(chart, target);
+            if (chartFailed != null) {
+                throw new IOException(chartFailed);
+            }
+            return failed;
         }
     }
 
-    /** What goes into the file, and why the playable part does not when it does not. */
-    record Documents(List<byte[]> musicXml, String omitted) {
+    /**
+     * What goes into the file: the part, or the chart, and why it is the chart
+     * when the part was wanted.
+     */
+    record Document(byte[] musicXml, boolean part, String omitted) {
     }
 
-    static Documents documents(byte[] chart, Score score, boolean playable) {
-        List<byte[]> documents = new ArrayList<>();
-        documents.add(chart);
+    static Document document(byte[] chart, Score score, boolean playable) {
         if (!playable) {
-            return new Documents(documents, null);
+            return new Document(chart, false, null);
         }
         try {
-            documents.add(SheetDocuments.playable(score));
-            return new Documents(documents, null);
+            return new Document(SheetDocuments.playable(score), true, null);
         } catch (IllegalArgumentException | IllegalStateException e) {
-            return new Documents(documents, reasonOf(e));
+            return new Document(chart, false, reasonOf(e));
         }
     }
 
@@ -104,49 +120,41 @@ final class SheetPdf {
     }
 
     /**
-     * Draws the documents in order, each from a new page and each drawn before
-     * the next is rendered, so only one document's pictures are alive at a
-     * time. Returns why a later document was dropped, or null.
+     * Draws one document onto pages and moves the file into place. Returns
+     * why alphaTab would not engrave it, or null once the file is written;
+     * anything the filesystem refuses is thrown.
      */
-    private static String engrave(List<byte[]> documents, File target) throws IOException {
+    private static String engrave(byte[] musicXml, File target) throws IOException {
+        SheetRenderer.Result result = SheetRenderer.render(musicXml,
+                SheetRenderer.ENGINE_PICTURE, PAGE_WIDTH - 2 * MARGIN, PAGE_SCALE);
+        if (!result.succeeded()) {
+            return result.failure();
+        }
+        List<SheetRenderer.Partial> chunks = result.partials();
+        double[] heights = new double[chunks.size()];
+        for (int i = 0; i < heights.length; i++) {
+            heights[i] = chunks.get(i).height();
+        }
         File tmp = File.createTempFile(target.getName(), ".tmp", target.getParentFile());
         PdfDocument document = new PdfDocument();
-        String dropped = null;
         try {
             int pageNumber = 0;
-            for (byte[] musicXml : documents) {
-                SheetRenderer.Result result = SheetRenderer.render(musicXml,
-                        SheetRenderer.ENGINE_PICTURE, PAGE_WIDTH - 2 * MARGIN, 1);
-                if (!result.succeeded()) {
-                    if (pageNumber == 0) {
-                        throw new IOException(result.failure());
-                    }
-                    dropped = result.failure();
-                    break;
+            for (List<Integer> page : SheetPaginator.paginate(heights, PAGE_HEIGHT - 2 * MARGIN)) {
+                pageNumber++;
+                PdfDocument.Page drawn = document.startPage(
+                        new PdfDocument.PageInfo.Builder(PAGE_WIDTH, PAGE_HEIGHT, pageNumber)
+                                .create());
+                Canvas canvas = drawn.getCanvas();
+                double y = MARGIN;
+                for (int index : page) {
+                    SheetRenderer.Partial chunk = chunks.get(index);
+                    canvas.save();
+                    canvas.translate((float) (MARGIN + chunk.x()), (float) y);
+                    canvas.drawPicture((Picture) chunk.result());
+                    canvas.restore();
+                    y += chunk.height();
                 }
-                List<SheetRenderer.Partial> chunks = result.partials();
-                double[] heights = new double[chunks.size()];
-                for (int i = 0; i < heights.length; i++) {
-                    heights[i] = chunks.get(i).height();
-                }
-                for (List<Integer> page : SheetPaginator.paginate(heights,
-                        PAGE_HEIGHT - 2 * MARGIN)) {
-                    pageNumber++;
-                    PdfDocument.Page drawn = document.startPage(
-                            new PdfDocument.PageInfo.Builder(PAGE_WIDTH, PAGE_HEIGHT, pageNumber)
-                                    .create());
-                    Canvas canvas = drawn.getCanvas();
-                    double y = MARGIN;
-                    for (int index : page) {
-                        SheetRenderer.Partial chunk = chunks.get(index);
-                        canvas.save();
-                        canvas.translate((float) (MARGIN + chunk.x()), (float) y);
-                        canvas.drawPicture((Picture) chunk.result());
-                        canvas.restore();
-                        y += chunk.height();
-                    }
-                    document.finishPage(drawn);
-                }
+                document.finishPage(drawn);
             }
             try (OutputStream out = new FileOutputStream(tmp)) {
                 document.writeTo(out);
@@ -163,6 +171,6 @@ final class SheetPdf {
             tmp.delete();
             throw new IOException("could not move the PDF into place at " + target);
         }
-        return dropped;
+        return null;
     }
 }

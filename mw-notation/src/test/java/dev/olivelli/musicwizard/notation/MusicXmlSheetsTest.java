@@ -224,14 +224,14 @@ class MusicXmlSheetsTest {
     }
 
     @Test
-    @DisplayName("a chord past the staff's last bar is not written")
-    void symbolsPastTheStaffAreDropped() {
+    @DisplayName("the staff runs to the chart's last bar, so a chord past the melody is written")
+    void theStaffReachesTheChartsEnd() {
         Document document = parse(leadSheetXml());
 
-        // The chords run a bar past the melody; the staff decides the length.
-        assertThat(elements(document, "measure")).hasSize(3);
+        // The chords run a bar past the melody; the chart decides the length.
+        assertThat(elements(document, "measure")).hasSize(4);
         assertThat(elements(document, "harmony").stream().map(MusicXmlSheetsTest::symbolOf))
-                .doesNotContain("A minor");
+                .contains("A minor");
     }
 
     @Test

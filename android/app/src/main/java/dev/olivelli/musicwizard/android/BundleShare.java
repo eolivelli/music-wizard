@@ -166,7 +166,7 @@ final class BundleShare {
                                 recording.pdfFile());
                         pdf = recording.pdfFile();
                         sheet = omitted != null ? "chart only: " + omitted
-                                : playable ? "chart and playable part" : "chart only";
+                                : playable ? "playable part" : "chart only";
                     } catch (Throwable t) {
                         sheet = "no PDF: " + reasonOf(t);
                     }

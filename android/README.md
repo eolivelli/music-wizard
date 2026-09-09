@@ -9,8 +9,9 @@ Plain Java, `minSdk` 26, app-private storage. The chart is engraved on the
 device by alphaTab and shared as a vector PDF drawn through Android's own
 `PdfDocument`; no LilyPond. With **Playable part** on (the default) the
 analysis also tracks the melody, from the mix since the phone separates
-nothing, and the PDF carries the part reduced from it after the chart; a
-take analysed with it off gets the chart alone until it is re-analysed. The
+nothing, and the PDF is then the lead sheet over the part reduced from it,
+chords above the staff; a take analysed with it off, or in which no melody
+was heard, gets the chart alone and says so. The
 register beside it is the lowest note the melody may be: on a piano take
 the tracker otherwise answers the chords and the left hand, so choose the
 note under which only the accompaniment plays.
@@ -34,8 +35,8 @@ marked `source: file`.
 Two shares, both through `FileProvider`:
 
 - **Share WAV** (library long-press): the audio alone.
-- **Share PDF** (result screen): the engraved chart, and the playable part
-  when it was asked for and heard, as `<take>.chords.pdf`.
+- **Share PDF** (result screen): the playable part over the chords when it
+  was asked for and heard, the chart alone otherwise, as `<take>.chords.pdf`.
 - **Share bundle** (library long-press and the result screen): one zip holding
   the recording, the chart as text, as MusicXML and as that PDF, the cached
   `score.json` where one could be written, the player's note when one was

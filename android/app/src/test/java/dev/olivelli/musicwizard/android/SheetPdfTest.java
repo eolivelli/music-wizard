@@ -16,6 +16,7 @@
 package dev.olivelli.musicwizard.android;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
@@ -32,6 +33,7 @@ import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.model.TempoMap;
 import dev.olivelli.musicwizard.core.model.TimeSignature;
 import java.util.ArrayList;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import org.junit.Test;
 
@@ -57,26 +59,29 @@ public class SheetPdfTest {
     }
 
     @Test
-    public void thePlayablePartFollowsTheChartWhenHeard() {
-        SheetPdf.Documents documents =
-                SheetPdf.documents(SheetDocuments.chart(sung()), sung(), true);
-        assertEquals(2, documents.musicXml().size());
-        assertNull(documents.omitted());
+    public void thePlayablePartIsTheDocumentWhenHeard() {
+        byte[] chart = SheetDocuments.chart(sung());
+        SheetPdf.Document document = SheetPdf.document(chart, sung(), true);
+        assertTrue(document.part());
+        assertNull(document.omitted());
+        String text = new String(document.musicXml(), StandardCharsets.UTF_8);
+        assertTrue(text, text.contains("<pitch>"));
+        assertFalse(java.util.Arrays.equals(chart, document.musicXml()));
     }
 
     @Test
     public void notAskedForMeansChartAloneAndNothingToSay() {
-        SheetPdf.Documents documents =
-                SheetPdf.documents(SheetDocuments.chart(sung()), sung(), false);
-        assertEquals(1, documents.musicXml().size());
-        assertNull(documents.omitted());
+        SheetPdf.Document document =
+                SheetPdf.document(SheetDocuments.chart(sung()), sung(), false);
+        assertFalse(document.part());
+        assertNull(document.omitted());
     }
 
     @Test
     public void anUntrackedMelodyIsLeftOutAndSaid() {
-        SheetPdf.Documents documents =
-                SheetPdf.documents(SheetDocuments.chart(chart()), chart(), true);
-        assertEquals(1, documents.musicXml().size());
-        assertTrue(documents.omitted(), documents.omitted().contains("not tracked"));
+        SheetPdf.Document document =
+                SheetPdf.document(SheetDocuments.chart(chart()), chart(), true);
+        assertFalse(document.part());
+        assertTrue(document.omitted(), document.omitted().contains("not tracked"));
     }
 }
