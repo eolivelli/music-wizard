@@ -156,8 +156,8 @@ public final class SheetRenderer {
         settings.getCore().setLogLevel(LogLevel.Warning);
         settings.getDisplay().setScale(scale);
         settings.getDisplay().setLayoutMode(LayoutMode.Page);
-        // The part's name is the page's heading already, and drawn beside the
-        // first system it is cut to the staff's height.
+        // Drawn beside the first system, a track's name is cut to the staff's
+        // height.
         settings.getNotation().getElements().set(NotationElement.TrackNames, false);
 
         ILogger previous = Logger.Companion.getLog();

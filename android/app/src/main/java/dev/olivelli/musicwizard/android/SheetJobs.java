@@ -134,8 +134,8 @@ final class SheetJobs {
     }
 
     /**
-     * Writes the chart, and the playable part when asked for, as a PDF at
-     * {@code target}; not superseded by later sheet requests.
+     * Writes the playable part when asked for and heard, else the chart, as a
+     * PDF at {@code target}; not superseded by later sheet requests.
      */
     void pdf(Context context, Score score, boolean playable, File target, PdfListener listener) {
         worker.execute(() -> {

@@ -16,6 +16,7 @@
 
 package dev.olivelli.musicwizard.notation;
 
+import dev.olivelli.musicwizard.core.model.Chord;
 import dev.olivelli.musicwizard.core.model.Key;
 import dev.olivelli.musicwizard.core.model.Note;
 import dev.olivelli.musicwizard.core.model.NoteTrack;
@@ -403,12 +404,33 @@ final class StaffLayout {
                 }
             }
         }
+        // The chart outlasting every part would otherwise end the staff before
+        // its last chords, which the lead sheet then cannot carry (#778).
+        double chartEnd = chartEnd(score);
+        if (chartEnd > latest) {
+            latest = chartEnd;
+            endedBy = "the chord chart";
+            endedByAnotherPart = true;
+        }
         double firstBar = score.tempoMap().timeSignatureAtBar(0).quarterBeatsPerBar();
         // Only a gap inside the opening bar is a pickup. Music that starts in bar
         // two starts after a bar of rest, and saying otherwise would move every
         // bar line in the piece.
         boolean pickup = Double.isFinite(earliest) && earliest > 0 && earliest < firstBar;
         return new Span(pickup ? earliest : 0, latest, endedBy, endedByAnotherPart);
+    }
+
+    /** Where the last chord ends on the beat axis, or zero without chords. */
+    private static double chartEnd(Score score) {
+        double end = 0;
+        for (Chord chord : score.chords().chords()) {
+            double at = chord.endBeat().orElseGet(
+                    () -> score.tempoMap().secondsToBeats(chord.endSeconds()));
+            if (Double.isFinite(at)) {
+                end = Math.max(end, at);
+            }
+        }
+        return end;
     }
 
     /**

@@ -33,7 +33,8 @@ import java.util.List;
  * recorded as a picture and replayed onto A4 pages, in order, breaking where
  * the next does not fit. Text stays text, so it prints at any size. The
  * document is the playable part when it was asked for and heard, since the
- * lead sheet carries the chords over the staff; the chart alone otherwise.
+ * lead sheet carries the chords over the staff; the chart otherwise, and
+ * also when the part will not engrave.
  */
 final class SheetPdf {
 
@@ -43,9 +44,8 @@ final class SheetPdf {
     private static final int MARGIN = 36;
 
     /**
-     * How large the engraving is drawn, where one is alphaTab's own size. Its
-     * own size puts a few bars on a system of this width; this brings the
-     * staff close to the desktop's, so a song's chart is a page or two.
+     * How large the engraving is drawn, where one is alphaTab's own size,
+     * which puts a few bars on a system of this width.
      */
     private static final double PAGE_SCALE = 0.6;
 
@@ -81,8 +81,19 @@ final class SheetPdf {
             throws IOException {
         Documents documents = documents(chart, score, playable);
         synchronized (WRITING) {
-            String failed = engrave(documents.musicXml(), target);
-            return documents.omitted() != null ? documents.omitted() : failed;
+            String failed = engrave(documents.musicXml().get(0), target);
+            if (failed == null) {
+                return documents.omitted();
+            }
+            if (documents.omitted() != null) {
+                throw new IOException(failed);
+            }
+            // The part would not engrave; the chart is the document after all.
+            String chartFailed = engrave(chart, target);
+            if (chartFailed != null) {
+                throw new IOException(chartFailed);
+            }
+            return failed;
         }
     }
 
@@ -106,49 +117,41 @@ final class SheetPdf {
     }
 
     /**
-     * Draws the documents in order, each from a new page and each drawn before
-     * the next is rendered, so only one document's pictures are alive at a
-     * time. Returns why a later document was dropped, or null.
+     * Draws one document onto pages and moves the file into place. Returns
+     * why alphaTab would not engrave it, or null once the file is written;
+     * anything the filesystem refuses is thrown.
      */
-    private static String engrave(List<byte[]> documents, File target) throws IOException {
+    private static String engrave(byte[] musicXml, File target) throws IOException {
+        SheetRenderer.Result result = SheetRenderer.render(musicXml,
+                SheetRenderer.ENGINE_PICTURE, PAGE_WIDTH - 2 * MARGIN, PAGE_SCALE);
+        if (!result.succeeded()) {
+            return result.failure();
+        }
+        List<SheetRenderer.Partial> chunks = result.partials();
+        double[] heights = new double[chunks.size()];
+        for (int i = 0; i < heights.length; i++) {
+            heights[i] = chunks.get(i).height();
+        }
         File tmp = File.createTempFile(target.getName(), ".tmp", target.getParentFile());
         PdfDocument document = new PdfDocument();
-        String dropped = null;
         try {
             int pageNumber = 0;
-            for (byte[] musicXml : documents) {
-                SheetRenderer.Result result = SheetRenderer.render(musicXml,
-                        SheetRenderer.ENGINE_PICTURE, PAGE_WIDTH - 2 * MARGIN, PAGE_SCALE);
-                if (!result.succeeded()) {
-                    if (pageNumber == 0) {
-                        throw new IOException(result.failure());
-                    }
-                    dropped = result.failure();
-                    break;
+            for (List<Integer> page : SheetPaginator.paginate(heights, PAGE_HEIGHT - 2 * MARGIN)) {
+                pageNumber++;
+                PdfDocument.Page drawn = document.startPage(
+                        new PdfDocument.PageInfo.Builder(PAGE_WIDTH, PAGE_HEIGHT, pageNumber)
+                                .create());
+                Canvas canvas = drawn.getCanvas();
+                double y = MARGIN;
+                for (int index : page) {
+                    SheetRenderer.Partial chunk = chunks.get(index);
+                    canvas.save();
+                    canvas.translate((float) (MARGIN + chunk.x()), (float) y);
+                    canvas.drawPicture((Picture) chunk.result());
+                    canvas.restore();
+                    y += chunk.height();
                 }
-                List<SheetRenderer.Partial> chunks = result.partials();
-                double[] heights = new double[chunks.size()];
-                for (int i = 0; i < heights.length; i++) {
-                    heights[i] = chunks.get(i).height();
-                }
-                for (List<Integer> page : SheetPaginator.paginate(heights,
-                        PAGE_HEIGHT - 2 * MARGIN)) {
-                    pageNumber++;
-                    PdfDocument.Page drawn = document.startPage(
-                            new PdfDocument.PageInfo.Builder(PAGE_WIDTH, PAGE_HEIGHT, pageNumber)
-                                    .create());
-                    Canvas canvas = drawn.getCanvas();
-                    double y = MARGIN;
-                    for (int index : page) {
-                        SheetRenderer.Partial chunk = chunks.get(index);
-                        canvas.save();
-                        canvas.translate((float) (MARGIN + chunk.x()), (float) y);
-                        canvas.drawPicture((Picture) chunk.result());
-                        canvas.restore();
-                        y += chunk.height();
-                    }
-                    document.finishPage(drawn);
-                }
+                document.finishPage(drawn);
             }
             try (OutputStream out = new FileOutputStream(tmp)) {
                 document.writeTo(out);
@@ -165,6 +168,6 @@ final class SheetPdf {
             tmp.delete();
             throw new IOException("could not move the PDF into place at " + target);
         }
-        return dropped;
+        return null;
     }
 }

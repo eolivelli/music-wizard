@@ -38,7 +38,11 @@ import android.graphics.Typeface;
  * alphaTab's Android canvas drawing into a {@link Picture} rather than a
  * bitmap, so a chunk replays as vectors on a PDF page. A port of the library's
  * AndroidCanvas.kt in its order, so the two can be read side by side; the
- * music font is the one that class loads.
+ * music font is the one that class loads. One thing is not that class's:
+ * alphaTab hands a canvas unscaled geometry and the scaled size of the chunk,
+ * and its SVG canvas multiplies every coordinate by the display scale, so
+ * this one applies that scale as the recording's transform and draws text at
+ * its unscaled size under it.
  */
 final class PictureCanvas implements ICanvas {
 
@@ -135,6 +139,8 @@ final class PictureCanvas implements ICanvas {
     public void beginRender(double width, double height) {
         picture = new Picture();
         canvas = picture.beginRecording((int) Math.ceil(width), (int) Math.ceil(height));
+        float scale = (float) settings.getDisplay().getScale();
+        canvas.scale(scale, scale);
         textBaseline = TextBaseline.Top;
         path = new Path();
         path.setFillType(Path.FillType.WINDING);
@@ -264,7 +270,7 @@ final class PictureCanvas implements ICanvas {
 
     @Override
     public void fillText(String text, double x, double y) {
-        Paint paint = textPaint(typeface(), font.getSize() * settings.getDisplay().getScale());
+        Paint paint = textPaint(typeface(), font.getSize());
         paint.setTextAlign(switch (textAlign) {
             case Left -> Paint.Align.LEFT;
             case Center -> Paint.Align.CENTER;
