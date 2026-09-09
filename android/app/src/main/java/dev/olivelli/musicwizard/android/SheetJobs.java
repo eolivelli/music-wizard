@@ -43,7 +43,8 @@ final class SheetJobs {
     }
 
     interface PdfListener {
-        void onPdf(File pdf);
+        /** @param omitted why the playable part is not in it, or null when it is or was not asked for */
+        void onPdf(File pdf, String omitted);
 
         void onPdfFailed(String why);
     }
@@ -132,19 +133,21 @@ final class SheetJobs {
     }
 
     /** Writes the chart as a PDF at {@code target}; not superseded by later sheet requests. */
-    void pdf(Context context, Score score, File target, PdfListener listener) {
+    void pdf(Context context, Score score, boolean playable, File target, PdfListener listener) {
         worker.execute(() -> {
             String failure = null;
+            String omitted = null;
             try {
                 SheetRenderer.initialize(context);
-                SheetPdf.write(score, target);
+                omitted = SheetPdf.write(score, playable, target);
             } catch (Throwable t) {
                 failure = t.getMessage() == null ? t.toString() : t.getMessage();
             }
             String why = failure;
+            String left = omitted;
             dispatcher.post(() -> {
                 if (why == null) {
-                    listener.onPdf(target);
+                    listener.onPdf(target, left);
                 } else {
                     listener.onPdfFailed(why);
                 }

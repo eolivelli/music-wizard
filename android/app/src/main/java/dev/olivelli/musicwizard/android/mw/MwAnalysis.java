@@ -76,6 +76,16 @@ public final class MwAnalysis {
      * it reports the file's rate before resampling rather than after.
      */
     public static Score analyze(File wav, Consumer<String> progress) throws IOException {
+        return analyze(wav, false, progress);
+    }
+
+    /**
+     * @param trackMelody whether to read a melody too; from the mix, since the
+     *                    phone separates nothing, so a solo take gives the
+     *                    tune and a band gives whatever is loudest
+     */
+    public static Score analyze(File wav, boolean trackMelody, Consumer<String> progress)
+            throws IOException {
         Consumer<String> report = progress != null ? progress : line -> { };
 
         report.accept("reading " + wav.getName());
@@ -91,7 +101,8 @@ public final class MwAnalysis {
             throw new IOException("the recording is silent, so there is nothing to transcribe");
         }
 
-        return new AudioTranscriber(report).transcribe(audio, AudioTranscriber.Options.defaults());
+        return new AudioTranscriber(report).transcribe(audio,
+                new AudioTranscriber.Options(null, null, null, trackMelody));
     }
 
     /** The buffer the analysis stages should see, resampled if it is not already there. */

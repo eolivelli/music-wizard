@@ -35,7 +35,6 @@ import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.notation.MusicXmlExport;
 import java.io.File;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -161,7 +160,7 @@ final class BundleShare {
                 if (musicXml != null) {
                     try {
                         SheetRenderer.initialize(application);
-                        SheetPdf.write(musicXml.getBytes(StandardCharsets.UTF_8),
+                        SheetPdf.write(score, Preferences.playablePart(application),
                                 recording.pdfFile());
                         pdf = recording.pdfFile();
                     } catch (Throwable t) {

@@ -153,6 +153,23 @@ public class MwAnalysisTest {
         assertTrue(MwAnalysis.summary(score).contains("quarter notes/min"));
     }
 
+    /** The melody stage is DSP alone, so the phone can run it; it is off unless asked for. */
+    @Test
+    public void theMelodyIsTrackedOnlyWhenAskedFor() throws IOException {
+        File wav = folder.newFile("triads.wav");
+        writeChordLoop(wav);
+
+        List<String> stages = new ArrayList<>();
+        Score heard = MwAnalysis.analyze(wav, true, stages::add);
+        assertTrue(stages.toString(), stages.stream().anyMatch(line -> line.contains("melody")));
+        assertTrue("asked for, the melody track should be on the score",
+                heard.track(dev.olivelli.musicwizard.core.model.PartRole.LEAD_VOCAL).isPresent());
+
+        Score unasked = MwAnalysis.analyze(wav, false, line -> { });
+        assertFalse(unasked.track(dev.olivelli.musicwizard.core.model.PartRole.LEAD_VOCAL)
+                .isPresent());
+    }
+
     /** The cache beside the audio, written and read back. */
     @Test
     public void theScoreCacheRoundTripsBesideTheAudio() throws IOException {
