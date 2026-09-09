@@ -271,7 +271,7 @@ final class AudioImport {
 
     /**
      * Measured on what was written, not on what the container declares, which
-     * a headerless stream misstates either way. A second of slack, since a link
+     * a headerless stream misstates either way. The slack is for a link, which
      * is measured in whole seconds and must not fail after it downloaded whole.
      */
     private static void refuseBeyondLinkLength(WavWriter writer) throws IOException {
