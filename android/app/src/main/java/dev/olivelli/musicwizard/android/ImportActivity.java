@@ -59,10 +59,16 @@ public final class ImportActivity extends MwActivity implements ImportJobs.Liste
     private RecordingStore store;
     private File cacheDirectory;
 
+    /** Set on the intent for a file picked in the library: the import is already running. */
+    static final String EXTRA_PICKED = "picked";
+
     /** The link as it will be fetched, or null when the share held none. */
     private String videoUrl;
     private String shareText;
     private String sharedTitle;
+
+    /** A file picked in the library, whose import this screen only watches. */
+    private boolean picked;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -116,6 +122,7 @@ public final class ImportActivity extends MwActivity implements ImportJobs.Liste
         // and the screen would then say the share held no link when it did.
         shareText = text(intent, Intent.EXTRA_TEXT);
         String subject = text(intent, Intent.EXTRA_SUBJECT);
+        picked = intent != null && intent.getBooleanExtra(EXTRA_PICKED, false);
 
         String id = VideoLink.videoId(shareText);
         videoUrl = id == null ? null : VideoLink.watchUrl(id);
@@ -145,10 +152,12 @@ public final class ImportActivity extends MwActivity implements ImportJobs.Liste
                 return;
             }
             showConfirmation();
-            statusView.setText(last.cancelled
+            statusView.setText((last.cancelled
                     ? getString(R.string.import_cancelled)
-                    : getString(R.string.import_failed, last.failure));
-            downloadButton.setText(R.string.import_retry);
+                    : getString(R.string.import_failed, last.failure)) + pickAgain());
+            if (videoUrl != null) {
+                downloadButton.setText(R.string.import_retry);
+            }
             return;
         }
         // Also where a process killed mid-import lands: the singleton went with
@@ -205,12 +214,17 @@ public final class ImportActivity extends MwActivity implements ImportJobs.Liste
         downloadButton.setText(R.string.import_download);
 
         if (videoUrl == null) {
-            titleView.setText(R.string.import_title);
+            titleView.setText(picked && sharedTitle != null ? sharedTitle
+                    : getString(R.string.import_title));
             urlView.setText("");
-            statusView.setText(describeShare());
+            // A picked file cannot be retried from here: the pick was the
+            // library's, and its grant went with it.
+            statusView.setText(picked ? getString(R.string.import_pick_again) : describeShare());
+            downloadButton.setVisibility(picked ? View.GONE : View.VISIBLE);
             downloadButton.setEnabled(false);
             return;
         }
+        downloadButton.setVisibility(View.VISIBLE);
         titleView.setText(sharedTitle == null ? getString(R.string.import_untitled) : sharedTitle);
         urlView.setText(videoUrl);
         statusView.setText(R.string.import_confirm);
@@ -234,6 +248,9 @@ public final class ImportActivity extends MwActivity implements ImportJobs.Liste
 
     private void showRunning() {
         showLog();
+        if (sharedTitle != null) {
+            titleView.setText(sharedTitle);
+        }
         progressView.setVisibility(View.VISIBLE);
         downloadButton.setEnabled(true);
         downloadButton.setText(R.string.import_cancel_download);
@@ -285,14 +302,20 @@ public final class ImportActivity extends MwActivity implements ImportJobs.Liste
     @Override
     public void onFailed(String message) {
         showConfirmation();
-        statusView.setText(getString(R.string.import_failed, message));
-        downloadButton.setText(R.string.import_retry);
+        statusView.setText(getString(R.string.import_failed, message) + pickAgain());
+        if (videoUrl != null) {
+            downloadButton.setText(R.string.import_retry);
+        }
     }
 
     @Override
     public void onCancelled() {
         showConfirmation();
-        statusView.setText(R.string.import_cancelled);
+        statusView.setText(getString(R.string.import_cancelled) + pickAgain());
+    }
+
+    private String pickAgain() {
+        return picked ? "\n" + getString(R.string.import_pick_again) : "";
     }
 
     /**

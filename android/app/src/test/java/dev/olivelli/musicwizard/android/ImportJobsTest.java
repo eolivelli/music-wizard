@@ -192,6 +192,127 @@ public class ImportJobsTest {
     }
 
     @Test
+    public void aPickedFileBecomesATakeNamedAfterIt() throws Exception {
+        ImportJobs jobs = new ImportJobs(dispatcher, fetcherWriting("unused"),
+                decoderWriting(44_100, 10));
+        Watcher watcher = new Watcher();
+
+        assertTrue(jobs.startFile("My Song.m4a",
+                () -> new java.io.ByteArrayInputStream(new byte[] {1, 2, 3}),
+                cache, store, watcher));
+        settle(jobs);
+
+        assertNull(watcher.failure);
+        assertNotNull(watcher.finished);
+        RecordingStore.Recording take = new RecordingStore.Recording(watcher.finished);
+        assertEquals("My Song", take.displayName());
+        TakeSource source = TakeSource.parse(RecordingStore.readSource(take));
+        assertEquals(TakeSource.FILE, source.kind());
+        assertTrue("a file of unknown origin must stay out of the corpus", source.isCommercial());
+        assertTrue(RecordingStore.readNotes(take).contains("My Song.m4a"));
+        assertEquals(0, cache.listFiles().length);
+    }
+
+    /**
+     * A decoder in the real one's order: the source is opened, the target is
+     * created, and only then is the source read. A target that is the source
+     * has been truncated by then.
+     */
+    private static ImportJobs.Decoder decoderReading(java.util.List<byte[]> seen, int rate) {
+        return (source, target, progress, cancelled) -> {
+            try (java.io.InputStream in = new java.io.FileInputStream(source);
+                    WavWriter writer = new WavWriter(target, rate)) {
+                seen.add(in.readAllBytes());
+                writer.write(new short[10], 10, 1);
+                writer.finish();
+            }
+            return rate;
+        };
+    }
+
+    @Test
+    public void aPickedWavIsNotDecodedOntoItself() throws Exception {
+        byte[] picked = new byte[300];
+        java.util.Arrays.fill(picked, (byte) 7);
+        java.util.List<byte[]> seen = new java.util.ArrayList<>();
+        ImportJobs jobs = new ImportJobs(dispatcher, fetcherWriting("unused"),
+                decoderReading(seen, 44_100));
+        Watcher watcher = new Watcher();
+
+        jobs.startFile("take.wav", () -> new java.io.ByteArrayInputStream(picked), cache, store,
+                watcher);
+        settle(jobs);
+
+        assertNull(watcher.failure);
+        assertEquals(1, seen.size());
+        assertTrue("the decoder must read the pick, not its own output",
+                java.util.Arrays.equals(picked, seen.get(0)));
+    }
+
+    @Test
+    public void aCopyThatFailsPartwayLeavesNothingInTheCache() throws Exception {
+        ImportJobs jobs = new ImportJobs(dispatcher, fetcherWriting("unused"),
+                decoderWriting(44_100, 10));
+        Watcher watcher = new Watcher();
+
+        jobs.startFile("broken.mp3", () -> new java.io.InputStream() {
+            private int served;
+
+            @Override
+            public int read() throws IOException {
+                if (served++ > 200_000) {
+                    throw new IOException("the stream broke");
+                }
+                return 1;
+            }
+        }, cache, store, watcher);
+        settle(jobs);
+
+        assertTrue(watcher.failure, watcher.failure.contains("broke"));
+        assertEquals(0, cache.listFiles().length);
+        assertEquals(0, store.list().size());
+    }
+
+    @Test
+    public void aPickTooLargeIsRefusedBeforeItFillsThePhone() throws Exception {
+        ImportJobs jobs = new ImportJobs(dispatcher, fetcherWriting("unused"),
+                decoderWriting(44_100, 10), 256 * 1024);
+        Watcher watcher = new Watcher();
+
+        jobs.startFile("huge.mp3", () -> new java.io.InputStream() {
+            @Override
+            public int read() {
+                return 1;
+            }
+
+            @Override
+            public int read(byte[] b, int off, int len) {
+                return len;
+            }
+        }, cache, store, watcher);
+        settle(jobs);
+
+        assertTrue(watcher.failure, watcher.failure.contains("too large"));
+        assertEquals(0, cache.listFiles().length);
+    }
+
+    @Test
+    public void aPickedFileThatCannotBeOpenedFails() throws Exception {
+        ImportJobs jobs = new ImportJobs(dispatcher, fetcherWriting("unused"),
+                decoderWriting(44_100, 10));
+        Watcher watcher = new Watcher();
+
+        jobs.startFile("gone.mp3", () -> {
+            throw new java.io.IOException("the file could not be opened");
+        }, cache, store, watcher);
+        settle(jobs);
+
+        assertNull(watcher.finished);
+        assertTrue(watcher.failure, watcher.failure.contains("could not be opened"));
+        assertEquals(0, store.list().size());
+    }
+
+    @Test
     public void theCacheIsEmptyWhenAnImportFinishes() throws Exception {
         ImportJobs jobs = new ImportJobs(dispatcher, fetcherWriting("Some Song"),
                 decoderWriting(44_100, 10));

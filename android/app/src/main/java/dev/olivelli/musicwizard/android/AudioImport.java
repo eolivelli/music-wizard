@@ -21,6 +21,7 @@ import android.media.MediaCodec;
 import android.media.MediaExtractor;
 import android.media.MediaFormat;
 import dev.olivelli.musicwizard.android.mw.WavWriter;
+import dev.olivelli.musicwizard.android.yt.Fetch;
 import java.io.File;
 import java.io.IOException;
 import java.io.InterruptedIOException;
@@ -258,12 +259,26 @@ final class AudioImport {
                 samples[i] = (short) Math.round(value * Short.MAX_VALUE);
             }
             writer.write(samples, samples.length / channels, channels);
+            refuseBeyondLinkLength(writer);
             return;
         }
         ShortBuffer shorts = buffer.asShortBuffer();
         short[] samples = new short[shorts.remaining()];
         shorts.get(samples);
         writer.write(samples, samples.length / channels, channels);
+        refuseBeyondLinkLength(writer);
+    }
+
+    /**
+     * Measured on what was written, not on what the container declares, which
+     * a headerless stream misstates either way. The slack is for a link, which
+     * is measured in whole seconds and must not fail after it downloaded whole.
+     */
+    private static void refuseBeyondLinkLength(WavWriter writer) throws IOException {
+        if (writer.frames() > (Fetch.MAX_SECONDS + 1) * (long) writer.sampleRate()) {
+            throw new IOException("that recording is longer than "
+                    + Fetch.MAX_SECONDS / 60 + " minutes");
+        }
     }
 
     private static int audioTrack(MediaExtractor extractor) throws IOException {

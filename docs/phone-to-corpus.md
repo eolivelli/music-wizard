@@ -49,7 +49,10 @@ import and nothing downstream needs it to.
 take whose line says `source: youtube` was fetched from a link, not played into
 a microphone: it is a commercial recording, it goes to `uncommitted/`
 unconditionally, and no amount of it sounding like someone's kitchen changes
-that. `source: microphone` is a take of your own playing. A bundle with no
+that. `source: file` is a file opened from the phone's storage, of whatever
+origin the note beside it records; it goes to `uncommitted/` too unless you
+know it is your own playing. `source: microphone` is a take of your own
+playing. A bundle with no
 `source:` line at all was made by an app older than #415 — those predate the
 import feature, so they are field recordings, but check the app version in the
 same file rather than assuming.

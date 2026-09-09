@@ -14,6 +14,8 @@
     <string name="permission_needed">Recording needs microphone permission.</string>
 
     <string name="library_empty">No recordings yet.</string>
+    <string name="open_file">Open audio file</string>
+    <string name="import_pick_again">To try again, open the file from the library once more.</string>
     <string name="analyze">Analyze</string>
     <string name="reanalyze">Re-analyze</string>
     <string name="share_chart">Share chart</string>

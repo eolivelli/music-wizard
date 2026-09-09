@@ -20,6 +20,7 @@ import android.app.AlertDialog;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
+import android.provider.OpenableColumns;
 import android.text.InputType;
 import android.view.View;
 import android.view.ViewGroup;
@@ -49,6 +50,8 @@ import java.util.List;
  */
 public final class LibraryActivity extends MwActivity {
 
+    private static final int REQUEST_OPEN_FILE = 1;
+
     private RecordingStore store;
     private ListView list;
     private TextView empty;
@@ -63,6 +66,7 @@ public final class LibraryActivity extends MwActivity {
         list = findViewById(R.id.recordings);
         empty = findViewById(R.id.empty);
 
+        findViewById(R.id.openFileButton).setOnClickListener(view -> pickFile());
         list.setOnItemClickListener((parent, view, position, id) -> open(shown.get(position)));
         list.setOnItemLongClickListener((parent, view, position, id) -> {
             showActions(shown.get(position));
@@ -87,6 +91,69 @@ public final class LibraryActivity extends MwActivity {
         shown.addAll(store.list());
         list.setAdapter(new RecordingAdapter(shown));
         empty.setVisibility(shown.isEmpty() ? View.VISIBLE : View.GONE);
+    }
+
+    /** The system picker, for audio already on the phone; the pick arrives in onActivityResult. */
+    private void pickFile() {
+        Intent pick = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        pick.addCategory(Intent.CATEGORY_OPENABLE);
+        pick.setType("*/*");
+        pick.putExtra(Intent.EXTRA_MIME_TYPES, new String[] {"audio/*", "video/*"});
+        try {
+            //noinspection deprecation
+            startActivityForResult(pick, REQUEST_OPEN_FILE);
+        } catch (android.content.ActivityNotFoundException e) {
+            Toast.makeText(this, "this phone has no file picker", Toast.LENGTH_LONG).show();
+        }
+    }
+
+    @Override
+    @SuppressWarnings("deprecation")
+    protected void onActivityResult(int request, int result, Intent data) {
+        super.onActivityResult(request, result, data);
+        if (request != REQUEST_OPEN_FILE || result != RESULT_OK || data == null
+                || data.getData() == null) {
+            return;
+        }
+        Uri uri = data.getData();
+        String name = displayNameOf(uri);
+        File cacheDirectory = new File(getCacheDir(), "imports");
+        if (!cacheDirectory.isDirectory() && !cacheDirectory.mkdirs()) {
+            Toast.makeText(this, "the import folder could not be made", Toast.LENGTH_LONG).show();
+            return;
+        }
+        android.content.ContentResolver resolver = getApplicationContext().getContentResolver();
+        boolean started = ImportJobs.get().startFile(name, () -> {
+            java.io.InputStream in = resolver.openInputStream(uri);
+            if (in == null) {
+                throw new IOException("the file could not be opened");
+            }
+            return in;
+        }, cacheDirectory, store, null);
+        if (!started) {
+            Toast.makeText(this, R.string.import_busy, Toast.LENGTH_LONG).show();
+            return;
+        }
+        startActivity(new Intent(this, ImportActivity.class)
+                .putExtra(ImportActivity.EXTRA_PICKED, true)
+                .putExtra(Intent.EXTRA_SUBJECT, name));
+    }
+
+    /** The name the picker shows, or the last of the path where it shows none. */
+    private String displayNameOf(Uri uri) {
+        try (android.database.Cursor cursor = getContentResolver().query(uri,
+                new String[] {OpenableColumns.DISPLAY_NAME}, null, null, null)) {
+            if (cursor != null && cursor.moveToFirst()) {
+                String name = cursor.getString(0);
+                if (name != null && !name.trim().isEmpty()) {
+                    return name.trim();
+                }
+            }
+        } catch (RuntimeException e) {
+            // A provider that refuses the query still has a path below.
+        }
+        String last = uri.getLastPathSegment();
+        return last == null || last.trim().isEmpty() ? "picked" : last.trim();
     }
 
     private void open(Recording recording) {
