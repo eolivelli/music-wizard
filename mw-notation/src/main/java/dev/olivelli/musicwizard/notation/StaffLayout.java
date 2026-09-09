@@ -316,9 +316,10 @@ final class StaffLayout {
      *
      * @param startBeat where the music begins, which is a pickup when it falls
      *                  inside the opening bar and zero otherwise
-     * @param endBeat   where the last engravable part stops sounding
-     * @param endedBy   the part that stops last, named so that a complaint about
-     *                  the length points at the part responsible for it
+     * @param endBeat   where the last of the engravable parts and the chart
+     *                  stops sounding
+     * @param endedBy   what stops last, named so that a complaint about the
+     *                  length points at what is responsible for it
      * @param endedByAnotherPart whether that part is one other than the one being
      *                  engraved — carried rather than re-derived by comparing
      *                  names, because two tracks in different roles may share a

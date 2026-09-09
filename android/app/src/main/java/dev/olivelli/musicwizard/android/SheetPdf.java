@@ -79,13 +79,13 @@ final class SheetPdf {
     /** The same over a chart already exported, so a caller that also bundles it exports once. */
     static String write(byte[] chart, Score score, boolean playable, File target)
             throws IOException {
-        Documents documents = documents(chart, score, playable);
+        Document document = document(chart, score, playable);
         synchronized (WRITING) {
-            String failed = engrave(documents.musicXml().get(0), target);
+            String failed = engrave(document.musicXml(), target);
             if (failed == null) {
-                return documents.omitted();
+                return document.omitted();
             }
-            if (documents.omitted() != null) {
+            if (!document.part()) {
                 throw new IOException(failed);
             }
             // The part would not engrave; the chart is the document after all.
@@ -97,18 +97,21 @@ final class SheetPdf {
         }
     }
 
-    /** What goes into the file, and why it is the chart when the part was wanted. */
-    record Documents(List<byte[]> musicXml, String omitted) {
+    /**
+     * What goes into the file: the part, or the chart, and why it is the chart
+     * when the part was wanted.
+     */
+    record Document(byte[] musicXml, boolean part, String omitted) {
     }
 
-    static Documents documents(byte[] chart, Score score, boolean playable) {
+    static Document document(byte[] chart, Score score, boolean playable) {
         if (!playable) {
-            return new Documents(List.of(chart), null);
+            return new Document(chart, false, null);
         }
         try {
-            return new Documents(List.of(SheetDocuments.playable(score)), null);
+            return new Document(SheetDocuments.playable(score), true, null);
         } catch (IllegalArgumentException | IllegalStateException e) {
-            return new Documents(List.of(chart), reasonOf(e));
+            return new Document(chart, false, reasonOf(e));
         }
     }
 

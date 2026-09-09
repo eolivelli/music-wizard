@@ -61,27 +61,27 @@ public class SheetPdfTest {
     @Test
     public void thePlayablePartIsTheDocumentWhenHeard() {
         byte[] chart = SheetDocuments.chart(sung());
-        SheetPdf.Documents documents = SheetPdf.documents(chart, sung(), true);
-        assertEquals(1, documents.musicXml().size());
-        assertNull(documents.omitted());
-        String text = new String(documents.musicXml().get(0), StandardCharsets.UTF_8);
+        SheetPdf.Document document = SheetPdf.document(chart, sung(), true);
+        assertTrue(document.part());
+        assertNull(document.omitted());
+        String text = new String(document.musicXml(), StandardCharsets.UTF_8);
         assertTrue(text, text.contains("<pitch>"));
-        assertFalse(java.util.Arrays.equals(chart, documents.musicXml().get(0)));
+        assertFalse(java.util.Arrays.equals(chart, document.musicXml()));
     }
 
     @Test
     public void notAskedForMeansChartAloneAndNothingToSay() {
-        SheetPdf.Documents documents =
-                SheetPdf.documents(SheetDocuments.chart(sung()), sung(), false);
-        assertEquals(1, documents.musicXml().size());
-        assertNull(documents.omitted());
+        SheetPdf.Document document =
+                SheetPdf.document(SheetDocuments.chart(sung()), sung(), false);
+        assertFalse(document.part());
+        assertNull(document.omitted());
     }
 
     @Test
     public void anUntrackedMelodyIsLeftOutAndSaid() {
-        SheetPdf.Documents documents =
-                SheetPdf.documents(SheetDocuments.chart(chart()), chart(), true);
-        assertEquals(1, documents.musicXml().size());
-        assertTrue(documents.omitted(), documents.omitted().contains("not tracked"));
+        SheetPdf.Document document =
+                SheetPdf.document(SheetDocuments.chart(chart()), chart(), true);
+        assertFalse(document.part());
+        assertTrue(document.omitted(), document.omitted().contains("not tracked"));
     }
 }
