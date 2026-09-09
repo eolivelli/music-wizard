@@ -17,31 +17,24 @@
 package dev.olivelli.musicwizard.android;
 
 import android.content.Intent;
-import android.graphics.Bitmap;
-import android.graphics.drawable.BitmapDrawable;
-import android.graphics.drawable.Drawable;
 import android.os.Bundle;
 import android.view.View;
 import android.widget.AdapterView;
 import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.EditText;
-import android.widget.ImageView;
-import android.widget.LinearLayout;
 import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
 import dev.olivelli.musicwizard.android.mw.MwAnalysis;
 import dev.olivelli.musicwizard.android.mw.RecordingStore;
 import dev.olivelli.musicwizard.android.mw.SheetDocuments;
-import dev.olivelli.musicwizard.android.mw.SheetRenderer;
 import dev.olivelli.musicwizard.core.model.Score;
 import java.io.File;
 import java.io.IOException;
-import java.util.List;
 
 /**
- * The result screen: tempo, meter, and the chart, engraved and as text.
+ * The result screen: tempo, meter, the chart as text, and the PDF.
  *
  * <p>An analysis is cached in {@code <name>.score.json} beside its audio, so
  * opening a take that has been analysed once is instant, and "re-analyze"
@@ -52,12 +45,10 @@ import java.util.List;
  * that is the usual case on Android today.
  */
 public final class ResultActivity extends MwActivity
-        implements AnalysisJobs.Listener, SheetJobs.Listener, SheetJobs.PdfListener {
+        implements AnalysisJobs.Listener, SheetJobs.PdfListener {
 
-    /** How much one zoom step enlarges the engraving, and how far it may go. */
-    private static final double ZOOM_STEP = 1.25;
-    private static final double ZOOM_MIN = 0.5;
-    private static final double ZOOM_MAX = 2;
+    /** What a PDF was asked for. */
+    private enum PdfUse { SHARE, OPEN }
 
     /** Absolute path of the WAV to show. */
     public static final String EXTRA_WAV = "wav";
@@ -69,34 +60,20 @@ public final class ResultActivity extends MwActivity
     private Button analyzeButton;
     private Button shareButton;
     private Button pdfButton;
+    private Button openButton;
     private CheckBox playableCheck;
     /** The melody's lowest note, chosen from {@code R.array.melody_floor_notes}. */
     private Spinner floorSpinner;
-    private Button viewButton;
-    private View sheetScroll;
-    private View textScroll;
-    private LinearLayout sheet;
 
-    /** The score on screen, re-engraved on every zoom. */
+    /** The score on screen. */
     private Score shown;
-    private double zoom = 1;
-    private boolean sheetVisible;
 
-    /** What the pane was last asked to draw, so a resume does not draw it again. */
-    private Score engraved;
-    private double engravedZoom;
-    private boolean engraving;
-
-    /** The status line without any engraving failure appended to it. */
+    /** The status line. */
     private String summary = "";
     private String cacheNote;
-    /** Why the pane shows no sheet, or null while it does or nothing was asked. */
-    private String sheetFailure;
-
-    /** Whether the user tapped over to the text, which a new engraving respects. */
-    private boolean textChosen;
     /** The score a PDF was asked for; its answer is dropped once another is shown. */
     private Score pdfRequested;
+    private PdfUse pdfUse;
     private boolean resumed;
 
     /** The text on screen, kept so that "share" sends exactly what is shown. */
@@ -124,6 +101,7 @@ public final class ResultActivity extends MwActivity
         analyzeButton = findViewById(R.id.analyzeButton);
         shareButton = findViewById(R.id.shareButton);
         pdfButton = findViewById(R.id.pdfButton);
+        openButton = findViewById(R.id.openButton);
         playableCheck = findViewById(R.id.playableCheck);
         // The preference is the one copy: view state restored over it would
         // write back what this screen last saw, over a choice made since.
@@ -152,20 +130,10 @@ public final class ResultActivity extends MwActivity
 
         loadedNotes = RecordingStore.readNotes(new RecordingStore.Recording(wav));
         notes.setText(loadedNotes);
-        viewButton = findViewById(R.id.viewButton);
-        sheetScroll = findViewById(R.id.sheetScroll);
-        textScroll = findViewById(R.id.textScroll);
-        sheet = findViewById(R.id.sheet);
         analyzeButton.setOnClickListener(view -> analyze());
         shareButton.setOnClickListener(view -> shareText());
-        pdfButton.setOnClickListener(view -> sharePdf());
-        viewButton.setOnClickListener(view -> {
-            textChosen = sheetVisible;
-            showSheet(!sheetVisible);
-        });
-        findViewById(R.id.zoomInButton).setOnClickListener(view -> rezoom(ZOOM_STEP));
-        findViewById(R.id.zoomOutButton).setOnClickListener(view -> rezoom(1 / ZOOM_STEP));
-        clearSheet();
+        pdfButton.setOnClickListener(view -> requestPdf(PdfUse.SHARE));
+        openButton.setOnClickListener(view -> requestPdf(PdfUse.OPEN));
         // Not gated on there being an analysis: the recording alone is the
         // ground truth worth moving, and the chart is whatever the phone
         // happened to make of it.
@@ -225,13 +193,6 @@ public final class ResultActivity extends MwActivity
         super.onPause();
         resumed = false;
         AnalysisJobs.get().stopObserving(this);
-        // A render in flight is dropped and asked for again on resume; one
-        // already on screen stays.
-        SheetJobs.get().cancel();
-        if (engraving) {
-            engraved = null;
-            engraving = false;
-        }
         if (wav != null) {
             saveNotes();
         }
@@ -293,10 +254,10 @@ public final class ResultActivity extends MwActivity
         analyzeButton.setEnabled(false);
         shareButton.setEnabled(false);
         pdfButton.setEnabled(false);
-        // Nothing on screen is current until the run answers; a PDF or an
-        // engraving asked for the previous score is dropped on arrival.
+        openButton.setEnabled(false);
+        // Nothing on screen is current until the run answers; a PDF asked for
+        // the previous score is dropped on arrival.
         shown = null;
-        SheetJobs.get().cancel();
         String line = AnalysisJobs.get().progressOf(wav);
         status.setText(line.isEmpty() ? getString(R.string.analyzing) : line);
     }
@@ -306,10 +267,11 @@ public final class ResultActivity extends MwActivity
         analyzeButton.setText(R.string.analyze);
         shareButton.setEnabled(false);
         pdfButton.setEnabled(false);
+        openButton.setEnabled(false);
         status.setText(R.string.not_analyzed);
         chart.setText("");
         shareable = "";
-        clearSheet();
+        shown = null;
     }
 
     /**
@@ -325,14 +287,13 @@ public final class ResultActivity extends MwActivity
         analyzeButton.setText(R.string.reanalyze);
         shareButton.setEnabled(true);
         pdfButton.setEnabled(true);
+        openButton.setEnabled(true);
         this.cacheNote = cacheNote;
         summary = summaryOf(score);
-        sheetFailure = null;
         showStatus();
         shareable = MwAnalysis.chartText(score);
         chart.setText(shareable);
         shown = score;
-        engrave();
     }
 
     /** Tempo and meter, the cache's note, and whether the PDF can carry the playable part. */
@@ -352,116 +313,23 @@ public final class ResultActivity extends MwActivity
     }
 
     private void showStatus() {
-        status.setText(sheetFailure == null
-                ? summary
-                : summary + "\n" + getString(R.string.sheet_failed, sheetFailure));
-    }
-
-    /** Asks for the engraving at the width the pane will have: its parent's, inside the padding. */
-    private void engrave() {
-        Score score = shown;
-        // By value: a score read back from the cache is a new object each time.
-        if (score == null || (score.equals(engraved) && zoom == engravedZoom)) {
-            return;
-        }
-        engraved = score;
-        engravedZoom = zoom;
-        engraving = true;
-        sheetScroll.post(() -> {
-            View parent = (View) sheetScroll.getParent();
-            int width = parent.getWidth() - parent.getPaddingLeft() - parent.getPaddingRight();
-            if (width <= 0) {
-                width = getResources().getDisplayMetrics().widthPixels;
-            }
-            double density = getResources().getDisplayMetrics().density;
-            SheetJobs.get().render(getApplicationContext(), score, width, density * zoom, this);
-        });
-    }
-
-    private void rezoom(double factor) {
-        zoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, zoom * factor));
-        engrave();
-    }
-
-    @Override
-    public void onSheet(List<SheetRenderer.Partial> systems) {
-        if (isFinishing() || isDestroyed()) {
-            return;
-        }
-        engraving = false;
-        sheetFailure = null;
-        showStatus();
-        releaseSystems();
-        for (SheetRenderer.Partial system : systems) {
-            ImageView image = new ImageView(this);
-            image.setImageBitmap((Bitmap) system.result());
-            image.setAdjustViewBounds(true);
-            sheet.addView(image, new LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT));
-        }
-        viewButton.setEnabled(true);
-        showSheet(!textChosen);
-    }
-
-    @Override
-    public void onSheetFailed(String why) {
-        if (isFinishing() || isDestroyed()) {
-            return;
-        }
-        // The score stays, so a zoom step out can try again.
-        engraving = false;
-        engraved = null;
-        hideSheet();
-        sheetFailure = why;
-        showStatus();
-    }
-
-    /** No score to engrave: text only, until a new analysis arrives. */
-    private void clearSheet() {
-        shown = null;
-        engraved = null;
-        SheetJobs.get().cancel();
-        hideSheet();
-    }
-
-    private void hideSheet() {
-        releaseSystems();
-        viewButton.setEnabled(false);
-        showSheet(false);
-    }
-
-    /** Frees the drawn systems' bitmaps before the views that hold them go. */
-    private void releaseSystems() {
-        for (int i = 0; i < sheet.getChildCount(); i++) {
-            ImageView image = (ImageView) sheet.getChildAt(i);
-            Drawable drawable = image.getDrawable();
-            image.setImageDrawable(null);
-            if (drawable instanceof BitmapDrawable bitmap && bitmap.getBitmap() != null) {
-                bitmap.getBitmap().recycle();
-            }
-        }
-        sheet.removeAllViews();
-    }
-
-    private void showSheet(boolean sheetOnTop) {
-        sheetVisible = sheetOnTop;
-        sheetScroll.setVisibility(sheetOnTop ? View.VISIBLE : View.GONE);
-        textScroll.setVisibility(sheetOnTop ? View.GONE : View.VISIBLE);
-        viewButton.setText(sheetOnTop ? R.string.show_text : R.string.show_sheet);
+        status.setText(summary);
     }
 
     /**
-     * Engraves the score on screen into the PDF beside the take, then offers
-     * it. Rendered afresh each time: the file may belong to an older analysis.
+     * Engraves the score on screen into the PDF beside the take, then shares
+     * or opens it. Rendered afresh each time: the file may belong to an older
+     * analysis.
      */
-    private void sharePdf() {
+    private void requestPdf(PdfUse use) {
         Score score = shown;
         if (score == null) {
             return;
         }
         pdfButton.setEnabled(false);
+        openButton.setEnabled(false);
         pdfRequested = score;
+        pdfUse = use;
         Toast.makeText(this, R.string.pdf_building, Toast.LENGTH_SHORT).show();
         SheetJobs.get().pdf(getApplicationContext(), score, playableCheck.isChecked(),
                 new RecordingStore.Recording(wav).pdfFile(), this);
@@ -474,6 +342,7 @@ public final class ResultActivity extends MwActivity
         }
         pdfRequested = null;
         pdfButton.setEnabled(true);
+        openButton.setEnabled(true);
         return resumed;
     }
 
@@ -491,8 +360,19 @@ public final class ResultActivity extends MwActivity
             uri = androidx.core.content.FileProvider.getUriForFile(
                     this, getPackageName() + ".files", pdf);
         } catch (IllegalArgumentException e) {
-            Toast.makeText(this, "this PDF cannot be shared: " + e.getMessage(),
+            Toast.makeText(this, "this PDF cannot be handed out: " + e.getMessage(),
                     Toast.LENGTH_LONG).show();
+            return;
+        }
+        if (pdfUse == PdfUse.OPEN) {
+            Intent view = new Intent(Intent.ACTION_VIEW);
+            view.setDataAndType(uri, "application/pdf");
+            view.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            try {
+                startActivity(view);
+            } catch (android.content.ActivityNotFoundException e) {
+                Toast.makeText(this, R.string.pdf_no_viewer, Toast.LENGTH_LONG).show();
+            }
             return;
         }
         Intent send = new Intent(Intent.ACTION_SEND);
@@ -544,9 +424,10 @@ public final class ResultActivity extends MwActivity
         analyzeButton.setText(R.string.analyze);
         shareButton.setEnabled(false);
         pdfButton.setEnabled(false);
+        openButton.setEnabled(false);
         status.setText("analysis failed: " + message);
         chart.setText("");
         shareable = "";
-        clearSheet();
+        shown = null;
     }
 }

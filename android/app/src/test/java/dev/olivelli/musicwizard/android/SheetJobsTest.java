@@ -16,12 +16,10 @@
 
 package dev.olivelli.musicwizard.android;
 
-import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
-import dev.olivelli.musicwizard.android.mw.SheetRenderer;
 import dev.olivelli.musicwizard.core.model.Chord;
 import dev.olivelli.musicwizard.core.model.ChordProgression;
 import dev.olivelli.musicwizard.core.model.ChordQuality;
@@ -31,14 +29,13 @@ import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.model.TempoMap;
 import dev.olivelli.musicwizard.core.model.TimeSignature;
 import java.io.File;
-import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.Test;
 
+/** The PDF job on the JVM, where the drawing cannot happen; what must arrive is the reason. */
 public class SheetJobsTest {
 
     private static Score chart() {
@@ -50,21 +47,19 @@ public class SheetJobsTest {
                                 4, 8, Confidence.CERTAIN)), Confidence.CERTAIN));
     }
 
-    /** A listener that records one outcome and lets the test wait for it. */
-    private static final class Outcome implements SheetJobs.Listener {
-
+    private static final class Outcome implements SheetJobs.PdfListener {
         final CountDownLatch done = new CountDownLatch(1);
-        final AtomicReference<List<SheetRenderer.Partial>> systems = new AtomicReference<>();
+        final AtomicReference<File> file = new AtomicReference<>();
         final AtomicReference<String> failure = new AtomicReference<>();
 
         @Override
-        public void onSheet(List<SheetRenderer.Partial> drawn) {
-            systems.set(drawn);
+        public void onPdf(File pdf, String omitted) {
+            file.set(pdf);
             done.countDown();
         }
 
         @Override
-        public void onSheetFailed(String why) {
+        public void onPdfFailed(String why) {
             failure.set(why);
             done.countDown();
         }
@@ -74,101 +69,31 @@ public class SheetJobsTest {
         }
     }
 
+    /** Nothing registers the picture engine on the JVM, so the drawing fails there, by name. */
     @Test
-    public void deliversTheSystemsOfAChart() throws InterruptedException {
-        SheetJobs jobs = new SheetJobs(SheetRenderer.ENGINE_SVG, Runnable::run);
+    public void aPdfThatCannotBeDrawnReportsWhyAndNeverAFile() throws InterruptedException {
+        SheetJobs jobs = new SheetJobs(Runnable::run);
         Outcome outcome = new Outcome();
 
-        jobs.render(null, chart(), 1200, 1, outcome);
+        jobs.pdf(null, chart(), true, new File("unused.pdf"), outcome);
         outcome.await();
 
-        assertNull(outcome.failure.get());
-        assertEquals(1, outcome.systems.get().size());
-        assertTrue(String.valueOf(outcome.systems.get().get(0).result()).contains("Am7"));
-    }
-
-    /**
-     * Nothing registers the picture engine on the JVM, so the PDF cannot be
-     * drawn there; the reason must arrive as a failure, never as a file.
-     */
-    @Test
-    public void aPdfThatCannotBeMadeReportsWhyAndNeverAFile() throws InterruptedException {
-        SheetJobs jobs = new SheetJobs(SheetRenderer.ENGINE_SVG, Runnable::run);
-        CountDownLatch done = new CountDownLatch(1);
-        AtomicReference<String> failure = new AtomicReference<>();
-        AtomicReference<File> file = new AtomicReference<>();
-        jobs.pdf(null, chart(), true, new File("unused.pdf"), new SheetJobs.PdfListener() {
-            @Override
-            public void onPdf(File pdf, String omitted) {
-                file.set(pdf);
-                done.countDown();
-            }
-
-            @Override
-            public void onPdfFailed(String why) {
-                failure.set(why);
-                done.countDown();
-            }
-        });
-        assertTrue("no outcome arrived", done.await(30, TimeUnit.SECONDS));
-
-        assertNull(file.get());
-        assertNotNull(failure.get());
-        assertTrue(failure.get(), failure.get().contains("not initialized"));
-    }
-
-    @Test
-    public void saysWhyAScoreWithoutChordsHasNoSheet() throws InterruptedException {
-        SheetJobs jobs = new SheetJobs(SheetRenderer.ENGINE_SVG, Runnable::run);
-        Outcome outcome = new Outcome();
-
-        jobs.render(null, Score.empty(TempoMap.constant(120), 8), 1200, 1, outcome);
-        outcome.await();
-
+        assertNull(outcome.file.get());
         assertNotNull(outcome.failure.get());
-        assertNull(outcome.systems.get());
+        assertTrue(outcome.failure.get(), outcome.failure.get().contains("not initialized"));
     }
 
     @Test
-    public void aResultOvertakenBeforeItIsDeliveredIsDropped() throws InterruptedException {
-        List<Runnable> queue = Collections.synchronizedList(new ArrayList<>());
-        SheetJobs jobs = new SheetJobs(SheetRenderer.ENGINE_SVG, queue::add);
-        Outcome first = new Outcome();
-        Outcome second = new Outcome();
+    public void aScoreWithoutChordsHasNoPdfAndSaysSo() throws InterruptedException {
+        SheetJobs jobs = new SheetJobs(Runnable::run);
+        Outcome outcome = new Outcome();
 
-        jobs.render(null, chart(), 1200, 1, first);
-        awaitQueued(queue, 1);
-        // The first has rendered and posted; a newer request lands before
-        // its delivery runs.
-        jobs.render(null, chart(), 800, 1, second);
-        queue.remove(0).run();
-        assertEquals("the overtaken result must not report", 1, first.done.getCount());
+        jobs.pdf(null, Score.empty(TempoMap.constant(120), 8), false, new File("unused.pdf"),
+                outcome);
+        outcome.await();
 
-        awaitQueued(queue, 1);
-        queue.remove(0).run();
-        assertNull(second.failure.get());
-        assertEquals(1, second.systems.get().size());
-    }
-
-    private static void awaitQueued(List<Runnable> queue, int count) throws InterruptedException {
-        long deadline = System.currentTimeMillis() + 30_000;
-        while (queue.size() < count && System.currentTimeMillis() < deadline) {
-            Thread.sleep(20);
-        }
-        assertEquals(count, queue.size());
-    }
-
-    @Test
-    public void onlyTheLatestRequestReachesItsListener() throws InterruptedException {
-        SheetJobs jobs = new SheetJobs(SheetRenderer.ENGINE_SVG, Runnable::run);
-        Outcome first = new Outcome();
-        Outcome second = new Outcome();
-
-        jobs.render(null, chart(), 1200, 1, first);
-        jobs.render(null, chart(), 800, 1, second);
-        second.await();
-
-        assertNull(second.failure.get());
-        assertEquals("the superseded request must not report", 1, first.done.getCount());
+        assertNull(outcome.file.get());
+        assertNotNull(outcome.failure.get());
+        assertTrue(outcome.failure.get(), outcome.failure.get().contains("chord"));
     }
 }
