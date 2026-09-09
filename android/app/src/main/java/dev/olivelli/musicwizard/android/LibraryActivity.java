@@ -99,8 +99,12 @@ public final class LibraryActivity extends MwActivity {
         pick.addCategory(Intent.CATEGORY_OPENABLE);
         pick.setType("*/*");
         pick.putExtra(Intent.EXTRA_MIME_TYPES, new String[] {"audio/*", "video/*"});
-        //noinspection deprecation
-        startActivityForResult(pick, REQUEST_OPEN_FILE);
+        try {
+            //noinspection deprecation
+            startActivityForResult(pick, REQUEST_OPEN_FILE);
+        } catch (android.content.ActivityNotFoundException e) {
+            Toast.makeText(this, "this phone has no file picker", Toast.LENGTH_LONG).show();
+        }
     }
 
     @Override
@@ -118,9 +122,6 @@ public final class LibraryActivity extends MwActivity {
             Toast.makeText(this, "the import folder could not be made", Toast.LENGTH_LONG).show();
             return;
         }
-        // Opened through the application context: the worker reads the stream
-        // while this screen is behind the import screen, and the picker's grant
-        // is the app's.
         android.content.ContentResolver resolver = getApplicationContext().getContentResolver();
         boolean started = ImportJobs.get().startFile(name, () -> {
             java.io.InputStream in = resolver.openInputStream(uri);

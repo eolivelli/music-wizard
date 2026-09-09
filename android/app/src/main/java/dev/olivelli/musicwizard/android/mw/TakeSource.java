@@ -86,7 +86,6 @@ public final class TakeSource {
     }
 
     /** Whether this take may be committed to the corpus, licence aside. */
-    /** Not the app's own recording, so kept out of the committed corpus unless a person says otherwise. */
     public boolean isCommercial() {
         return !MICROPHONE.equals(kind);
     }

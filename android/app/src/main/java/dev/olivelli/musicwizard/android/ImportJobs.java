@@ -171,6 +171,9 @@ final class ImportJobs {
      */
     private static final long MIN_FREE_BYTES = 250L * 1024 * 1024;
 
+    /** A picked file larger than this is refused: the WAV it decodes to must fit beside it. */
+    private static final long MAX_PICK_BYTES = 100L * 1024 * 1024;
+
     private static ImportJobs instance;
 
     private final ExecutorService worker = Executors.newSingleThreadExecutor(runnable -> {
@@ -317,6 +320,15 @@ final class ImportJobs {
             return isFile() ? "copying" : "downloading";
         }
 
+        /**
+         * Where a picked file is copied before it is decoded, or null for a
+         * link. Named apart from the decoder's target, which is the pick's id
+         * plus {@code .wav}, so a picked WAV is not decoded onto itself.
+         */
+        File staging(File directory) {
+            return isFile() ? new File(directory, "picked-copy" + extensionOf(fileName)) : null;
+        }
+
         Fetch.Fetched obtain(Fetcher fetcher, File directory, Progress progress,
                 java.util.function.BooleanSupplier stop) throws ExtractionException, IOException {
             if (!isFile()) {
@@ -324,14 +336,19 @@ final class ImportJobs {
             }
             // Copied into the cache first: the decoder reads a path, and the
             // picker's grant is good for a stream, not a path.
-            File copy = new File(directory, "picked" + extensionOf(fileName));
+            File copy = staging(directory);
+            long copied = 0;
             try (java.io.InputStream in = opener.open();
                     java.io.OutputStream out = new java.io.FileOutputStream(copy)) {
                 byte[] buffer = new byte[64 * 1024];
                 int read;
-                while ((read = in.read(buffer)) > 0) {
+                while ((read = in.read(buffer)) != -1) {
                     if (stop.getAsBoolean()) {
                         throw new InterruptedIOException("cancelled");
+                    }
+                    copied += read;
+                    if (copied > MAX_PICK_BYTES) {
+                        throw new IOException("the file is too large to import");
                     }
                     out.write(buffer, 0, read);
                 }
@@ -400,6 +417,9 @@ final class ImportJobs {
             String fetching = origin.fetching();
             report(fetching, 0);
 
+            // Known before the copy begins, so a copy that fails partway is
+            // removed like a container that was downloaded whole.
+            container = origin.staging(cacheDirectory);
             Fetch.Fetched fetched = origin.obtain(fetcher, cacheDirectory,
                     fraction -> report(fetching, scale(fraction, 0, DOWNLOAD_SHARE)),
                     stop::get);
