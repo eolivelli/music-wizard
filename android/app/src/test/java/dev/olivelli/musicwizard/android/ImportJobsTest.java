@@ -213,11 +213,16 @@ public class ImportJobsTest {
         assertEquals(0, cache.listFiles().length);
     }
 
-    /** A decoder shaped like the real one: it reads its source before it opens its target. */
+    /**
+     * A decoder in the real one's order: the source is opened, the target is
+     * created, and only then is the source read. A target that is the source
+     * has been truncated by then.
+     */
     private static ImportJobs.Decoder decoderReading(java.util.List<byte[]> seen, int rate) {
         return (source, target, progress, cancelled) -> {
-            seen.add(java.nio.file.Files.readAllBytes(source.toPath()));
-            try (WavWriter writer = new WavWriter(target, rate)) {
+            try (java.io.InputStream in = new java.io.FileInputStream(source);
+                    WavWriter writer = new WavWriter(target, rate)) {
+                seen.add(in.readAllBytes());
                 writer.write(new short[10], 10, 1);
                 writer.finish();
             }
@@ -271,7 +276,7 @@ public class ImportJobsTest {
     @Test
     public void aPickTooLargeIsRefusedBeforeItFillsThePhone() throws Exception {
         ImportJobs jobs = new ImportJobs(dispatcher, fetcherWriting("unused"),
-                decoderWriting(44_100, 10));
+                decoderWriting(44_100, 10), 256 * 1024);
         Watcher watcher = new Watcher();
 
         jobs.startFile("huge.mp3", () -> new java.io.InputStream() {

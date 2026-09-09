@@ -171,7 +171,11 @@ final class ImportJobs {
      */
     private static final long MIN_FREE_BYTES = 250L * 1024 * 1024;
 
-    /** A picked file larger than this is refused: the WAV it decodes to must fit beside it. */
+    /**
+     * A pick this large is not a song. The bound that keeps the decoded WAV
+     * within {@link #MIN_FREE_BYTES} is on duration, {@link Fetch#MAX_SECONDS},
+     * applied by {@link AudioImport} to picks and links alike.
+     */
     private static final long MAX_PICK_BYTES = 100L * 1024 * 1024;
 
     private static ImportJobs instance;
@@ -185,6 +189,7 @@ final class ImportJobs {
     private final Dispatcher dispatcher;
     private final Fetcher fetcher;
     private final Decoder decoder;
+    private final long maxPickBytes;
 
     /**
      * What the last import did, for a screen to show and a user to send on.
@@ -203,14 +208,20 @@ final class ImportJobs {
     private AtomicBoolean cancelled = new AtomicBoolean(false);
 
     ImportJobs(Dispatcher dispatcher, Fetcher fetcher, Decoder decoder) {
-        this(new ImportLog(), dispatcher, fetcher, decoder);
+        this(new ImportLog(), dispatcher, fetcher, decoder, MAX_PICK_BYTES);
     }
 
-    ImportJobs(ImportLog log, Dispatcher dispatcher, Fetcher fetcher, Decoder decoder) {
+    ImportJobs(Dispatcher dispatcher, Fetcher fetcher, Decoder decoder, long maxPickBytes) {
+        this(new ImportLog(), dispatcher, fetcher, decoder, maxPickBytes);
+    }
+
+    ImportJobs(ImportLog log, Dispatcher dispatcher, Fetcher fetcher, Decoder decoder,
+            long maxPickBytes) {
         this.log = log;
         this.dispatcher = dispatcher;
         this.fetcher = fetcher;
         this.decoder = decoder;
+        this.maxPickBytes = maxPickBytes;
     }
 
     /** What the last import did. Never null; empty before the first one. */
@@ -230,7 +241,8 @@ final class ImportJobs {
                                     total > 0 ? done / (double) total : -1),
                             stop),
                     (source, target, progress, stop) -> AudioImport.decodeToWav(source, target,
-                            progress::onProgress, stop));
+                            progress::onProgress, stop),
+                    MAX_PICK_BYTES);
         }
         return instance;
     }
@@ -329,7 +341,7 @@ final class ImportJobs {
             return isFile() ? new File(directory, "picked-copy" + extensionOf(fileName)) : null;
         }
 
-        Fetch.Fetched obtain(Fetcher fetcher, File directory, Progress progress,
+        Fetch.Fetched obtain(Fetcher fetcher, File directory, long maxBytes, Progress progress,
                 java.util.function.BooleanSupplier stop) throws ExtractionException, IOException {
             if (!isFile()) {
                 return fetcher.fetch(shareText, directory, progress, stop);
@@ -347,7 +359,7 @@ final class ImportJobs {
                         throw new InterruptedIOException("cancelled");
                     }
                     copied += read;
-                    if (copied > MAX_PICK_BYTES) {
+                    if (copied > maxBytes) {
                         throw new IOException("the file is too large to import");
                     }
                     out.write(buffer, 0, read);
@@ -420,7 +432,7 @@ final class ImportJobs {
             // Known before the copy begins, so a copy that fails partway is
             // removed like a container that was downloaded whole.
             container = origin.staging(cacheDirectory);
-            Fetch.Fetched fetched = origin.obtain(fetcher, cacheDirectory,
+            Fetch.Fetched fetched = origin.obtain(fetcher, cacheDirectory, maxPickBytes,
                     fraction -> report(fetching, scale(fraction, 0, DOWNLOAD_SHARE)),
                     stop::get);
             container = fetched.file();

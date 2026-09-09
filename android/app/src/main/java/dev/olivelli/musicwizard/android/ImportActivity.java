@@ -154,8 +154,7 @@ public final class ImportActivity extends MwActivity implements ImportJobs.Liste
             showConfirmation();
             statusView.setText((last.cancelled
                     ? getString(R.string.import_cancelled)
-                    : getString(R.string.import_failed, last.failure))
-                    + (picked ? "\n" + getString(R.string.import_pick_again) : ""));
+                    : getString(R.string.import_failed, last.failure)) + pickAgain());
             if (videoUrl != null) {
                 downloadButton.setText(R.string.import_retry);
             }
@@ -303,8 +302,7 @@ public final class ImportActivity extends MwActivity implements ImportJobs.Liste
     @Override
     public void onFailed(String message) {
         showConfirmation();
-        statusView.setText(getString(R.string.import_failed, message)
-                + (picked ? "\n" + getString(R.string.import_pick_again) : ""));
+        statusView.setText(getString(R.string.import_failed, message) + pickAgain());
         if (videoUrl != null) {
             downloadButton.setText(R.string.import_retry);
         }
@@ -313,7 +311,11 @@ public final class ImportActivity extends MwActivity implements ImportJobs.Liste
     @Override
     public void onCancelled() {
         showConfirmation();
-        statusView.setText(R.string.import_cancelled);
+        statusView.setText(getString(R.string.import_cancelled) + pickAgain());
+    }
+
+    private String pickAgain() {
+        return picked ? "\n" + getString(R.string.import_pick_again) : "";
     }
 
     /**
