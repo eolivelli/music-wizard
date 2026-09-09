@@ -114,6 +114,29 @@ public class RecordingStoreTest {
         assertEquals("{\"marker\":1}", read(after.scoreFile()));
     }
 
+    @Test
+    public void renamingCarriesTheEngravedPdfAlong() throws IOException {
+        File wav = new File(store.directory(), "2026-08-01_21-34-05.wav");
+        touch(wav);
+        Recording before = new Recording(wav);
+        write(before.pdfFile(), "%PDF");
+
+        Recording after = store.rename(before, "G C D strum");
+        assertFalse(before.pdfFile().isFile());
+        assertEquals("%PDF", read(after.pdfFile()));
+    }
+
+    @Test
+    public void aTakeWithNoPdfDoesNotInheritAnOrphanedOneOnRename() throws IOException {
+        File wav = new File(store.directory(), "take.wav");
+        touch(wav);
+        Recording orphan = new Recording(new File(store.directory(), "G C D strum.wav"));
+        write(orphan.pdfFile(), "%PDF");
+
+        Recording after = store.rename(new Recording(wav), "G C D strum");
+        assertFalse(after.pdfFile().isFile());
+    }
+
     /** The note reads back exactly, and a blanked note removes its file. */
     @Test
     public void aNoteRoundTripsAndABlankOneDeletesTheFile() throws IOException {
@@ -259,8 +282,11 @@ public class RecordingStoreTest {
         RecordingStore.writeNotes(recording, "a note");
         RecordingStore.writeSource(recording, TakeSource.microphone().toText());
 
+        write(recording.pdfFile(), "%PDF");
+
         store.delete(recording);
         assertFalse(wav.isFile());
+        assertFalse(recording.pdfFile().isFile());
         assertFalse(recording.sourceFile().isFile());
         assertFalse(recording.scoreFile().isFile());
         assertFalse(recording.notesFile().isFile());

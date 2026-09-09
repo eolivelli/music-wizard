@@ -103,6 +103,15 @@ public class SheetRendererTest {
         assertFalse(svg, svg.contains("CN.C."));
     }
 
+    /** Unregistered, alphaTab would fall back to its default engine and draw SVG for a PDF. */
+    @Test
+    public void saysWhyWhenThePictureEngineIsNotInitialized() {
+        SheetRenderer.Result result =
+                SheetRenderer.render(chart(), SheetRenderer.ENGINE_PICTURE, 1200, 1);
+        assertFalse(result.succeeded());
+        assertTrue(result.failure(), result.failure().contains("not initialized"));
+    }
+
     @Test
     public void saysWhyWhenTheEngineIsUnknown() {
         SheetRenderer.Result result = SheetRenderer.render(chart(), "default", 1200, 1);

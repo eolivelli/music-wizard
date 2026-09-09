@@ -6,7 +6,8 @@ off the phone so it can join `samples/` or `uncommitted/` on the desktop. Epic
 #236, built in #249.
 
 Plain Java, `minSdk` 26, app-private storage. The chart is engraved on the
-device by alphaTab; no LilyPond, and no PDF yet (#776).
+device by alphaTab and shared as a vector PDF drawn through Android's own
+`PdfDocument`; no LilyPond.
 
 ## Getting a take off the phone
 
@@ -27,10 +28,12 @@ marked `source: file`.
 Two shares, both through `FileProvider`:
 
 - **Share WAV** (library long-press): the audio alone.
+- **Share PDF** (result screen): the engraved chart alone, `<take>.chords.pdf`.
 - **Share bundle** (library long-press and the result screen): one zip holding
-  the recording, the chart as text, the cached `score.json` where one could be
-  written, the player's note when one was typed, and an info file with the
-  take's duration, recorded date, tempo/meter and the app version.
+  the recording, the chart as text, as MusicXML and as that PDF, the cached
+  `score.json` where one could be written, the player's note when one was
+  typed, and an info file with the take's duration, recorded date, tempo/meter
+  and the app version.
   `BundleShare` builds it as `<take>.mwz.zip` — searchable by "mwz" in a cloud
   drive — and entries are named by the take, so files pulled out of the zip
   stay identifiable.

@@ -77,12 +77,14 @@ public final class TakeBundle {
      * @param wav       the recording
      * @param scoreJson the cached analysis, skipped when null or absent
      * @param chartText the chart as text, skipped when null
+     * @param musicXml  the chart as MusicXML, skipped when null
+     * @param pdf       the chart engraved, skipped when null or absent
      * @param notesText the player's own account of the take, skipped when null
      * @param infoText  a few lines about the take, skipped when null
      */
     public static void write(File zip, String takeName, File wav, File scoreJson,
-                             String chartText, String notesText, String infoText)
-            throws IOException {
+                             String chartText, String musicXml, File pdf, String notesText,
+                             String infoText) throws IOException {
         File tmp = new File(zip.getParentFile(), zip.getName() + ".tmp");
         try (ZipOutputStream out = new ZipOutputStream(new FileOutputStream(tmp))) {
             if (infoText != null) {
@@ -93,6 +95,12 @@ public final class TakeBundle {
             }
             if (chartText != null) {
                 text(out, takeName + ".chords.txt", chartText);
+            }
+            if (musicXml != null) {
+                text(out, takeName + ".chords.musicxml", musicXml);
+            }
+            if (pdf != null && pdf.isFile()) {
+                file(out, takeName + ".chords.pdf", pdf);
             }
             if (scoreJson != null && scoreJson.isFile()) {
                 file(out, takeName + ".score.json", scoreJson);

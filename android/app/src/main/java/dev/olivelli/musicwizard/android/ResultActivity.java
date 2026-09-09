@@ -48,7 +48,7 @@ import java.util.List;
  * that is the usual case on Android today.
  */
 public final class ResultActivity extends MwActivity
-        implements AnalysisJobs.Listener, SheetJobs.Listener {
+        implements AnalysisJobs.Listener, SheetJobs.Listener, SheetJobs.PdfListener {
 
     /** How much one zoom step enlarges the engraving, and how far it may go. */
     private static final double ZOOM_STEP = 1.25;
@@ -64,6 +64,7 @@ public final class ResultActivity extends MwActivity
     private EditText notes;
     private Button analyzeButton;
     private Button shareButton;
+    private Button pdfButton;
     private Button viewButton;
     private View sheetScroll;
     private View textScroll;
@@ -84,6 +85,9 @@ public final class ResultActivity extends MwActivity
 
     /** Whether the user tapped over to the text, which a new engraving respects. */
     private boolean textChosen;
+    /** The score a PDF was asked for; its answer is dropped once another is shown. */
+    private Score pdfRequested;
+    private boolean resumed;
 
     /** The text on screen, kept so that "share" sends exactly what is shown. */
     private String shareable = "";
@@ -109,6 +113,7 @@ public final class ResultActivity extends MwActivity
         notes = findViewById(R.id.notes);
         analyzeButton = findViewById(R.id.analyzeButton);
         shareButton = findViewById(R.id.shareButton);
+        pdfButton = findViewById(R.id.pdfButton);
 
         loadedNotes = RecordingStore.readNotes(new RecordingStore.Recording(wav));
         notes.setText(loadedNotes);
@@ -118,6 +123,7 @@ public final class ResultActivity extends MwActivity
         sheet = findViewById(R.id.sheet);
         analyzeButton.setOnClickListener(view -> analyze());
         shareButton.setOnClickListener(view -> shareText());
+        pdfButton.setOnClickListener(view -> sharePdf());
         viewButton.setOnClickListener(view -> {
             textChosen = sheetVisible;
             showSheet(!sheetVisible);
@@ -140,6 +146,7 @@ public final class ResultActivity extends MwActivity
     @Override
     protected void onResume() {
         super.onResume();
+        resumed = true;
         if (wav == null) {
             return;
         }
@@ -179,6 +186,7 @@ public final class ResultActivity extends MwActivity
     @Override
     protected void onPause() {
         super.onPause();
+        resumed = false;
         AnalysisJobs.get().stopObserving(this);
         // A render in flight is dropped and asked for again on resume; one
         // already on screen stays.
@@ -225,6 +233,10 @@ public final class ResultActivity extends MwActivity
     private void showRunning() {
         analyzeButton.setEnabled(false);
         shareButton.setEnabled(false);
+        pdfButton.setEnabled(false);
+        // Nothing on screen is current until the run answers; a PDF or an
+        // engraving asked for the previous score is dropped on arrival.
+        shown = null;
         SheetJobs.get().cancel();
         String line = AnalysisJobs.get().progressOf(wav);
         status.setText(line.isEmpty() ? getString(R.string.analyzing) : line);
@@ -234,6 +246,7 @@ public final class ResultActivity extends MwActivity
         analyzeButton.setEnabled(true);
         analyzeButton.setText(R.string.analyze);
         shareButton.setEnabled(false);
+        pdfButton.setEnabled(false);
         status.setText(R.string.not_analyzed);
         chart.setText("");
         shareable = "";
@@ -252,6 +265,7 @@ public final class ResultActivity extends MwActivity
         analyzeButton.setEnabled(true);
         analyzeButton.setText(R.string.reanalyze);
         shareButton.setEnabled(true);
+        pdfButton.setEnabled(true);
         summary = cacheNote == null
                 ? MwAnalysis.summary(score)
                 : MwAnalysis.summary(score) + "\n" + cacheNote;
@@ -354,6 +368,62 @@ public final class ResultActivity extends MwActivity
         viewButton.setText(sheetOnTop ? R.string.show_text : R.string.show_sheet);
     }
 
+    /**
+     * Engraves the score on screen into the PDF beside the take, then offers
+     * it. Rendered afresh each time: the file may belong to an older analysis.
+     */
+    private void sharePdf() {
+        Score score = shown;
+        if (score == null) {
+            return;
+        }
+        pdfButton.setEnabled(false);
+        pdfRequested = score;
+        Toast.makeText(this, R.string.pdf_building, Toast.LENGTH_SHORT).show();
+        SheetJobs.get().pdf(getApplicationContext(), score,
+                new RecordingStore.Recording(wav).pdfFile(), this);
+    }
+
+    /** Whether a PDF answer is for the score on screen, with the screen in front. */
+    private boolean pdfStillWanted() {
+        if (isFinishing() || isDestroyed() || pdfRequested == null || pdfRequested != shown) {
+            return false;
+        }
+        pdfRequested = null;
+        pdfButton.setEnabled(true);
+        return resumed;
+    }
+
+    @Override
+    public void onPdf(File pdf) {
+        if (!pdfStillWanted()) {
+            return;
+        }
+        android.net.Uri uri;
+        try {
+            uri = androidx.core.content.FileProvider.getUriForFile(
+                    this, getPackageName() + ".files", pdf);
+        } catch (IllegalArgumentException e) {
+            Toast.makeText(this, "this PDF cannot be shared: " + e.getMessage(),
+                    Toast.LENGTH_LONG).show();
+            return;
+        }
+        Intent send = new Intent(Intent.ACTION_SEND);
+        send.setType("application/pdf");
+        send.putExtra(Intent.EXTRA_STREAM, uri);
+        send.putExtra(Intent.EXTRA_SUBJECT, pdf.getName());
+        send.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        startActivity(Intent.createChooser(send, getString(R.string.share_pdf)));
+    }
+
+    @Override
+    public void onPdfFailed(String why) {
+        if (!pdfStillWanted()) {
+            return;
+        }
+        Toast.makeText(this, getString(R.string.pdf_failed, why), Toast.LENGTH_LONG).show();
+    }
+
     private void shareText() {
         if (shareable.isEmpty()) {
             return;
@@ -386,6 +456,7 @@ public final class ResultActivity extends MwActivity
         analyzeButton.setEnabled(true);
         analyzeButton.setText(R.string.analyze);
         shareButton.setEnabled(false);
+        pdfButton.setEnabled(false);
         status.setText("analysis failed: " + message);
         chart.setText("");
         shareable = "";

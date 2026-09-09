@@ -54,6 +54,11 @@ public final class SheetRenderer {
     /** Renders SVG text; no Android at all, which is what a JVM test uses. */
     public static final String ENGINE_SVG = "svg";
 
+    /** Records {@code android.graphics.Picture}s, for vector PDF pages; needs {@link #initialize} once. */
+    public static final String ENGINE_PICTURE = "picture";
+
+    private static boolean initialized;
+
     private SheetRenderer() {
     }
 
@@ -89,11 +94,20 @@ public final class SheetRenderer {
     }
 
     /**
-     * Loads the music font the Android engine draws with. Once per process,
-     * before the first render with {@link #ENGINE_ANDROID}.
+     * Loads the music font the Android engines draw with and registers the
+     * picture engine. Before the first render with {@link #ENGINE_ANDROID} or
+     * {@link #ENGINE_PICTURE}; later calls are no-ops.
      */
     public static void initialize(android.content.Context context) {
-        alphaTab.platform.android.AndroidCanvas.Companion.initialize(context);
+        synchronized (LOCK) {
+            if (initialized) {
+                return;
+            }
+            alphaTab.platform.android.AndroidCanvas.Companion.initialize(context);
+            alphaTab.Environment.Companion.getRenderEngines().set(ENGINE_PICTURE,
+                    new alphaTab.RenderEngineFactory(false, PictureCanvas::new));
+            initialized = true;
+        }
     }
 
     /**
@@ -113,10 +127,15 @@ public final class SheetRenderer {
         }
         // Any other name falls back to alphaTab's default engine, whose
         // natives are excluded from the app.
-        if (!engine.equals(ENGINE_ANDROID) && !engine.equals(ENGINE_SVG)) {
+        if (!engine.equals(ENGINE_ANDROID) && !engine.equals(ENGINE_SVG)
+                && !engine.equals(ENGINE_PICTURE)) {
             return Result.failed("no such engine: " + engine, warnings);
         }
         synchronized (LOCK) {
+            // Unregistered, the name would fall back the same way.
+            if (engine.equals(ENGINE_PICTURE) && !initialized) {
+                return Result.failed("the picture engine is not initialized", warnings);
+            }
             try {
                 return engrave(musicXml, engine, widthPx, scale, warnings);
             } catch (Throwable t) {
