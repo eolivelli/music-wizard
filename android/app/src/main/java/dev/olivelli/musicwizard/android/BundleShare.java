@@ -35,6 +35,7 @@ import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.notation.MusicXmlExport;
 import java.io.File;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -145,17 +146,25 @@ final class BundleShare {
                     throw new IOException("could not create " + directory);
                 }
                 prune(directory);
-                // The engraving is as optional as the chart: a score the
-                // export refuses still bundles as audio, text and cache.
+                // The engraving is as optional as the chart: whatever the
+                // export or the engraver does, the take still bundles as
+                // audio, text and cache. Throwable as below.
                 String musicXml = null;
                 File pdf = null;
                 if (score != null) {
                     try {
                         musicXml = MusicXmlExport.chordChart(score);
+                    } catch (Throwable t) {
+                        musicXml = null;
+                    }
+                }
+                if (musicXml != null) {
+                    try {
                         SheetRenderer.initialize(application);
-                        SheetPdf.write(score, recording.pdfFile());
+                        SheetPdf.write(musicXml.getBytes(StandardCharsets.UTF_8),
+                                recording.pdfFile());
                         pdf = recording.pdfFile();
-                    } catch (IOException | IllegalArgumentException | IllegalStateException e) {
+                    } catch (Throwable t) {
                         pdf = null;
                     }
                 }

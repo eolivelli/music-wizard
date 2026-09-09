@@ -125,7 +125,6 @@ final class PictureCanvas implements ICanvas {
             typefaceKey = key;
             int style = font.isBold() && font.isItalic() ? Typeface.BOLD_ITALIC
                     : font.isBold() ? Typeface.BOLD
-                    : font.isItalic() ? Typeface.ITALIC
                     : Typeface.NORMAL;
             typeface = Typeface.create(font.getFamily(), style);
         }

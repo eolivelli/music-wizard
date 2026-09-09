@@ -41,15 +41,13 @@ final class SheetPdf {
     private static final int PAGE_HEIGHT = 842;
     private static final int MARGIN = 36;
 
+    /** The result screen and the bundle builder both write a take's PDF; one at a time. */
+    private static final Object WRITING = new Object();
+
     private SheetPdf() {
     }
 
-    /**
-     * Renders and writes, replacing whatever was at {@code target}; a failure
-     * leaves the previous file in place and nothing half-written.
-     *
-     * @throws IOException with the export's or alphaTab's reason, or the filesystem's
-     */
+    /** {@link #write(byte[], File)} of the score's chord chart. */
     static void write(Score score, File target) throws IOException {
         byte[] musicXml;
         try {
@@ -57,6 +55,23 @@ final class SheetPdf {
         } catch (IllegalArgumentException | IllegalStateException e) {
             throw new IOException(e.getMessage() == null ? e.toString() : e.getMessage(), e);
         }
+        write(musicXml, target);
+    }
+
+    /**
+     * Renders and writes, replacing whatever was at {@code target} in one
+     * move; a failure leaves the previous file in place and nothing
+     * half-written.
+     *
+     * @throws IOException with alphaTab's reason, or the filesystem's
+     */
+    static void write(byte[] musicXml, File target) throws IOException {
+        synchronized (WRITING) {
+            engrave(musicXml, target);
+        }
+    }
+
+    private static void engrave(byte[] musicXml, File target) throws IOException {
         SheetRenderer.Result result = SheetRenderer.render(musicXml, SheetRenderer.ENGINE_PICTURE,
                 PAGE_WIDTH - 2 * MARGIN, 1);
         if (!result.succeeded()) {
@@ -69,7 +84,7 @@ final class SheetPdf {
         }
         List<List<Integer>> pages = SheetPaginator.paginate(heights, PAGE_HEIGHT - 2 * MARGIN);
 
-        File tmp = new File(target.getParentFile(), target.getName() + ".tmp");
+        File tmp = File.createTempFile(target.getName(), ".tmp", target.getParentFile());
         PdfDocument document = new PdfDocument();
         try {
             for (int number = 0; number < pages.size(); number++) {
@@ -98,14 +113,12 @@ final class SheetPdf {
         } finally {
             document.close();
         }
+        // The move replaces an existing target whole; a move that fails is
+        // reported over the previous file, which stays.
         if (!tmp.renameTo(target)) {
             //noinspection ResultOfMethodCallIgnored
-            target.delete();
-            if (!tmp.renameTo(target)) {
-                //noinspection ResultOfMethodCallIgnored
-                tmp.delete();
-                throw new IOException("could not move the PDF into place at " + target);
-            }
+            tmp.delete();
+            throw new IOException("could not move the PDF into place at " + target);
         }
     }
 }

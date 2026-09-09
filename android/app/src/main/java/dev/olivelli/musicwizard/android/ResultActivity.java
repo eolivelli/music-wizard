@@ -85,6 +85,9 @@ public final class ResultActivity extends MwActivity
 
     /** Whether the user tapped over to the text, which a new engraving respects. */
     private boolean textChosen;
+    /** The score a PDF was asked for; its answer is dropped once another is shown. */
+    private Score pdfRequested;
+    private boolean resumed;
 
     /** The text on screen, kept so that "share" sends exactly what is shown. */
     private String shareable = "";
@@ -143,6 +146,7 @@ public final class ResultActivity extends MwActivity
     @Override
     protected void onResume() {
         super.onResume();
+        resumed = true;
         if (wav == null) {
             return;
         }
@@ -182,6 +186,7 @@ public final class ResultActivity extends MwActivity
     @Override
     protected void onPause() {
         super.onPause();
+        resumed = false;
         AnalysisJobs.get().stopObserving(this);
         // A render in flight is dropped and asked for again on resume; one
         // already on screen stays.
@@ -229,6 +234,9 @@ public final class ResultActivity extends MwActivity
         analyzeButton.setEnabled(false);
         shareButton.setEnabled(false);
         pdfButton.setEnabled(false);
+        // Nothing on screen is current until the run answers; a PDF or an
+        // engraving asked for the previous score is dropped on arrival.
+        shown = null;
         SheetJobs.get().cancel();
         String line = AnalysisJobs.get().progressOf(wav);
         status.setText(line.isEmpty() ? getString(R.string.analyzing) : line);
@@ -370,17 +378,27 @@ public final class ResultActivity extends MwActivity
             return;
         }
         pdfButton.setEnabled(false);
+        pdfRequested = score;
         Toast.makeText(this, R.string.pdf_building, Toast.LENGTH_SHORT).show();
         SheetJobs.get().pdf(getApplicationContext(), score,
                 new RecordingStore.Recording(wav).pdfFile(), this);
     }
 
+    /** Whether a PDF answer is for the score on screen, with the screen in front. */
+    private boolean pdfStillWanted() {
+        if (isFinishing() || isDestroyed() || pdfRequested == null || pdfRequested != shown) {
+            return false;
+        }
+        pdfRequested = null;
+        pdfButton.setEnabled(true);
+        return resumed;
+    }
+
     @Override
     public void onPdf(File pdf) {
-        if (isFinishing() || isDestroyed()) {
+        if (!pdfStillWanted()) {
             return;
         }
-        pdfButton.setEnabled(shown != null);
         android.net.Uri uri;
         try {
             uri = androidx.core.content.FileProvider.getUriForFile(
@@ -400,10 +418,9 @@ public final class ResultActivity extends MwActivity
 
     @Override
     public void onPdfFailed(String why) {
-        if (isFinishing() || isDestroyed()) {
+        if (!pdfStillWanted()) {
             return;
         }
-        pdfButton.setEnabled(shown != null);
         Toast.makeText(this, getString(R.string.pdf_failed, why), Toast.LENGTH_LONG).show();
     }
 

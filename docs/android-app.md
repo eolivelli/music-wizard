@@ -35,8 +35,8 @@ the notation module writes and shared as a vector PDF through Android's
 Nothing is uploaded and the app holds no credential. Sharing goes through
 the system share sheet as one zip, `<take>.mwz.zip`: the WAV, the player's
 note, an info file, and — when the take was analysed on the phone — its
-chart as text, MusicXML and PDF, and its analysis cache. A YouTube link shared *into* the app can be
-fetched as a take too; its bundle carries `source: youtube`, which marks it
+chart as text, MusicXML and PDF, and its analysis cache. A YouTube link
+shared *into* the app can be fetched as a take too; its bundle carries `source: youtube`, which marks it
 commercial audio whatever it sounds like — such takes never reach the
 committed corpus.
 
