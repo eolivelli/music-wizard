@@ -192,6 +192,44 @@ public class ImportJobsTest {
     }
 
     @Test
+    public void aPickedFileBecomesATakeNamedAfterIt() throws Exception {
+        ImportJobs jobs = new ImportJobs(dispatcher, fetcherWriting("unused"),
+                decoderWriting(44_100, 10));
+        Watcher watcher = new Watcher();
+
+        assertTrue(jobs.startFile("My Song.m4a",
+                () -> new java.io.ByteArrayInputStream(new byte[] {1, 2, 3}),
+                cache, store, watcher));
+        settle(jobs);
+
+        assertNull(watcher.failure);
+        assertNotNull(watcher.finished);
+        RecordingStore.Recording take = new RecordingStore.Recording(watcher.finished);
+        assertEquals("My Song", take.displayName());
+        TakeSource source = TakeSource.parse(RecordingStore.readSource(take));
+        assertEquals(TakeSource.FILE, source.kind());
+        assertTrue("a file of unknown origin must stay out of the corpus", source.isCommercial());
+        assertTrue(RecordingStore.readNotes(take).contains("My Song.m4a"));
+        assertEquals(0, cache.listFiles().length);
+    }
+
+    @Test
+    public void aPickedFileThatCannotBeOpenedFails() throws Exception {
+        ImportJobs jobs = new ImportJobs(dispatcher, fetcherWriting("unused"),
+                decoderWriting(44_100, 10));
+        Watcher watcher = new Watcher();
+
+        jobs.startFile("gone.mp3", () -> {
+            throw new java.io.IOException("the file could not be opened");
+        }, cache, store, watcher);
+        settle(jobs);
+
+        assertNull(watcher.finished);
+        assertTrue(watcher.failure, watcher.failure.contains("could not be opened"));
+        assertEquals(0, store.list().size());
+    }
+
+    @Test
     public void theCacheIsEmptyWhenAnImportFinishes() throws Exception {
         ImportJobs jobs = new ImportJobs(dispatcher, fetcherWriting("Some Song"),
                 decoderWriting(44_100, 10));

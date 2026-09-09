@@ -20,6 +20,10 @@ of what was played, is typed on the result screen and travels in the bundle
 (#398): written beside the take on leaving the screen, so it is captured while
 it is fresh, which was #291's reason all along.
 
+A take can also come from a file already on the phone: **Open audio file** in
+the library runs the system picker and imports the pick like a shared video,
+marked `source: file`.
+
 Two shares, both through `FileProvider`:
 
 - **Share WAV** (library long-press): the audio alone.

@@ -84,6 +84,11 @@ final class ImportJobs {
                 throws ExtractionException, IOException;
     }
 
+    /** Audio already on the phone, opened through the picker's grant. */
+    interface Opener {
+        java.io.InputStream open() throws IOException;
+    }
+
     /** A container in, a mono WAV out. The framework half. */
     interface Decoder {
         int decode(File source, File target, Progress progress,
@@ -256,6 +261,17 @@ final class ImportJobs {
      */
     boolean start(String shareText, File cacheDirectory, RecordingStore store,
             Listener watcher) {
+        return start(Origin.link(shareText), cacheDirectory, store, watcher);
+    }
+
+    /** The same, for a file the user picked on the phone, named as it was there. */
+    boolean startFile(String fileName, Opener opener, File cacheDirectory, RecordingStore store,
+            Listener watcher) {
+        return start(Origin.file(fileName, opener), cacheDirectory, store, watcher);
+    }
+
+    private boolean start(Origin origin, File cacheDirectory, RecordingStore store,
+            Listener watcher) {
         if (running) {
             return false;
         }
@@ -267,8 +283,83 @@ final class ImportJobs {
         cancelled = new AtomicBoolean(false);
         AtomicBoolean stop = cancelled;
 
-        worker.submit(() -> run(shareText, cacheDirectory, store, stop));
+        worker.submit(() -> run(origin, cacheDirectory, store, stop));
         return true;
+    }
+
+    /** Where an import's audio comes from: a link to fetch, or a file already on the phone. */
+    private static final class Origin {
+
+        private final String shareText;
+        private final String fileName;
+        private final Opener opener;
+
+        private Origin(String shareText, String fileName, Opener opener) {
+            this.shareText = shareText;
+            this.fileName = fileName;
+            this.opener = opener;
+        }
+
+        static Origin link(String shareText) {
+            return new Origin(shareText, null, null);
+        }
+
+        static Origin file(String fileName, Opener opener) {
+            return new Origin(null, fileName, opener);
+        }
+
+        boolean isFile() {
+            return opener != null;
+        }
+
+        /** The first stage's name on the screen. */
+        String fetching() {
+            return isFile() ? "copying" : "downloading";
+        }
+
+        Fetch.Fetched obtain(Fetcher fetcher, File directory, Progress progress,
+                java.util.function.BooleanSupplier stop) throws ExtractionException, IOException {
+            if (!isFile()) {
+                return fetcher.fetch(shareText, directory, progress, stop);
+            }
+            // Copied into the cache first: the decoder reads a path, and the
+            // picker's grant is good for a stream, not a path.
+            File copy = new File(directory, "picked" + extensionOf(fileName));
+            try (java.io.InputStream in = opener.open();
+                    java.io.OutputStream out = new java.io.FileOutputStream(copy)) {
+                byte[] buffer = new byte[64 * 1024];
+                int read;
+                while ((read = in.read(buffer)) > 0) {
+                    if (stop.getAsBoolean()) {
+                        throw new InterruptedIOException("cancelled");
+                    }
+                    out.write(buffer, 0, read);
+                }
+            }
+            progress.onProgress(1);
+            return new Fetch.Fetched(copy, "picked", stemOf(fileName), "", 0);
+        }
+
+        TakeSource source(Fetch.Fetched fetched, String when) {
+            return isFile() ? TakeSource.file(fileName, when)
+                    : TakeSource.youtube(fetched.url(), fetched.title(), when);
+        }
+
+        String note(Fetch.Fetched fetched) {
+            return isFile()
+                    ? "Opened from a file on the phone: " + fileName + "\n\n"
+                    : "Imported from YouTube: " + fetched.title() + "\n" + fetched.url() + "\n\n";
+        }
+
+        private static String stemOf(String name) {
+            int dot = name.lastIndexOf('.');
+            return dot > 0 ? name.substring(0, dot) : name;
+        }
+
+        private static String extensionOf(String name) {
+            int dot = name.lastIndexOf('.');
+            return dot > 0 && dot < name.length() - 1 ? name.substring(dot) : "";
+        }
     }
 
     /** Watches an import already running. */
@@ -292,22 +383,25 @@ final class ImportJobs {
         cancelled.set(true);
     }
 
-    private void run(String shareText, File cacheDirectory, RecordingStore store,
+    private void run(Origin origin, File cacheDirectory, RecordingStore store,
             AtomicBoolean stop) {
         Result result;
         File container = null;
         File decoded = null;
         try {
             log.clear();
-            log.add("import started, asking as " + InnerTube.clientDescription());
+            log.add(origin.isFile()
+                    ? "import started from a file on the phone"
+                    : "import started, asking as " + InnerTube.clientDescription());
             prune(cacheDirectory);
             if (cacheDirectory.getUsableSpace() < MIN_FREE_BYTES) {
                 throw new IOException("there is not enough free space on this phone");
             }
-            report("downloading", 0);
+            String fetching = origin.fetching();
+            report(fetching, 0);
 
-            Fetch.Fetched fetched = fetcher.fetch(shareText, cacheDirectory,
-                    fraction -> report("downloading", scale(fraction, 0, DOWNLOAD_SHARE)),
+            Fetch.Fetched fetched = origin.obtain(fetcher, cacheDirectory,
+                    fraction -> report(fetching, scale(fraction, 0, DOWNLOAD_SHARE)),
                     stop::get);
             container = fetched.file();
 
@@ -318,7 +412,7 @@ final class ImportJobs {
                     stop::get);
 
             report("saving", 100);
-            result = Result.of(store(store, decoded, fetched));
+            result = Result.of(store(store, decoded, fetched, origin));
             decoded = null;
         } catch (InterruptedIOException cancelledMidway) {
             result = Result.cancelled();
@@ -347,8 +441,8 @@ final class ImportJobs {
     }
 
     /** Moves the decoded take into the library, or leaves the library as it was. */
-    private static File store(RecordingStore store, File decoded, Fetch.Fetched fetched)
-            throws IOException {
+    private static File store(RecordingStore store, File decoded, Fetch.Fetched fetched,
+            Origin origin) throws IOException {
         File placed = store.newRecordingFile(Instant.now(), ZoneId.systemDefault());
         if (!decoded.renameTo(placed)) {
             java.nio.file.Files.move(decoded.toPath(), placed.toPath(),
@@ -363,15 +457,12 @@ final class ImportJobs {
             // Written before the take is given its final name, so the audio is
             // never in the library under any name without saying where it came
             // from.
-            RecordingStore.writeSource(recording,
-                    TakeSource.youtube(fetched.url(), fetched.title(), when).toText());
+            RecordingStore.writeSource(recording, origin.source(fetched, when).toText());
             // Seeded rather than left empty, so the fact travels in the player's
             // own field too — which is what the desktop's report quotes — and so
             // the user sees it and can add to it. Blank line last, so their words
             // start on a line of their own.
-            RecordingStore.writeNotes(recording,
-                    "Imported from YouTube: " + fetched.title() + "\n"
-                            + fetched.url() + "\n\n");
+            RecordingStore.writeNotes(recording, origin.note(fetched));
             recording = named(store, recording, fetched.title());
             // Read back rather than assumed: RecordingStore.rename carries the
             // side files best-effort and can leave one behind with the audio

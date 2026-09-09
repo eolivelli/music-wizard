@@ -59,6 +59,9 @@ public final class ImportActivity extends MwActivity implements ImportJobs.Liste
     private RecordingStore store;
     private File cacheDirectory;
 
+    /** Set on the intent for a file picked in the library: the import is already running. */
+    static final String EXTRA_PICKED = "picked";
+
     /** The link as it will be fetched, or null when the share held none. */
     private String videoUrl;
     private String shareText;
@@ -205,9 +208,11 @@ public final class ImportActivity extends MwActivity implements ImportJobs.Liste
         downloadButton.setText(R.string.import_download);
 
         if (videoUrl == null) {
-            titleView.setText(R.string.import_title);
+            boolean picked = getIntent().getBooleanExtra(EXTRA_PICKED, false);
+            titleView.setText(picked && sharedTitle != null ? sharedTitle
+                    : getString(R.string.import_title));
             urlView.setText("");
-            statusView.setText(describeShare());
+            statusView.setText(picked ? "" : describeShare());
             downloadButton.setEnabled(false);
             return;
         }
@@ -234,6 +239,9 @@ public final class ImportActivity extends MwActivity implements ImportJobs.Liste
 
     private void showRunning() {
         showLog();
+        if (sharedTitle != null) {
+            titleView.setText(sharedTitle);
+        }
         progressView.setVisibility(View.VISIBLE);
         downloadButton.setEnabled(true);
         downloadButton.setText(R.string.import_cancel_download);

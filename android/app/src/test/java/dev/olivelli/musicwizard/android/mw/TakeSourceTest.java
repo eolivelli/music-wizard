@@ -53,6 +53,15 @@ public class TakeSourceTest {
     }
 
     @Test
+    public void aFileFromThePhoneIsImportedAndKeepsItsName() {
+        TakeSource source = TakeSource.parse(TakeSource.file("My Song.m4a", "2026-09-09 10:00").toText());
+        assertEquals(TakeSource.FILE, source.kind());
+        assertEquals("My Song.m4a", source.title());
+        assertTrue(source.isCommercial());
+        assertEquals("source: file", source.infoLine());
+    }
+
+    @Test
     public void theTextRoundTrips() {
         TakeSource written = TakeSource.youtube(URL, "Rick Astley - Never Gonna Give You Up",
                 "2026-08-13 18:22");

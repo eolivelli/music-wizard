@@ -167,8 +167,11 @@ Per take, in this order:
    the app version that made the bundle. Read the `source:` line in that same
    file and **say what it is in the report's first line**: a take marked
    `source: youtube` is commercial audio fetched from a link, and its only
-   destination is `uncommitted/`. Say so plainly rather than leaving it to be
-   inferred from the name — a take called "kitchen blues" can be either.
+   destination is `uncommitted/`; one marked `source: file` was opened from
+   the phone's storage, of an origin only its note may say, and goes the same
+   way unless the note says it is the player's own. Say so plainly rather
+   than leaving it to be inferred from the name — a take called "kitchen
+   blues" can be either.
 2. **The player's account**: `<take>.notes.txt` quoted verbatim if present,
    "no note" if not.
 3. **Phone vs desktop**: tempo and meter from each; then the two charts side

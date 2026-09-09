@@ -45,6 +45,9 @@ public final class TakeSource {
     /** A take fetched from YouTube. Commercial audio, whatever it sounds like. */
     public static final String YOUTUBE = "youtube";
 
+    /** A file opened from the phone's own storage, of whatever origin. */
+    public static final String FILE = "file";
+
     private final String kind;
     private final String url;
     private final String title;
@@ -66,6 +69,10 @@ public final class TakeSource {
         return new TakeSource(YOUTUBE, url, title, imported);
     }
 
+    public static TakeSource file(String name, String imported) {
+        return new TakeSource(FILE, "", name, imported);
+    }
+
     public String kind() {
         return kind;
     }
@@ -79,8 +86,9 @@ public final class TakeSource {
     }
 
     /** Whether this take may be committed to the corpus, licence aside. */
+    /** Not the app's own recording, so kept out of the committed corpus unless a person says otherwise. */
     public boolean isCommercial() {
-        return YOUTUBE.equals(kind);
+        return !MICROPHONE.equals(kind);
     }
 
     /**
