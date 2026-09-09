@@ -34,6 +34,7 @@ import java.io.OutputStream;
 import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Random;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
@@ -264,13 +265,6 @@ public class MwAnalysisTest {
         }
     }
 
-    /**
-     * Eight seconds of four plucked triads at 120 BPM, written as the app records.
-     *
-     * <p>Each beat is a fresh attack with an exponential decay, so the onset
-     * detector has something to find; the triads change every two beats so the
-     * chord estimator does.
-     */
     /** Bursts of noise on every beat, for a recording with rhythm and no pitch. */
     private static void writeNoiseBeats(File file) throws IOException {
         int rate = MwAnalysis.RECORD_SAMPLE_RATE;
@@ -278,7 +272,7 @@ public class MwAnalysisTest {
         int beats = 16;
         int frames = (int) (beats * beat * rate);
         byte[] audio = new byte[frames * 2];
-        java.util.Random random = new java.util.Random(7);
+        Random random = new Random(7);
         for (int i = 0; i < frames; i++) {
             double t = i / (double) rate;
             double intoBeat = t - (int) (t / beat) * beat;
@@ -294,6 +288,11 @@ public class MwAnalysisTest {
         }
     }
 
+    /**
+     * Plucked triads, written as the app records: every beat a fresh attack
+     * with an exponential decay, so the onset detector has something to find,
+     * and a new triad every other beat so the chord estimator does.
+     */
     private static void writeChordLoop(File file) throws IOException {
         int rate = MwAnalysis.RECORD_SAMPLE_RATE;
         double beat = 0.5;
