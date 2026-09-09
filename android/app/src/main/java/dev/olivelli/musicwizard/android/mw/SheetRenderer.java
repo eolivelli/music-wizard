@@ -23,7 +23,10 @@ import alphaTab.Logger;
 import alphaTab.Settings;
 import alphaTab.core.ecmaScript.Uint8Array;
 import alphaTab.importer.ScoreLoader;
+import alphaTab.model.Chord;
 import alphaTab.model.Score;
+import alphaTab.model.Staff;
+import alphaTab.model.Track;
 import alphaTab.rendering.RenderFinishedEventArgs;
 import alphaTab.rendering.ScoreRenderer;
 import java.util.ArrayList;
@@ -143,6 +146,7 @@ public final class SheetRenderer {
             } catch (Throwable t) {
                 return Result.failed("the MusicXML could not be read: " + t, warnings);
             }
+            nameNoChords(score);
             List<Partial> partials = new ArrayList<>();
             Throwable[] error = new Throwable[1];
             RenderFinishedEventArgs[] finished = new RenderFinishedEventArgs[1];
@@ -182,6 +186,26 @@ public final class SheetRenderer {
             Logger.Companion.setLog(previous);
         }
     }
+
+    /**
+     * alphaTab prints a chord as its root's step and its kind's text, so the
+     * MusicXML idiom for no chord, a root that displays nothing under a kind
+     * of {@code none}, comes out as the step and the text run together.
+     */
+    private static void nameNoChords(Score score) {
+        for (Track track : score.getTracks()) {
+            for (Staff staff : track.getStaves()) {
+                for (Chord chord : staff.getChords().values()) {
+                    if (chord.getName().endsWith(NO_CHORD) && !chord.getName().equals(NO_CHORD)) {
+                        chord.setName(NO_CHORD);
+                    }
+                }
+            }
+        }
+    }
+
+    private static final String NO_CHORD =
+            dev.olivelli.musicwizard.core.model.ChordQuality.NONE.symbol();
 
     /** The byte-array constructor is not visible to Java, so the bytes are copied in one by one. */
     private static Uint8Array bytesOf(byte[] bytes) {

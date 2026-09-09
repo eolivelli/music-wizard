@@ -5,7 +5,8 @@ the MW harmony analysis on the device, read the chart as text, and get the take
 off the phone so it can join `samples/` or `uncommitted/` on the desktop. Epic
 #236, built in #249.
 
-Plain Java, `minSdk` 26, app-private storage, no PDF and no LilyPond.
+Plain Java, `minSdk` 26, app-private storage. The chart is engraved on the
+device by alphaTab; no LilyPond, and no PDF yet (#776).
 
 ## Getting a take off the phone
 

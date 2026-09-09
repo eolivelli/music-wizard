@@ -51,9 +51,52 @@
         android:maxLines="4"
         android:textSize="14sp" />
 
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal">
+
+        <Button
+            android:id="@+id/viewButton"
+            android:layout_width="0dp"
+            android:layout_weight="2"
+            android:layout_height="wrap_content"
+            android:text="@string/show_text" />
+
+        <Button
+            android:id="@+id/zoomOutButton"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="wrap_content"
+            android:text="@string/zoom_out" />
+
+        <Button
+            android:id="@+id/zoomInButton"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="wrap_content"
+            android:text="@string/zoom_in" />
+    </LinearLayout>
+
+    <!-- The engraved chart: one image per system, drawn on the device. -->
+    <ScrollView
+        android:id="@+id/sheetScroll"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:id="@+id/sheet"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="#FFFFFFFF"
+            android:orientation="vertical" />
+    </ScrollView>
+
     <!-- The chart is laid out in columns, so it must not wrap: it scrolls both
          ways and is drawn in a monospaced face, the way the CLI prints it. -->
     <ScrollView
+        android:id="@+id/textScroll"
         android:layout_width="match_parent"
         android:layout_height="match_parent">
 

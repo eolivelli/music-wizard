@@ -84,6 +84,26 @@ public class SheetRendererTest {
     }
 
     @Test
+    public void noChordIsPrintedAsTheChartPrintsIt() {
+        List<Chord> chords = List.of(
+                Chord.noChord(0, 2, Confidence.CERTAIN),
+                chord("A4", ChordQuality.MINOR_SEVENTH, 2, 4));
+        Score score = Score.empty(TempoMap.constant(120, TimeSignature.FOUR_FOUR), 4)
+                .withChords(new ChordProgression(chords, Confidence.CERTAIN));
+        byte[] musicXml = MusicXmlExport.chordChart(score).getBytes(StandardCharsets.UTF_8);
+
+        SheetRenderer.Result result =
+                SheetRenderer.render(musicXml, SheetRenderer.ENGINE_SVG, 1200, 1);
+
+        assertNull(result.failure());
+        String svg = result.partials().stream()
+                .map(partial -> String.valueOf(partial.result()))
+                .reduce("", String::concat);
+        assertTrue(svg, svg.contains("N.C."));
+        assertFalse(svg, svg.contains("CN.C."));
+    }
+
+    @Test
     public void saysWhyWhenTheEngineIsUnknown() {
         SheetRenderer.Result result = SheetRenderer.render(chart(), "default", 1200, 1);
 

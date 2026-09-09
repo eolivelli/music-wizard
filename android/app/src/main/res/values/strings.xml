@@ -17,6 +17,11 @@
     <string name="analyze">Analyze</string>
     <string name="reanalyze">Re-analyze</string>
     <string name="share_chart">Share chart</string>
+    <string name="show_text">Text</string>
+    <string name="show_sheet">Sheet</string>
+    <string name="zoom_in">+</string>
+    <string name="zoom_out">−</string>
+    <string name="sheet_failed">No sheet: %1$s</string>
     <string name="share_wav">Share WAV</string>
     <string name="share_bundle">Share bundle</string>
     <string name="bundle_building">Building the bundle…</string>
