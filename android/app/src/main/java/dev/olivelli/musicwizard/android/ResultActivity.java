@@ -22,11 +22,13 @@ import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
 import android.os.Bundle;
 import android.view.View;
+import android.widget.AdapterView;
 import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
+import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
 import dev.olivelli.musicwizard.android.mw.MwAnalysis;
@@ -68,6 +70,8 @@ public final class ResultActivity extends MwActivity
     private Button shareButton;
     private Button pdfButton;
     private CheckBox playableCheck;
+    /** The melody's lowest note, chosen from {@code R.array.melody_floor_notes}. */
+    private Spinner floorSpinner;
     private Button viewButton;
     private View sheetScroll;
     private View textScroll;
@@ -132,6 +136,19 @@ public final class ResultActivity extends MwActivity
                 showStatus();
             }
         });
+        floorSpinner = findViewById(R.id.floorSpinner);
+        floorSpinner.setSaveEnabled(false);
+        showFloor();
+        floorSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override
+            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                Preferences.setMelodyFloor(ResultActivity.this, floorNotes()[position]);
+            }
+
+            @Override
+            public void onNothingSelected(AdapterView<?> parent) {
+            }
+        });
 
         loadedNotes = RecordingStore.readNotes(new RecordingStore.Recording(wav));
         notes.setText(loadedNotes);
@@ -169,6 +186,7 @@ public final class ResultActivity extends MwActivity
             return;
         }
         playableCheck.setChecked(Preferences.playablePart(this));
+        showFloor();
         // An analysis started before this screen went away is still running;
         // reattach to it rather than starting a second one.
         if (AnalysisJobs.get().observe(wav, this)) {
@@ -246,7 +264,29 @@ public final class ResultActivity extends MwActivity
 
     private void analyze() {
         showRunning();
-        AnalysisJobs.get().start(wav, playableCheck.isChecked(), this);
+        AnalysisJobs.get().start(wav, melodyChoice(), this);
+    }
+
+    private MwAnalysis.MelodyChoice melodyChoice() {
+        return playableCheck.isChecked()
+                ? MwAnalysis.MelodyChoice.tracked(Preferences.melodyFloor(this))
+                : MwAnalysis.MelodyChoice.off();
+    }
+
+    private String[] floorNotes() {
+        return getResources().getStringArray(R.array.melody_floor_notes);
+    }
+
+    private void showFloor() {
+        String[] notes = floorNotes();
+        String chosen = Preferences.melodyFloor(this);
+        for (int i = 0; i < notes.length; i++) {
+            if (notes[i].equals(chosen)) {
+                floorSpinner.setSelection(i);
+                return;
+            }
+        }
+        floorSpinner.setSelection(0);
     }
 
     private void showRunning() {

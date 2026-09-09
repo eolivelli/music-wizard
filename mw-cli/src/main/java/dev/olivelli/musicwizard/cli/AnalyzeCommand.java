@@ -135,6 +135,13 @@ final class AnalyzeCommand implements Callable<Integer> {
                     + "the voice, rather than failing. Audio only.")
     boolean melody;
 
+    @Option(names = "--melody-floor", paramLabel = "NOTE",
+            description = "The lowest note the melody can be, such as E3: nothing below it "
+                    + "is a candidate. For an instrument whose accompaniment stays under "
+                    + "the tune, where the tracker would otherwise answer the chord or "
+                    + "the bass. With --melody, audio only.")
+    String melodyFloor;
+
     @Option(names = "--skip-separation",
             description = "Analyse the mix directly instead of separating stems. Makes "
                     + "--melody and lyric transcription hear the full mix; chords "
@@ -1683,7 +1690,24 @@ final class AnalyzeCommand implements Callable<Integer> {
                 analysis != null ? analysis.tempoOverride() : null,
                 meter,
                 analysis != null ? analysis.firstDownbeatSecondsOverride() : null,
-                melody);
+                melody,
+                melodyFloorHz());
+    }
+
+    /** The typed floor as a frequency, or null for none. */
+    private Double melodyFloorHz() {
+        if (melodyFloor == null || melodyFloor.isBlank()) {
+            return null;
+        }
+        if (!melody) {
+            throw new IllegalArgumentException("--melody-floor needs --melody");
+        }
+        try {
+            return AudioTranscriber.Options.floorUnder(PitchSpelling.parse(melodyFloor.trim()));
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException(
+                    "--melody-floor wants a note name such as E3, got: " + melodyFloor);
+        }
     }
 
     /** The typed meter, or null for "read it off the recording" (#700). */

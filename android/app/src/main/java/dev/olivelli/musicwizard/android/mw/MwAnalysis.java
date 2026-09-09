@@ -20,6 +20,7 @@ import dev.olivelli.musicwizard.audio.AudioBuffer;
 import dev.olivelli.musicwizard.audio.Resampler;
 import dev.olivelli.musicwizard.core.model.NoteTrack;
 import dev.olivelli.musicwizard.core.model.PartRole;
+import dev.olivelli.musicwizard.core.model.PitchSpelling;
 import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.model.ScoreJson;
 import dev.olivelli.musicwizard.notation.ChordChart;
@@ -77,17 +78,45 @@ public final class MwAnalysis {
      * method's: the desktop decodes where the phone reads a WAV it wrote, and
      * it reports the file's rate before resampling rather than after.
      */
+    /**
+     * What the analysis does about a melody: whether it tracks one, and the
+     * lowest note it may be. The floor is the player's knowledge of the
+     * recording, since a chord is periodic under its root and a bass line is
+     * louder, and the tracker answers those unless told where the tune lies.
+     *
+     * @param floorHz the lowest pitch, or null for the tracker's own bound
+     */
+    public record MelodyChoice(boolean tracked, Double floorHz) {
+
+        public static MelodyChoice off() {
+            return new MelodyChoice(false, null);
+        }
+
+        /** Tracked, with the floor as a note name such as E3, or blank for none. */
+        public static MelodyChoice tracked(String floorNote) {
+            if (floorNote == null || floorNote.isBlank()) {
+                return new MelodyChoice(true, null);
+            }
+            return new MelodyChoice(true,
+                    AudioTranscriber.Options.floorUnder(PitchSpelling.parse(floorNote.trim())));
+        }
+    }
+
     public static Score analyze(File wav, Consumer<String> progress) throws IOException {
-        return analyze(wav, false, progress);
+        return analyze(wav, MelodyChoice.off(), progress);
+    }
+
+    /** The same with the melody stage on and no floor. */
+    public static Score analyze(File wav, boolean trackMelody, Consumer<String> progress)
+            throws IOException {
+        return analyze(wav, new MelodyChoice(trackMelody, null), progress);
     }
 
     /**
-     * @param trackMelody whether to read a melody too, from the mix. A run
-     *                    that tracked and heard nothing leaves an empty
-     *                    melody track, so the page can tell that apart from
-     *                    a run that never looked.
+     * A run that tracked and heard nothing leaves an empty melody track, so
+     * the page can tell that apart from a run that never looked.
      */
-    public static Score analyze(File wav, boolean trackMelody, Consumer<String> progress)
+    public static Score analyze(File wav, MelodyChoice melody, Consumer<String> progress)
             throws IOException {
         Consumer<String> report = progress != null ? progress : line -> { };
 
@@ -105,7 +134,8 @@ public final class MwAnalysis {
         }
 
         return melodyTracked(new AudioTranscriber(report).transcribe(audio,
-                new AudioTranscriber.Options(null, null, null, trackMelody)), trackMelody);
+                new AudioTranscriber.Options(null, null, null, melody.tracked(),
+                        melody.floorHz())), melody.tracked());
     }
 
     /**

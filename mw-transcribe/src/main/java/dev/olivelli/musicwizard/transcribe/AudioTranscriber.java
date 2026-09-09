@@ -25,6 +25,7 @@ import dev.olivelli.musicwizard.core.model.ChordProgression;
 import dev.olivelli.musicwizard.core.model.Confidence;
 import dev.olivelli.musicwizard.core.model.NoteTrack;
 import dev.olivelli.musicwizard.core.model.Provenance;
+import dev.olivelli.musicwizard.core.model.PitchSpelling;
 import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.model.TempoMap;
 import dev.olivelli.musicwizard.core.model.TimeSignature;
@@ -121,6 +122,12 @@ public final class AudioTranscriber {
      *                            better evidence than harmonic novelty and
      *                            averaging the two would let a confident wrong
      *                            estimate outvote them.
+     * @param melodyFloorHz       the lowest pitch the melody may be, or null for
+     *                            the tracker's own bound. For a melody sounding
+     *                            over an accompaniment that stays below it: a
+     *                            chord is periodic under its root and a bass
+     *                            line is louder, and the monophonic tracker
+     *                            answers those unless told where the tune is.
      * @param trackMelody         whether to read a melody out of the audio.
      *                            Off by default, and that is not timidity: the
      *                            tracker is monophonic, so on a full mix it
@@ -139,7 +146,8 @@ public final class AudioTranscriber {
             Double tempoOverride,
             TimeSignature timeSignature,
             Double firstDownbeatSeconds,
-            boolean trackMelody) {
+            boolean trackMelody,
+            Double melodyFloorHz) {
 
         public Options {
             // Checked here rather than where they are used, so that a mistyped
@@ -157,6 +165,12 @@ public final class AudioTranscriber {
                 throw new IllegalArgumentException(
                         "the tempo must be finite and positive, got: " + tempoOverride);
             }
+            if (melodyFloorHz != null && (!(melodyFloorHz >= PitchTracker.MIN_HZ)
+                    || !(melodyFloorHz < PitchTracker.MAX_HZ))) {
+                throw new IllegalArgumentException("the melody floor must lie between "
+                        + PitchTracker.MIN_HZ + " and " + PitchTracker.MAX_HZ + " Hz, got: "
+                        + melodyFloorHz);
+            }
         }
 
         /**
@@ -168,11 +182,27 @@ public final class AudioTranscriber {
          */
         public Options(Double tempoOverride, TimeSignature timeSignature,
                        Double firstDownbeatSeconds) {
-            this(tempoOverride, timeSignature, firstDownbeatSeconds, false);
+            this(tempoOverride, timeSignature, firstDownbeatSeconds, false, null);
+        }
+
+        /** The same with the melody stage chosen and no floor under it. */
+        public Options(Double tempoOverride, TimeSignature timeSignature,
+                       Double firstDownbeatSeconds, boolean trackMelody) {
+            this(tempoOverride, timeSignature, firstDownbeatSeconds, trackMelody, null);
         }
 
         public static Options defaults() {
-            return new Options(null, null, null, false);
+            return new Options(null, null, null, false, null);
+        }
+
+        /**
+         * The floor for a note the player names as the lowest the melody
+         * reaches: half a semitone under it, so the note itself stays a
+         * candidate rather than sitting on the tracker's edge.
+         */
+        public static double floorUnder(PitchSpelling note) {
+            Objects.requireNonNull(note, "note");
+            return 440.0 * Math.pow(2, (note.midiPitch() - 69 - 0.5) / 12.0);
         }
 
         /**
@@ -553,8 +583,14 @@ public final class AudioTranscriber {
             // rounded on different grids can name the same sounding pitch two
             // ways. The band is also the better reference of the two, having
             // more of the recording in it than one voice does (#566).
+            Double floor = settings.melodyFloorHz();
+            if (floor != null) {
+                stage.fact("floor", String.format(Locale.ROOT, "%.1f Hz", floor));
+            }
             MelodyEstimator.Segmented segmented = MelodyEstimator.explain(
-                    PitchTracker.track(melodyAudio), melodyEnvelope, tuning);
+                    floor == null ? PitchTracker.track(melodyAudio)
+                            : PitchTracker.track(melodyAudio, floor),
+                    melodyEnvelope, tuning);
             NoteTrack melody = segmented.melody();
             recordMelody(stage, segmented.trace().readFrom(
                     separated ? MelodyTrace.SEPARATED_VOCAL : MelodyTrace.FULL_MIX));

@@ -371,6 +371,28 @@ class RunManifestCliTest {
     }
 
     @Test
+    @DisplayName("the melody floor is written down as the frequency it became")
+    void theMelodyFloorIsRecorded() {
+        analyze("--melody", "--skip-separation", "--melody-floor", "E3");
+
+        assertThat(stage("melody").facts()).containsEntry("floor", "160.1 Hz");
+    }
+
+    @Test
+    @DisplayName("a floor without the melody stage, or one that is not a note, is refused")
+    void theMelodyFloorIsCheckedBeforeTheRun() {
+        CliRunner.Result alone = CliRunner.run("analyze", workspaceDirectory.toString(),
+                "--melody-floor", "E3");
+        assertThat(alone.exitCode()).as(alone.all()).isNotZero();
+        assertThat(alone.all()).contains("--melody-floor needs --melody");
+
+        CliRunner.Result garbled = CliRunner.run("analyze", workspaceDirectory.toString(),
+                "--melody", "--melody-floor", "high");
+        assertThat(garbled.exitCode()).as(garbled.all()).isNotZero();
+        assertThat(garbled.all()).contains("note name such as E3");
+    }
+
+    @Test
     @DisplayName("a run that was never asked for a melody records no melody trace")
     void aMelodyNeverAskedForRecordsNoTrace() {
         analyze();

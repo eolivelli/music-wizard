@@ -48,11 +48,25 @@
 
     <!-- Also what the analysis tracks: the part is reduced from a melody
          the run must have heard, so the choice is read when a run starts. -->
-    <CheckBox
-        android:id="@+id/playableCheck"
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="@string/playable_part" />
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
+
+        <CheckBox
+            android:id="@+id/playableCheck"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="wrap_content"
+            android:text="@string/playable_part" />
+
+        <Spinner
+            android:id="@+id/floorSpinner"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:entries="@array/melody_floor_labels" />
+    </LinearLayout>
 
     <!-- "What was played", in the player's own words. Written beside the take
          on leaving the screen and carried in the bundle; see BundleShare. -->

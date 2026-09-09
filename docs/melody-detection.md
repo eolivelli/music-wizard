@@ -26,6 +26,18 @@ confidently returns one fundamental for whatever is loudest and most
 periodic, usually the bass. That is why `analyze --melody` is off by default,
 and why it does not point the tracker at the mix.
 
+## A floor under the melody (#803)
+
+A monophonic tracker on a solo piano answers the wrong thing twice over: a
+root-position triad is periodic at the fundamental two octaves under its
+root, and a bass line is louder than the tune. Neither is a tracking error,
+and no filter helps, since the tracker hears the low period through its
+harmonics. What separates the hands is register, which only the player
+knows: `analyze --melody --melody-floor E3` makes no lag below that note a
+candidate, and the phone's result screen offers the same choice beside the
+playable part. The committed melody baselines are without a floor; the
+tracker's own bound stays the default.
+
 ## Which signal the tracker reads (#559)
 
 `analyze --melody` reads the **separated vocal** wherever a separation

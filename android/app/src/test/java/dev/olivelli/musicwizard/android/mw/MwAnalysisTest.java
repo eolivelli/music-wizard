@@ -182,6 +182,26 @@ public class MwAnalysisTest {
                 SheetDocuments.melody(MwAnalysis.melodyTracked(silent, false)));
     }
 
+    /**
+     * The floor reaches the tracker: the loop is bare triads, periodic only
+     * under their roots, so above a floor over that period there is nothing
+     * to hear, where the full range hears the subharmonic as a tune.
+     */
+    @Test
+    public void theFloorIsANoteNameThatReachesTheTracker() throws IOException {
+        MwAnalysis.MelodyChoice e3 = MwAnalysis.MelodyChoice.tracked("E3");
+        assertEquals(160.1, e3.floorHz(), 0.1);
+        assertNull(MwAnalysis.MelodyChoice.tracked("").floorHz());
+        assertFalse(MwAnalysis.MelodyChoice.off().tracked());
+
+        File wav = folder.newFile("triads.wav");
+        writeChordLoop(wav);
+        assertEquals(SheetDocuments.Melody.HEARD,
+                SheetDocuments.melody(MwAnalysis.analyze(wav, true, line -> { })));
+        assertEquals(SheetDocuments.Melody.UNHEARD,
+                SheetDocuments.melody(MwAnalysis.analyze(wav, e3, line -> { })));
+    }
+
     /** Percussion has a pulse and no pitch: the stage runs, hears nothing, and the page is told. */
     @Test
     public void aTakeWithNothingToSingIsHeardAsSilentNotUntracked() throws IOException {
