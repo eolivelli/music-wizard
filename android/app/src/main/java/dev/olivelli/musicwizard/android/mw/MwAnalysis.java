@@ -18,6 +18,8 @@ package dev.olivelli.musicwizard.android.mw;
 
 import dev.olivelli.musicwizard.audio.AudioBuffer;
 import dev.olivelli.musicwizard.audio.Resampler;
+import dev.olivelli.musicwizard.core.model.NoteTrack;
+import dev.olivelli.musicwizard.core.model.PartRole;
 import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.model.ScoreJson;
 import dev.olivelli.musicwizard.notation.ChordChart;
@@ -80,9 +82,10 @@ public final class MwAnalysis {
     }
 
     /**
-     * @param trackMelody whether to read a melody too; from the mix, since the
-     *                    phone separates nothing, so a solo take gives the
-     *                    tune and a band gives whatever is loudest
+     * @param trackMelody whether to read a melody too, from the mix. A run
+     *                    that tracked and heard nothing leaves an empty
+     *                    melody track, so the page can tell that apart from
+     *                    a run that never looked.
      */
     public static Score analyze(File wav, boolean trackMelody, Consumer<String> progress)
             throws IOException {
@@ -101,8 +104,12 @@ public final class MwAnalysis {
             throw new IOException("the recording is silent, so there is nothing to transcribe");
         }
 
-        return new AudioTranscriber(report).transcribe(audio,
+        Score score = new AudioTranscriber(report).transcribe(audio,
                 new AudioTranscriber.Options(null, null, null, trackMelody));
+        if (trackMelody && score.track(PartRole.LEAD_VOCAL).isEmpty()) {
+            score = score.withTrack(NoteTrack.empty(PartRole.LEAD_VOCAL, "Voice"));
+        }
+        return score;
     }
 
     /** The buffer the analysis stages should see, resampled if it is not already there. */
@@ -185,8 +192,9 @@ public final class MwAnalysis {
     }
 
     /** The chart, exactly as the desktop's text renderer draws it. */
+    /** The chart as {@code mw render} writes it, chords spelled from the piece as a whole. */
     public static String chartText(Score score) {
-        return ChordChart.toText(score);
+        return ChordChart.toText(SheetDocuments.page(score));
     }
 
     /**

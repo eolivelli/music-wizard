@@ -110,6 +110,22 @@ public class AnalysisJobsTest {
         }
     }
 
+    @Test
+    public void theMelodyChoiceReachesTheAnalyzerAsMade() {
+        java.util.List<Boolean> asked = new java.util.ArrayList<>();
+        AnalysisJobs jobs = new AnalysisJobs(mainThread::add, (file, melody, progress) -> {
+            asked.add(melody);
+            return aScore();
+        });
+
+        jobs.start(wav, true, new Screen());
+        pumpUntil(() -> jobs.lastResult(wav) != null);
+        jobs.start(wav, false, new Screen());
+        pumpUntil(() -> asked.size() == 2);
+
+        assertEquals(java.util.List.of(true, false), asked);
+    }
+
     /**
      * A finished analysis outlives the screen that asked for it.
      *
@@ -120,20 +136,6 @@ public class AnalysisJobsTest {
      * was the only copy of it: the screen that came back showed "Not analyzed
      * yet" and a minute of DSP had to be spent again.
      */
-    @Test
-    public void theMelodyChoiceReachesTheAnalyzer() {
-        java.util.List<Boolean> asked = new java.util.ArrayList<>();
-        AnalysisJobs jobs = new AnalysisJobs(mainThread::add, (file, melody, progress) -> {
-            asked.add(melody);
-            return aScore();
-        });
-
-        jobs.start(wav, true, new Screen());
-        pumpUntil(() -> jobs.lastResult(wav) != null);
-
-        assertEquals(java.util.List.of(true), asked);
-    }
-
     @Test
     public void aFinishedResultOutlivesTheScreenThatAskedForIt() {
         Score result = aScore();

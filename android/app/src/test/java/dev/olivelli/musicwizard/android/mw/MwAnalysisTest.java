@@ -24,6 +24,7 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 import dev.olivelli.musicwizard.audio.AudioBuffer;
+import dev.olivelli.musicwizard.core.model.PartRole;
 import dev.olivelli.musicwizard.core.model.Score;
 import java.io.File;
 import java.io.FileOutputStream;
@@ -163,10 +164,10 @@ public class MwAnalysisTest {
         Score heard = MwAnalysis.analyze(wav, true, stages::add);
         assertTrue(stages.toString(), stages.stream().anyMatch(line -> line.contains("melody")));
         assertTrue("asked for, the melody track should be on the score",
-                heard.track(dev.olivelli.musicwizard.core.model.PartRole.LEAD_VOCAL).isPresent());
+                heard.track(PartRole.LEAD_VOCAL).isPresent());
 
         Score unasked = MwAnalysis.analyze(wav, false, line -> { });
-        assertFalse(unasked.track(dev.olivelli.musicwizard.core.model.PartRole.LEAD_VOCAL)
+        assertFalse(unasked.track(PartRole.LEAD_VOCAL)
                 .isPresent());
     }
 

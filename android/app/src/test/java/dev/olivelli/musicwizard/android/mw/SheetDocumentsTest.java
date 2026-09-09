@@ -15,6 +15,7 @@
  */
 package dev.olivelli.musicwizard.android.mw;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
@@ -23,6 +24,8 @@ import dev.olivelli.musicwizard.core.model.Chord;
 import dev.olivelli.musicwizard.core.model.ChordProgression;
 import dev.olivelli.musicwizard.core.model.ChordQuality;
 import dev.olivelli.musicwizard.core.model.Confidence;
+import dev.olivelli.musicwizard.core.model.Key;
+import dev.olivelli.musicwizard.core.model.Mode;
 import dev.olivelli.musicwizard.core.model.Note;
 import dev.olivelli.musicwizard.core.model.NoteTrack;
 import dev.olivelli.musicwizard.core.model.PartRole;
@@ -73,12 +76,40 @@ public class SheetDocumentsTest {
     }
 
     @Test
-    public void aTakeWithoutAMelodyHasNoPlayablePart() {
-        Score chordsOnly = sungChart().withTrack(NoteTrack.empty(PartRole.LEAD_VOCAL, "Voice"));
-        assertFalse(SheetDocuments.hasMelody(chordsOnly));
+    public void aTrackedButSilentMelodyIsSaidToBeUnheard() {
+        Score silent = sungChart().withTrack(NoteTrack.empty(PartRole.LEAD_VOCAL, "Voice"));
+        assertEquals(SheetDocuments.Melody.UNHEARD, SheetDocuments.melody(silent));
         IllegalArgumentException refused = assertThrows(IllegalArgumentException.class,
-                () -> SheetDocuments.playable(chordsOnly));
-        assertTrue(refused.getMessage(), refused.getMessage().contains("no melody"));
+                () -> SheetDocuments.playable(silent));
+        assertTrue(refused.getMessage(), refused.getMessage().contains("no melody was heard"));
+    }
+
+    @Test
+    public void anUntrackedMelodyAsksForAnotherAnalysis() {
+        Score untracked = Score.empty(TempoMap.constant(120, TimeSignature.FOUR_FOUR), 8)
+                .withChords(sungChart().chords());
+        assertEquals(SheetDocuments.Melody.UNTRACKED, SheetDocuments.melody(untracked));
+        IllegalArgumentException refused = assertThrows(IllegalArgumentException.class,
+                () -> SheetDocuments.playable(untracked));
+        assertTrue(refused.getMessage(), refused.getMessage().contains("not tracked"));
+        assertEquals(SheetDocuments.Melody.HEARD, SheetDocuments.melody(sungChart()));
+    }
+
+    /** The desktop respells the harmony from the piece before every part; so does the phone. */
+    @Test
+    public void theChordsAreSpelledFromTheKeyAsTheDesktopSpellsThem() {
+        List<Chord> flatKey = List.of(
+                chord("A#4", ChordQuality.MAJOR, 0, 2),
+                chord("F4", ChordQuality.MAJOR, 2, 4),
+                chord("G4", ChordQuality.MINOR, 4, 6),
+                chord("D#4", ChordQuality.MAJOR, 6, 8));
+        Score inBFlat = Score.empty(TempoMap.constant(120, TimeSignature.FOUR_FOUR), 8)
+                .withChords(new ChordProgression(flatKey, Confidence.CERTAIN))
+                .withKeys(List.of(Key.ofSeconds(PitchSpelling.parse("Bb4"), Mode.MAJOR, 0, 8,
+                        Confidence.CERTAIN)));
+        String chart = new String(SheetDocuments.chart(inBFlat), StandardCharsets.UTF_8);
+        assertTrue(chart, chart.contains("<root-step>B</root-step>"));
+        assertFalse(chart, chart.contains("<root-step>A</root-step>"));
     }
 
     @Test

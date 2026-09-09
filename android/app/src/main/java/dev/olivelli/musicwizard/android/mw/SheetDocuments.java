@@ -15,6 +15,7 @@
  */
 package dev.olivelli.musicwizard.android.mw;
 
+import dev.olivelli.musicwizard.arrange.ChordSpeller;
 import dev.olivelli.musicwizard.arrange.PitchSpeller;
 import dev.olivelli.musicwizard.arrange.PlayableMelody;
 import dev.olivelli.musicwizard.arrange.QuantizationSettings;
@@ -26,34 +27,59 @@ import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.notation.MusicXmlExport;
 import java.nio.charset.StandardCharsets;
 
-/** The MusicXML documents the phone engraves, each the desktop's twin of the same part. */
+/**
+ * The MusicXML documents the phone engraves, each what {@code mw render}
+ * writes for the same part: the score is respelled once, as that command
+ * does before every part, so the text chart, the pane and the PDF agree.
+ */
 public final class SheetDocuments {
+
+    /** What the analysis has to say about a melody. */
+    public enum Melody {
+        /** Notes were heard, so a playable part can be reduced from them. */
+        HEARD,
+        /** The stage ran and found nothing to write. */
+        UNHEARD,
+        /** The stage did not run; another analysis would. */
+        UNTRACKED
+    }
 
     private SheetDocuments() {
     }
 
-    /** @throws IllegalArgumentException if the score holds no chords to chart */
-    public static byte[] chart(Score score) {
-        return MusicXmlExport.chordChart(score).getBytes(StandardCharsets.UTF_8);
+    /** The score as every page reads it. */
+    public static Score page(Score score) {
+        return ChordSpeller.respell(score);
     }
 
-    /** Whether the analysis heard a melody, which is what the playable part is reduced from. */
-    public static boolean hasMelody(Score score) {
-        return score.track(PartRole.LEAD_VOCAL).map(track -> !track.isEmpty()).orElse(false);
+    /** @throws IllegalArgumentException if the score holds no chords to chart */
+    public static byte[] chart(Score score) {
+        return MusicXmlExport.chordChart(page(score)).getBytes(StandardCharsets.UTF_8);
+    }
+
+    public static Melody melody(Score score) {
+        return score.track(PartRole.LEAD_VOCAL)
+                .map(track -> track.isEmpty() ? Melody.UNHEARD : Melody.HEARD)
+                .orElse(Melody.UNTRACKED);
     }
 
     /**
      * The lead sheet over the playable part, as {@code mw render --parts
      * playable} writes it.
      *
-     * @throws IllegalArgumentException if no melody was heard
+     * @throws IllegalArgumentException if there is no melody to reduce, with
+     *         which of the two reasons it is
      * @throws IllegalStateException if the export refuses the score
      */
     public static byte[] playable(Score score) {
-        if (!hasMelody(score)) {
-            throw new IllegalArgumentException("no melody was heard in this take");
+        switch (melody(score)) {
+            case UNHEARD -> throw new IllegalArgumentException("no melody was heard in this take");
+            case UNTRACKED -> throw new IllegalArgumentException(
+                    "the melody was not tracked; analyze again with the playable part on");
+            case HEARD -> { }
         }
-        Score reduced = PitchSpeller.spell(score.withTrack(PlayableMelody.reduce(score)));
+        Score spelled = page(score);
+        Score reduced = PitchSpeller.spell(spelled.withTrack(PlayableMelody.reduce(spelled)));
         QuantizedScore quantized = Quantizer.quantize(reduced, QuantizationSettings.READING);
         NoteTrack part = quantized.score().track(PartRole.LEAD_VOCAL).orElseThrow(
                 () -> new IllegalStateException("the playable part vanished in quantization"));

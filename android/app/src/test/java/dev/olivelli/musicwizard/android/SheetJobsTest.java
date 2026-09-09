@@ -86,6 +86,33 @@ public class SheetJobsTest {
         assertTrue(String.valueOf(outcome.systems.get().get(0).result()).contains("Am7"));
     }
 
+    /** The JVM has no music font to load, so the PDF path fails there; the failure must arrive. */
+    @Test
+    public void aPdfThatCannotBeMadeReportsWhyAndNeverAFile() throws InterruptedException {
+        SheetJobs jobs = new SheetJobs(SheetRenderer.ENGINE_SVG, Runnable::run);
+        CountDownLatch done = new CountDownLatch(1);
+        AtomicReference<String> failure = new AtomicReference<>();
+        AtomicReference<java.io.File> file = new AtomicReference<>();
+        jobs.pdf(null, chart(), true, new java.io.File("unused.pdf"), new SheetJobs.PdfListener() {
+            @Override
+            public void onPdf(java.io.File pdf, String omitted) {
+                file.set(pdf);
+                done.countDown();
+            }
+
+            @Override
+            public void onPdfFailed(String why) {
+                failure.set(why);
+                done.countDown();
+            }
+        });
+        assertTrue("no outcome arrived", done.await(30, TimeUnit.SECONDS));
+
+        assertNull(file.get());
+        assertNotNull(failure.get());
+        assertTrue(failure.get(), !failure.get().isEmpty());
+    }
+
     @Test
     public void saysWhyAScoreWithoutChordsHasNoSheet() throws InterruptedException {
         SheetJobs jobs = new SheetJobs(SheetRenderer.ENGINE_SVG, Runnable::run);

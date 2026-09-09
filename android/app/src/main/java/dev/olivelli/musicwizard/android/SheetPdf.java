@@ -62,12 +62,20 @@ final class SheetPdf {
      * @throws IOException with the export's or alphaTab's reason, or the filesystem's
      */
     static String write(Score score, boolean playable, File target) throws IOException {
-        List<byte[]> documents = new ArrayList<>();
+        byte[] chart;
         try {
-            documents.add(SheetDocuments.chart(score));
+            chart = SheetDocuments.chart(score);
         } catch (IllegalArgumentException | IllegalStateException e) {
             throw new IOException(reasonOf(e), e);
         }
+        return write(chart, score, playable, target);
+    }
+
+    /** The same over a chart already exported, so a caller that also bundles it exports once. */
+    static String write(byte[] chart, Score score, boolean playable, File target)
+            throws IOException {
+        List<byte[]> documents = new ArrayList<>();
+        documents.add(chart);
         String omitted = null;
         if (playable) {
             try {
@@ -86,54 +94,50 @@ final class SheetPdf {
         return e.getMessage() == null ? e.toString() : e.getMessage();
     }
 
-    /** Draws the documents in order, each from a new page; returns why a later one was dropped. */
+    /**
+     * Draws the documents in order, each from a new page and each drawn before
+     * the next is rendered, so only one document's pictures are alive at a
+     * time. Returns why a later document was dropped, or null.
+     */
     private static String engrave(List<byte[]> documents, File target) throws IOException {
-        List<SheetRenderer.Partial> chunks = new ArrayList<>();
-        List<List<Integer>> pages = new ArrayList<>();
-        String dropped = null;
-        for (byte[] musicXml : documents) {
-            SheetRenderer.Result result = SheetRenderer.render(musicXml,
-                    SheetRenderer.ENGINE_PICTURE, PAGE_WIDTH - 2 * MARGIN, 1);
-            if (!result.succeeded()) {
-                if (chunks.isEmpty()) {
-                    throw new IOException(result.failure());
-                }
-                dropped = result.failure();
-                break;
-            }
-            double[] heights = new double[result.partials().size()];
-            for (int i = 0; i < heights.length; i++) {
-                heights[i] = result.partials().get(i).height();
-            }
-            int offset = chunks.size();
-            for (List<Integer> page : SheetPaginator.paginate(heights, PAGE_HEIGHT - 2 * MARGIN)) {
-                List<Integer> shifted = new ArrayList<>(page.size());
-                for (int index : page) {
-                    shifted.add(offset + index);
-                }
-                pages.add(shifted);
-            }
-            chunks.addAll(result.partials());
-        }
-
         File tmp = File.createTempFile(target.getName(), ".tmp", target.getParentFile());
         PdfDocument document = new PdfDocument();
+        String dropped = null;
         try {
-            for (int number = 0; number < pages.size(); number++) {
-                PdfDocument.Page page = document.startPage(
-                        new PdfDocument.PageInfo.Builder(PAGE_WIDTH, PAGE_HEIGHT, number + 1)
-                                .create());
-                Canvas canvas = page.getCanvas();
-                double y = MARGIN;
-                for (int index : pages.get(number)) {
-                    SheetRenderer.Partial chunk = chunks.get(index);
-                    canvas.save();
-                    canvas.translate((float) (MARGIN + chunk.x()), (float) y);
-                    canvas.drawPicture((Picture) chunk.result());
-                    canvas.restore();
-                    y += chunk.height();
+            int pageNumber = 0;
+            for (byte[] musicXml : documents) {
+                SheetRenderer.Result result = SheetRenderer.render(musicXml,
+                        SheetRenderer.ENGINE_PICTURE, PAGE_WIDTH - 2 * MARGIN, 1);
+                if (!result.succeeded()) {
+                    if (pageNumber == 0) {
+                        throw new IOException(result.failure());
+                    }
+                    dropped = result.failure();
+                    break;
                 }
-                document.finishPage(page);
+                List<SheetRenderer.Partial> chunks = result.partials();
+                double[] heights = new double[chunks.size()];
+                for (int i = 0; i < heights.length; i++) {
+                    heights[i] = chunks.get(i).height();
+                }
+                for (List<Integer> page : SheetPaginator.paginate(heights,
+                        PAGE_HEIGHT - 2 * MARGIN)) {
+                    pageNumber++;
+                    PdfDocument.Page drawn = document.startPage(
+                            new PdfDocument.PageInfo.Builder(PAGE_WIDTH, PAGE_HEIGHT, pageNumber)
+                                    .create());
+                    Canvas canvas = drawn.getCanvas();
+                    double y = MARGIN;
+                    for (int index : page) {
+                        SheetRenderer.Partial chunk = chunks.get(index);
+                        canvas.save();
+                        canvas.translate((float) (MARGIN + chunk.x()), (float) y);
+                        canvas.drawPicture((Picture) chunk.result());
+                        canvas.restore();
+                        y += chunk.height();
+                    }
+                    document.finishPage(drawn);
+                }
             }
             try (OutputStream out = new FileOutputStream(tmp)) {
                 document.writeTo(out);

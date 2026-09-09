@@ -28,13 +28,14 @@ import android.widget.Toast;
 import androidx.core.content.FileProvider;
 import dev.olivelli.musicwizard.android.mw.MwAnalysis;
 import dev.olivelli.musicwizard.android.mw.RecordingStore;
+import dev.olivelli.musicwizard.android.mw.SheetDocuments;
 import dev.olivelli.musicwizard.android.mw.SheetRenderer;
 import dev.olivelli.musicwizard.android.mw.TakeSource;
 import dev.olivelli.musicwizard.android.mw.TakeBundle;
 import dev.olivelli.musicwizard.core.model.Score;
-import dev.olivelli.musicwizard.notation.MusicXmlExport;
 import java.io.File;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -131,8 +132,7 @@ final class BundleShare {
         // successful flush of its field into it.
         String typed = RecordingStore.readNotes(recording);
         String notes = typed.trim().isEmpty() ? null : typed;
-        String info = infoText(application, take, recording.durationSeconds(),
-                wav.lastModified(), score, RecordingStore.readSource(recording));
+        String source = RecordingStore.readSource(recording);
 
         File directory = new File(application.getCacheDir(), "bundles");
         File zip = new File(directory, TakeBundle.fileNameFor(take));
@@ -148,26 +148,34 @@ final class BundleShare {
                 // The engraving is as optional as the chart: whatever the
                 // export or the engraver does, the take still bundles as
                 // audio, text and cache. Throwable as below.
-                String musicXml = null;
+                byte[] musicXml = null;
                 File pdf = null;
+                String sheet = null;
                 if (score != null) {
                     try {
-                        musicXml = MusicXmlExport.chordChart(score);
+                        musicXml = SheetDocuments.chart(score);
                     } catch (Throwable t) {
-                        musicXml = null;
+                        sheet = "not exported: " + reasonOf(t);
                     }
                 }
                 if (musicXml != null) {
+                    boolean playable = Preferences.playablePart(application);
                     try {
                         SheetRenderer.initialize(application);
-                        SheetPdf.write(score, Preferences.playablePart(application),
+                        String omitted = SheetPdf.write(musicXml, score, playable,
                                 recording.pdfFile());
                         pdf = recording.pdfFile();
+                        sheet = omitted != null ? "chart only: " + omitted
+                                : playable ? "chart and playable part" : "chart only";
                     } catch (Throwable t) {
-                        pdf = null;
+                        sheet = "no PDF: " + reasonOf(t);
                     }
                 }
-                TakeBundle.write(zip, take, wav, scoreFile, chart, musicXml, pdf, notes, info);
+                String info = infoText(application, take, recording.durationSeconds(),
+                        wav.lastModified(), score, source, sheet);
+                TakeBundle.write(zip, take, wav, scoreFile, chart,
+                        musicXml == null ? null : new String(musicXml, StandardCharsets.UTF_8),
+                        pdf, notes, info);
             } catch (Throwable t) {
                 // Throwable for the same reason as AnalysisJobs.run: an
                 // Exception-only catch lets an Error vanish into the executor's
@@ -233,7 +241,8 @@ final class BundleShare {
 
     /** A few lines for whoever finds the zip later: what this is, and what read it. */
     private static String infoText(Context application, String take, double durationSeconds,
-                                   long recordedMillis, Score score, String source) {
+                                   long recordedMillis, Score score, String source,
+                                   String sheet) {
         StringBuilder out = new StringBuilder();
         out.append(take).append("  ·  ")
                 .append(RecordingStore.formatDuration(durationSeconds)).append('\n');
@@ -253,6 +262,9 @@ final class BundleShare {
         out.append(score == null
                 ? "not analyzed on the phone"
                 : MwAnalysis.summary(score)).append('\n');
+        if (sheet != null) {
+            out.append("sheet: ").append(sheet).append('\n');
+        }
         out.append("Music Wizard ").append(appVersion(application))
                 .append(" on Android ").append(Build.VERSION.RELEASE)
                 .append(" (API ").append(Build.VERSION.SDK_INT).append("), ")

@@ -206,8 +206,9 @@ final class AnalysisJobs {
      *
      * <p>Whether the result could be cached is passed on rather than assumed —
      * see {@link MwAnalysis#writeCache}.
+     *
+     * @param melody whether the run also tracks the melody
      */
-    /** @param melody whether the run also tracks the melody */
     void start(File wav, boolean melody, Listener listener) {
         String key = key(wav);
         Job existing = jobs.get(key);
