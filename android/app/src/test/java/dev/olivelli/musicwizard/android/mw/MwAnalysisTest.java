@@ -181,6 +181,17 @@ public class MwAnalysisTest {
                 SheetDocuments.melody(MwAnalysis.melodyTracked(silent, false)));
     }
 
+    /** Percussion has a pulse and no pitch: the stage runs, hears nothing, and the page is told. */
+    @Test
+    public void aTakeWithNothingToSingIsHeardAsSilentNotUntracked() throws IOException {
+        File wav = folder.newFile("drums.wav");
+        writeNoiseBeats(wav);
+
+        Score heard = MwAnalysis.analyze(wav, true, line -> { });
+
+        assertEquals(SheetDocuments.Melody.UNHEARD, SheetDocuments.melody(heard));
+    }
+
     /** The cache beside the audio, written and read back. */
     @Test
     public void theScoreCacheRoundTripsBesideTheAudio() throws IOException {
@@ -260,6 +271,29 @@ public class MwAnalysisTest {
      * detector has something to find; the triads change every two beats so the
      * chord estimator does.
      */
+    /** Bursts of noise on every beat, for a recording with rhythm and no pitch. */
+    private static void writeNoiseBeats(File file) throws IOException {
+        int rate = MwAnalysis.RECORD_SAMPLE_RATE;
+        double beat = 0.5;
+        int beats = 16;
+        int frames = (int) (beats * beat * rate);
+        byte[] audio = new byte[frames * 2];
+        java.util.Random random = new java.util.Random(7);
+        for (int i = 0; i < frames; i++) {
+            double t = i / (double) rate;
+            double intoBeat = t - (int) (t / beat) * beat;
+            double envelope = Math.exp(-12 * intoBeat);
+            int sample = (int) Math.round(envelope * random.nextGaussian() * 8000);
+            sample = Math.max(-32768, Math.min(32767, sample));
+            audio[2 * i] = (byte) (sample & 0xFF);
+            audio[2 * i + 1] = (byte) ((sample >> 8) & 0xFF);
+        }
+        try (OutputStream out = new FileOutputStream(file)) {
+            out.write(WavFile.header(rate, 1, audio.length));
+            out.write(audio);
+        }
+    }
+
     private static void writeChordLoop(File file) throws IOException {
         int rate = MwAnalysis.RECORD_SAMPLE_RATE;
         double beat = 0.5;
