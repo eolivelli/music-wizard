@@ -18,21 +18,23 @@ package dev.olivelli.musicwizard.android;
 import android.graphics.Canvas;
 import android.graphics.Picture;
 import android.graphics.pdf.PdfDocument;
+import dev.olivelli.musicwizard.android.mw.SheetDocuments;
 import dev.olivelli.musicwizard.android.mw.SheetPaginator;
 import dev.olivelli.musicwizard.android.mw.SheetRenderer;
 import dev.olivelli.musicwizard.core.model.Score;
-import dev.olivelli.musicwizard.notation.MusicXmlExport;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
-import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
  * Writes the engraving as a vector PDF: every chunk alphaTab draws is
  * recorded as a picture and replayed onto A4 pages, in order, breaking where
- * the next does not fit. Text stays text, so it prints at any size.
+ * the next does not fit. Text stays text, so it prints at any size. The
+ * chart comes first; the playable part, when asked for and heard, starts a
+ * page of its own.
  */
 final class SheetPdf {
 
@@ -47,66 +49,109 @@ final class SheetPdf {
     private SheetPdf() {
     }
 
-    /** {@link #write(byte[], File)} of the score's chord chart. */
-    static void write(Score score, File target) throws IOException {
-        byte[] musicXml;
-        try {
-            musicXml = MusicXmlExport.chordChart(score).getBytes(StandardCharsets.UTF_8);
-        } catch (IllegalArgumentException | IllegalStateException e) {
-            throw new IOException(e.getMessage() == null ? e.toString() : e.getMessage(), e);
-        }
-        write(musicXml, target);
-    }
-
     /**
      * Renders and writes, replacing whatever was at {@code target} in one
      * move; a failure leaves the previous file in place and nothing
-     * half-written.
+     * half-written. The chart is the document: without it nothing is
+     * written, while a playable part that cannot be made is left out and
+     * said.
      *
-     * @throws IOException with alphaTab's reason, or the filesystem's
+     * @param playable whether to add the playable part after the chart
+     * @return why the playable part is not in the file, or null when it is
+     *         or was not asked for
+     * @throws IOException with the export's or alphaTab's reason, or the filesystem's
      */
-    static void write(byte[] musicXml, File target) throws IOException {
+    static String write(Score score, boolean playable, File target) throws IOException {
+        byte[] chart;
+        try {
+            chart = SheetDocuments.chart(score);
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            throw new IOException(reasonOf(e), e);
+        }
+        return write(chart, score, playable, target);
+    }
+
+    /** The same over a chart already exported, so a caller that also bundles it exports once. */
+    static String write(byte[] chart, Score score, boolean playable, File target)
+            throws IOException {
+        Documents documents = documents(chart, score, playable);
         synchronized (WRITING) {
-            engrave(musicXml, target);
+            String failed = engrave(documents.musicXml(), target);
+            return documents.omitted() != null ? documents.omitted() : failed;
         }
     }
 
-    private static void engrave(byte[] musicXml, File target) throws IOException {
-        SheetRenderer.Result result = SheetRenderer.render(musicXml, SheetRenderer.ENGINE_PICTURE,
-                PAGE_WIDTH - 2 * MARGIN, 1);
-        if (!result.succeeded()) {
-            throw new IOException(result.failure());
-        }
-        List<SheetRenderer.Partial> chunks = result.partials();
-        double[] heights = new double[chunks.size()];
-        for (int i = 0; i < heights.length; i++) {
-            heights[i] = chunks.get(i).height();
-        }
-        List<List<Integer>> pages = SheetPaginator.paginate(heights, PAGE_HEIGHT - 2 * MARGIN);
+    /** What goes into the file, and why the playable part does not when it does not. */
+    record Documents(List<byte[]> musicXml, String omitted) {
+    }
 
+    static Documents documents(byte[] chart, Score score, boolean playable) {
+        List<byte[]> documents = new ArrayList<>();
+        documents.add(chart);
+        if (!playable) {
+            return new Documents(documents, null);
+        }
+        try {
+            documents.add(SheetDocuments.playable(score));
+            return new Documents(documents, null);
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            return new Documents(documents, reasonOf(e));
+        }
+    }
+
+    private static String reasonOf(Exception e) {
+        return e.getMessage() == null ? e.toString() : e.getMessage();
+    }
+
+    /**
+     * Draws the documents in order, each from a new page and each drawn before
+     * the next is rendered, so only one document's pictures are alive at a
+     * time. Returns why a later document was dropped, or null.
+     */
+    private static String engrave(List<byte[]> documents, File target) throws IOException {
         File tmp = File.createTempFile(target.getName(), ".tmp", target.getParentFile());
         PdfDocument document = new PdfDocument();
+        String dropped = null;
         try {
-            for (int number = 0; number < pages.size(); number++) {
-                PdfDocument.Page page = document.startPage(
-                        new PdfDocument.PageInfo.Builder(PAGE_WIDTH, PAGE_HEIGHT, number + 1)
-                                .create());
-                Canvas canvas = page.getCanvas();
-                double y = MARGIN;
-                for (int index : pages.get(number)) {
-                    SheetRenderer.Partial chunk = chunks.get(index);
-                    canvas.save();
-                    canvas.translate((float) (MARGIN + chunk.x()), (float) y);
-                    canvas.drawPicture((Picture) chunk.result());
-                    canvas.restore();
-                    y += chunk.height();
+            int pageNumber = 0;
+            for (byte[] musicXml : documents) {
+                SheetRenderer.Result result = SheetRenderer.render(musicXml,
+                        SheetRenderer.ENGINE_PICTURE, PAGE_WIDTH - 2 * MARGIN, 1);
+                if (!result.succeeded()) {
+                    if (pageNumber == 0) {
+                        throw new IOException(result.failure());
+                    }
+                    dropped = result.failure();
+                    break;
                 }
-                document.finishPage(page);
+                List<SheetRenderer.Partial> chunks = result.partials();
+                double[] heights = new double[chunks.size()];
+                for (int i = 0; i < heights.length; i++) {
+                    heights[i] = chunks.get(i).height();
+                }
+                for (List<Integer> page : SheetPaginator.paginate(heights,
+                        PAGE_HEIGHT - 2 * MARGIN)) {
+                    pageNumber++;
+                    PdfDocument.Page drawn = document.startPage(
+                            new PdfDocument.PageInfo.Builder(PAGE_WIDTH, PAGE_HEIGHT, pageNumber)
+                                    .create());
+                    Canvas canvas = drawn.getCanvas();
+                    double y = MARGIN;
+                    for (int index : page) {
+                        SheetRenderer.Partial chunk = chunks.get(index);
+                        canvas.save();
+                        canvas.translate((float) (MARGIN + chunk.x()), (float) y);
+                        canvas.drawPicture((Picture) chunk.result());
+                        canvas.restore();
+                        y += chunk.height();
+                    }
+                    document.finishPage(drawn);
+                }
             }
             try (OutputStream out = new FileOutputStream(tmp)) {
                 document.writeTo(out);
             }
-        } catch (IOException | RuntimeException failure) {
+        } catch (Throwable failure) {
             //noinspection ResultOfMethodCallIgnored
             tmp.delete();
             throw failure;
@@ -118,5 +163,6 @@ final class SheetPdf {
             tmp.delete();
             throw new IOException("could not move the PDF into place at " + target);
         }
+        return dropped;
     }
 }

@@ -19,11 +19,10 @@ package dev.olivelli.musicwizard.android;
 import android.content.Context;
 import android.os.Handler;
 import android.os.Looper;
+import dev.olivelli.musicwizard.android.mw.SheetDocuments;
 import dev.olivelli.musicwizard.android.mw.SheetRenderer;
 import dev.olivelli.musicwizard.core.model.Score;
-import dev.olivelli.musicwizard.notation.MusicXmlExport;
 import java.io.File;
-import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -43,7 +42,11 @@ final class SheetJobs {
     }
 
     interface PdfListener {
-        void onPdf(File pdf);
+        /**
+         * @param omitted why the playable part is not in it; null when it is,
+         *                or was not asked for
+         */
+        void onPdf(File pdf, String omitted);
 
         void onPdfFailed(String why);
     }
@@ -99,8 +102,7 @@ final class SheetJobs {
                 if (context != null) {
                     SheetRenderer.initialize(context);
                 }
-                byte[] musicXml = MusicXmlExport.chordChart(score)
-                        .getBytes(StandardCharsets.UTF_8);
+                byte[] musicXml = SheetDocuments.chart(score);
                 SheetRenderer.Result result =
                         SheetRenderer.render(musicXml, engine, widthPx, scale);
                 failure = result.failure();
@@ -131,20 +133,27 @@ final class SheetJobs {
         });
     }
 
-    /** Writes the chart as a PDF at {@code target}; not superseded by later sheet requests. */
-    void pdf(Context context, Score score, File target, PdfListener listener) {
+    /**
+     * Writes the chart, and the playable part when asked for, as a PDF at
+     * {@code target}; not superseded by later sheet requests.
+     */
+    void pdf(Context context, Score score, boolean playable, File target, PdfListener listener) {
         worker.execute(() -> {
             String failure = null;
+            String omitted = null;
             try {
-                SheetRenderer.initialize(context);
-                SheetPdf.write(score, target);
+                if (context != null) {
+                    SheetRenderer.initialize(context);
+                }
+                omitted = SheetPdf.write(score, playable, target);
             } catch (Throwable t) {
                 failure = t.getMessage() == null ? t.toString() : t.getMessage();
             }
             String why = failure;
+            String left = omitted;
             dispatcher.post(() -> {
                 if (why == null) {
-                    listener.onPdf(target);
+                    listener.onPdf(target, left);
                 } else {
                     listener.onPdfFailed(why);
                 }

@@ -30,6 +30,7 @@ import dev.olivelli.musicwizard.core.model.PitchSpelling;
 import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.model.TempoMap;
 import dev.olivelli.musicwizard.core.model.TimeSignature;
+import java.io.File;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -84,6 +85,36 @@ public class SheetJobsTest {
         assertNull(outcome.failure.get());
         assertEquals(1, outcome.systems.get().size());
         assertTrue(String.valueOf(outcome.systems.get().get(0).result()).contains("Am7"));
+    }
+
+    /**
+     * Nothing registers the picture engine on the JVM, so the PDF cannot be
+     * drawn there; the reason must arrive as a failure, never as a file.
+     */
+    @Test
+    public void aPdfThatCannotBeMadeReportsWhyAndNeverAFile() throws InterruptedException {
+        SheetJobs jobs = new SheetJobs(SheetRenderer.ENGINE_SVG, Runnable::run);
+        CountDownLatch done = new CountDownLatch(1);
+        AtomicReference<String> failure = new AtomicReference<>();
+        AtomicReference<File> file = new AtomicReference<>();
+        jobs.pdf(null, chart(), true, new File("unused.pdf"), new SheetJobs.PdfListener() {
+            @Override
+            public void onPdf(File pdf, String omitted) {
+                file.set(pdf);
+                done.countDown();
+            }
+
+            @Override
+            public void onPdfFailed(String why) {
+                failure.set(why);
+                done.countDown();
+            }
+        });
+        assertTrue("no outcome arrived", done.await(30, TimeUnit.SECONDS));
+
+        assertNull(file.get());
+        assertNotNull(failure.get());
+        assertTrue(failure.get(), failure.get().contains("not initialized"));
     }
 
     @Test

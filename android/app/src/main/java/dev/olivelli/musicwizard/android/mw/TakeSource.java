@@ -152,7 +152,8 @@ public final class TakeSource {
                 fields.getOrDefault("imported", ""));
     }
 
-    private static String oneLine(String value) {
+    /** A value as a one-line file holds it: newlines become spaces. */
+    public static String oneLine(String value) {
         return value.replace('\r', ' ').replace('\n', ' ').trim();
     }
 }

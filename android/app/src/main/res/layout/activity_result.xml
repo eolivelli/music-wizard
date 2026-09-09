@@ -46,6 +46,14 @@
             android:text="@string/share_bundle" />
     </LinearLayout>
 
+    <!-- Also what the analysis tracks: the part is reduced from a melody
+         the run must have heard, so the choice is read when a run starts. -->
+    <CheckBox
+        android:id="@+id/playableCheck"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="@string/playable_part" />
+
     <!-- "What was played", in the player's own words. Written beside the take
          on leaving the screen and carried in the bundle; see BundleShare. -->
     <EditText

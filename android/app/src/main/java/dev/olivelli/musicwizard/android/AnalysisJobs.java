@@ -84,7 +84,7 @@ final class AnalysisJobs {
      * second of real DSP to get there.
      */
     interface Analyzer {
-        Score analyze(File wav, Consumer<String> progress) throws Exception;
+        Score analyze(File wav, boolean melody, Consumer<String> progress) throws Exception;
     }
 
     /**
@@ -206,8 +206,10 @@ final class AnalysisJobs {
      *
      * <p>Whether the result could be cached is passed on rather than assumed —
      * see {@link MwAnalysis#writeCache}.
+     *
+     * @param melody whether the run also tracks the melody
      */
-    void start(File wav, Listener listener) {
+    void start(File wav, boolean melody, Listener listener) {
         String key = key(wav);
         Job existing = jobs.get(key);
         if (existing != null && existing.running) {
@@ -227,7 +229,7 @@ final class AnalysisJobs {
         job.listener = listener;
         jobs.put(key, job);
 
-        worker.submit(() -> run(wav, job));
+        worker.submit(() -> run(wav, melody, job));
     }
 
     /**
@@ -318,13 +320,13 @@ final class AnalysisJobs {
         }
     }
 
-    private void run(File wav, Job job) {
+    private void run(File wav, boolean melody, Job job) {
         Score analysed = null;
         String note = null;
         String failure = null;
         File cached = null;
         try {
-            analysed = analyzer.analyze(wav, line -> dispatcher.post(() -> {
+            analysed = analyzer.analyze(wav, melody, line -> dispatcher.post(() -> {
                 job.progress = line;
                 if (job.listener != null) {
                     job.listener.onProgress(line);

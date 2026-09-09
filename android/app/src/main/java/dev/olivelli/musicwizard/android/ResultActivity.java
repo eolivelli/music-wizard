@@ -23,6 +23,7 @@ import android.graphics.drawable.Drawable;
 import android.os.Bundle;
 import android.view.View;
 import android.widget.Button;
+import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
@@ -30,6 +31,7 @@ import android.widget.TextView;
 import android.widget.Toast;
 import dev.olivelli.musicwizard.android.mw.MwAnalysis;
 import dev.olivelli.musicwizard.android.mw.RecordingStore;
+import dev.olivelli.musicwizard.android.mw.SheetDocuments;
 import dev.olivelli.musicwizard.android.mw.SheetRenderer;
 import dev.olivelli.musicwizard.core.model.Score;
 import java.io.File;
@@ -65,6 +67,7 @@ public final class ResultActivity extends MwActivity
     private Button analyzeButton;
     private Button shareButton;
     private Button pdfButton;
+    private CheckBox playableCheck;
     private Button viewButton;
     private View sheetScroll;
     private View textScroll;
@@ -82,6 +85,9 @@ public final class ResultActivity extends MwActivity
 
     /** The status line without any engraving failure appended to it. */
     private String summary = "";
+    private String cacheNote;
+    /** Why the pane shows no sheet, or null while it does or nothing was asked. */
+    private String sheetFailure;
 
     /** Whether the user tapped over to the text, which a new engraving respects. */
     private boolean textChosen;
@@ -114,6 +120,18 @@ public final class ResultActivity extends MwActivity
         analyzeButton = findViewById(R.id.analyzeButton);
         shareButton = findViewById(R.id.shareButton);
         pdfButton = findViewById(R.id.pdfButton);
+        playableCheck = findViewById(R.id.playableCheck);
+        // The preference is the one copy: view state restored over it would
+        // write back what this screen last saw, over a choice made since.
+        playableCheck.setSaveEnabled(false);
+        playableCheck.setChecked(Preferences.playablePart(this));
+        playableCheck.setOnCheckedChangeListener((view, checked) -> {
+            Preferences.setPlayablePart(this, checked);
+            if (shown != null) {
+                summary = summaryOf(shown);
+                showStatus();
+            }
+        });
 
         loadedNotes = RecordingStore.readNotes(new RecordingStore.Recording(wav));
         notes.setText(loadedNotes);
@@ -150,6 +168,7 @@ public final class ResultActivity extends MwActivity
         if (wav == null) {
             return;
         }
+        playableCheck.setChecked(Preferences.playablePart(this));
         // An analysis started before this screen went away is still running;
         // reattach to it rather than starting a second one.
         if (AnalysisJobs.get().observe(wav, this)) {
@@ -227,7 +246,7 @@ public final class ResultActivity extends MwActivity
 
     private void analyze() {
         showRunning();
-        AnalysisJobs.get().start(wav, this);
+        AnalysisJobs.get().start(wav, playableCheck.isChecked(), this);
     }
 
     private void showRunning() {
@@ -266,14 +285,36 @@ public final class ResultActivity extends MwActivity
         analyzeButton.setText(R.string.reanalyze);
         shareButton.setEnabled(true);
         pdfButton.setEnabled(true);
-        summary = cacheNote == null
-                ? MwAnalysis.summary(score)
-                : MwAnalysis.summary(score) + "\n" + cacheNote;
-        status.setText(summary);
+        this.cacheNote = cacheNote;
+        summary = summaryOf(score);
+        sheetFailure = null;
+        showStatus();
         shareable = MwAnalysis.chartText(score);
         chart.setText(shareable);
         shown = score;
         engrave();
+    }
+
+    /** Tempo and meter, the cache's note, and whether the PDF can carry the playable part. */
+    private String summaryOf(Score score) {
+        StringBuilder out = new StringBuilder(MwAnalysis.summary(score));
+        if (cacheNote != null) {
+            out.append('\n').append(cacheNote);
+        }
+        if (playableCheck.isChecked()) {
+            switch (SheetDocuments.melody(score)) {
+                case UNTRACKED -> out.append('\n').append(getString(R.string.playable_untracked));
+                case UNHEARD -> out.append('\n').append(getString(R.string.playable_unheard));
+                case HEARD -> { }
+            }
+        }
+        return out.toString();
+    }
+
+    private void showStatus() {
+        status.setText(sheetFailure == null
+                ? summary
+                : summary + "\n" + getString(R.string.sheet_failed, sheetFailure));
     }
 
     /** Asks for the engraving at the width the pane will have: its parent's, inside the padding. */
@@ -308,7 +349,8 @@ public final class ResultActivity extends MwActivity
             return;
         }
         engraving = false;
-        status.setText(summary);
+        sheetFailure = null;
+        showStatus();
         releaseSystems();
         for (SheetRenderer.Partial system : systems) {
             ImageView image = new ImageView(this);
@@ -331,7 +373,8 @@ public final class ResultActivity extends MwActivity
         engraving = false;
         engraved = null;
         hideSheet();
-        status.setText(summary + "\n" + getString(R.string.sheet_failed, why));
+        sheetFailure = why;
+        showStatus();
     }
 
     /** No score to engrave: text only, until a new analysis arrives. */
@@ -380,7 +423,7 @@ public final class ResultActivity extends MwActivity
         pdfButton.setEnabled(false);
         pdfRequested = score;
         Toast.makeText(this, R.string.pdf_building, Toast.LENGTH_SHORT).show();
-        SheetJobs.get().pdf(getApplicationContext(), score,
+        SheetJobs.get().pdf(getApplicationContext(), score, playableCheck.isChecked(),
                 new RecordingStore.Recording(wav).pdfFile(), this);
     }
 
@@ -395,9 +438,13 @@ public final class ResultActivity extends MwActivity
     }
 
     @Override
-    public void onPdf(File pdf) {
+    public void onPdf(File pdf, String omitted) {
         if (!pdfStillWanted()) {
             return;
+        }
+        if (omitted != null) {
+            Toast.makeText(this, getString(R.string.pdf_without_playable, omitted),
+                    Toast.LENGTH_LONG).show();
         }
         android.net.Uri uri;
         try {

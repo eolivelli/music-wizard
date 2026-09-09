@@ -24,7 +24,9 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 import dev.olivelli.musicwizard.audio.AudioBuffer;
+import dev.olivelli.musicwizard.core.model.PartRole;
 import dev.olivelli.musicwizard.core.model.Score;
+import dev.olivelli.musicwizard.core.model.TempoMap;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -32,6 +34,7 @@ import java.io.OutputStream;
 import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Random;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
@@ -153,6 +156,43 @@ public class MwAnalysisTest {
         assertTrue(MwAnalysis.summary(score).contains("quarter notes/min"));
     }
 
+    /** The melody stage is DSP alone, so the phone can run it; it is off unless asked for. */
+    @Test
+    public void theMelodyIsTrackedOnlyWhenAskedFor() throws IOException {
+        File wav = folder.newFile("triads.wav");
+        writeChordLoop(wav);
+
+        List<String> stages = new ArrayList<>();
+        Score heard = MwAnalysis.analyze(wav, true, stages::add);
+        assertTrue(stages.toString(), stages.stream().anyMatch(line -> line.contains("melody")));
+        assertEquals("the loop is sung by its own triads, so notes must come out",
+                SheetDocuments.Melody.HEARD, SheetDocuments.melody(heard));
+
+        Score unasked = MwAnalysis.analyze(wav, false, line -> { });
+        assertFalse(unasked.track(PartRole.LEAD_VOCAL)
+                .isPresent());
+    }
+
+    @Test
+    public void aTrackedMelodyThatHeardNothingLeavesAnEmptyTrack() {
+        Score silent = Score.empty(TempoMap.constant(120), 8);
+        assertEquals(SheetDocuments.Melody.UNHEARD,
+                SheetDocuments.melody(MwAnalysis.melodyTracked(silent, true)));
+        assertEquals(SheetDocuments.Melody.UNTRACKED,
+                SheetDocuments.melody(MwAnalysis.melodyTracked(silent, false)));
+    }
+
+    /** Percussion has a pulse and no pitch: the stage runs, hears nothing, and the page is told. */
+    @Test
+    public void aTakeWithNothingToSingIsHeardAsSilentNotUntracked() throws IOException {
+        File wav = folder.newFile("drums.wav");
+        writeNoiseBeats(wav);
+
+        Score heard = MwAnalysis.analyze(wav, true, line -> { });
+
+        assertEquals(SheetDocuments.Melody.UNHEARD, SheetDocuments.melody(heard));
+    }
+
     /** The cache beside the audio, written and read back. */
     @Test
     public void theScoreCacheRoundTripsBesideTheAudio() throws IOException {
@@ -225,12 +265,33 @@ public class MwAnalysisTest {
         }
     }
 
+    /** Bursts of noise on every beat, for a recording with rhythm and no pitch. */
+    private static void writeNoiseBeats(File file) throws IOException {
+        int rate = MwAnalysis.RECORD_SAMPLE_RATE;
+        double beat = 0.5;
+        int beats = 16;
+        int frames = (int) (beats * beat * rate);
+        byte[] audio = new byte[frames * 2];
+        Random random = new Random(7);
+        for (int i = 0; i < frames; i++) {
+            double t = i / (double) rate;
+            double intoBeat = t - (int) (t / beat) * beat;
+            double envelope = Math.exp(-12 * intoBeat);
+            int sample = (int) Math.round(envelope * random.nextGaussian() * 8000);
+            sample = Math.max(-32768, Math.min(32767, sample));
+            audio[2 * i] = (byte) (sample & 0xFF);
+            audio[2 * i + 1] = (byte) ((sample >> 8) & 0xFF);
+        }
+        try (OutputStream out = new FileOutputStream(file)) {
+            out.write(WavFile.header(rate, 1, audio.length));
+            out.write(audio);
+        }
+    }
+
     /**
-     * Eight seconds of four plucked triads at 120 BPM, written as the app records.
-     *
-     * <p>Each beat is a fresh attack with an exponential decay, so the onset
-     * detector has something to find; the triads change every two beats so the
-     * chord estimator does.
+     * Plucked triads, written as the app records: every beat a fresh attack
+     * with an exponential decay, so the onset detector has something to find,
+     * and a new triad every other beat so the chord estimator does.
      */
     private static void writeChordLoop(File file) throws IOException {
         int rate = MwAnalysis.RECORD_SAMPLE_RATE;
