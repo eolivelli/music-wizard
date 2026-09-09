@@ -30,10 +30,11 @@ corpus-export path. It is one zip holding the WAV, the chart the phone made of
 it as text, MusicXML and PDF, the cached `score.json` where one could be
 written, the note typed on the result screen when there is one ("what was
 played", in the player's words), and an info file with the duration, the
-recorded date, the tempo and meter, and the app version. The file is `<take>.mwz.zip`, so a Drive search for `mwz` answers
-with exactly the bundles; sharing it to a cloud
-drive is how someone who is not holding the phone fetches it, and the WAV
-inside is what step 4 runs on. **Share WAV** sends the audio alone.
+recorded date, the tempo and meter, and the app version. The file is
+`<take>.mwz.zip`, so a Drive search for `mwz` answers with exactly the
+bundles; sharing it to a cloud drive is how someone who is not holding the
+phone fetches it, and the WAV inside is what step 4 runs on. **Share WAV**
+sends the audio alone.
 
 A take is a mono 16-bit PCM WAV in app-private storage, named
 `yyyy-MM-dd_HH-mm-ss.wav` until the library's **Rename** says otherwise, and

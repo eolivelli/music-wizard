@@ -113,8 +113,6 @@ final class SheetPdf {
         } finally {
             document.close();
         }
-        // The move replaces an existing target whole; a move that fails is
-        // reported over the previous file, which stays.
         if (!tmp.renameTo(target)) {
             //noinspection ResultOfMethodCallIgnored
             tmp.delete();
