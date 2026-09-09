@@ -142,7 +142,9 @@ final class SheetJobs {
             String failure = null;
             String omitted = null;
             try {
-                SheetRenderer.initialize(context);
+                if (context != null) {
+                    SheetRenderer.initialize(context);
+                }
                 omitted = SheetPdf.write(score, playable, target);
             } catch (Throwable t) {
                 failure = t.getMessage() == null ? t.toString() : t.getMessage();

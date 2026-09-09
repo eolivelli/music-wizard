@@ -26,6 +26,7 @@ import static org.junit.Assert.fail;
 import dev.olivelli.musicwizard.audio.AudioBuffer;
 import dev.olivelli.musicwizard.core.model.PartRole;
 import dev.olivelli.musicwizard.core.model.Score;
+import dev.olivelli.musicwizard.core.model.TempoMap;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -163,12 +164,21 @@ public class MwAnalysisTest {
         List<String> stages = new ArrayList<>();
         Score heard = MwAnalysis.analyze(wav, true, stages::add);
         assertTrue(stages.toString(), stages.stream().anyMatch(line -> line.contains("melody")));
-        assertTrue("asked for, the melody track should be on the score",
-                heard.track(PartRole.LEAD_VOCAL).isPresent());
+        assertEquals("the loop is sung by its own triads, so notes must come out",
+                SheetDocuments.Melody.HEARD, SheetDocuments.melody(heard));
 
         Score unasked = MwAnalysis.analyze(wav, false, line -> { });
         assertFalse(unasked.track(PartRole.LEAD_VOCAL)
                 .isPresent());
+    }
+
+    @Test
+    public void aTrackedMelodyThatHeardNothingLeavesAnEmptyTrack() {
+        Score silent = Score.empty(TempoMap.constant(120), 8);
+        assertEquals(SheetDocuments.Melody.UNHEARD,
+                SheetDocuments.melody(MwAnalysis.melodyTracked(silent, true)));
+        assertEquals(SheetDocuments.Melody.UNTRACKED,
+                SheetDocuments.melody(MwAnalysis.melodyTracked(silent, false)));
     }
 
     /** The cache beside the audio, written and read back. */

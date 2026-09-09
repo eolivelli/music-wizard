@@ -319,6 +319,23 @@ class RenderPartsTest {
     class Unavailable {
 
         @Test
+        @DisplayName("is no part either when the melody track is empty")
+        void anEmptyMelodyTrackIsNoMelodyPart() {
+            Path workspace = audioWorkspace("hushed", fourChords());
+            Workspace opened = Workspace.open(workspace);
+            opened.writeScore(opened.readScore().orElseThrow().withTrack(
+                    NoteTrack.empty(PartRole.LEAD_VOCAL, "Voice")));
+
+            CliRunner.Result render = CliRunner.run("render", workspace.toString(),
+                    "--parts", "playable", "--no-pdf");
+
+            assertThat(render.out())
+                    .contains("playable this score holds no melody part;"
+                            + " see --melody on analyze");
+            assertThat(workspace.resolve("out").resolve("lead-playable.ly")).doesNotExist();
+        }
+
+        @Test
         @DisplayName("is named with the reason when it was asked for explicitly")
         void namesTheReason() {
             Path workspace = audioWorkspace("song", fourChords());

@@ -237,8 +237,10 @@ final class RenderCommand implements Callable<Integer> {
             // was advice this command cannot keep, since on a MIDI workspace the
             // flag does nothing and no melody role is ever assigned (#500).
             // analyze says so where the source kind is known.
+            // An empty track is the phone's way of saying its melody stage
+            // ran and heard nothing; a staff of rests is no part either.
             if ((this == LEAD || this == VOICE || this == PLAYABLE)
-                    && score.track(PartRole.LEAD_VOCAL).isEmpty()) {
+                    && score.track(PartRole.LEAD_VOCAL).map(NoteTrack::isEmpty).orElse(true)) {
                 return "this score holds no melody part; see --melody on analyze";
             }
             return null;

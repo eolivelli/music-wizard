@@ -32,6 +32,7 @@ import dev.olivelli.musicwizard.core.model.TempoMap;
 import dev.olivelli.musicwizard.core.model.TimeSignature;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.io.File;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -86,16 +87,19 @@ public class SheetJobsTest {
         assertTrue(String.valueOf(outcome.systems.get().get(0).result()).contains("Am7"));
     }
 
-    /** The JVM has no music font to load, so the PDF path fails there; the failure must arrive. */
+    /**
+     * Nothing registers the picture engine on the JVM, so the PDF cannot be
+     * drawn there; the reason must arrive as a failure, never as a file.
+     */
     @Test
     public void aPdfThatCannotBeMadeReportsWhyAndNeverAFile() throws InterruptedException {
         SheetJobs jobs = new SheetJobs(SheetRenderer.ENGINE_SVG, Runnable::run);
         CountDownLatch done = new CountDownLatch(1);
         AtomicReference<String> failure = new AtomicReference<>();
-        AtomicReference<java.io.File> file = new AtomicReference<>();
-        jobs.pdf(null, chart(), true, new java.io.File("unused.pdf"), new SheetJobs.PdfListener() {
+        AtomicReference<File> file = new AtomicReference<>();
+        jobs.pdf(null, chart(), true, new File("unused.pdf"), new SheetJobs.PdfListener() {
             @Override
-            public void onPdf(java.io.File pdf, String omitted) {
+            public void onPdf(File pdf, String omitted) {
                 file.set(pdf);
                 done.countDown();
             }
@@ -110,7 +114,7 @@ public class SheetJobsTest {
 
         assertNull(file.get());
         assertNotNull(failure.get());
-        assertTrue(failure.get(), !failure.get().isEmpty());
+        assertTrue(failure.get(), failure.get().contains("not initialized"));
     }
 
     @Test

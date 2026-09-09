@@ -74,19 +74,28 @@ final class SheetPdf {
     /** The same over a chart already exported, so a caller that also bundles it exports once. */
     static String write(byte[] chart, Score score, boolean playable, File target)
             throws IOException {
+        Documents documents = documents(chart, score, playable);
+        synchronized (WRITING) {
+            String failed = engrave(documents.musicXml(), target);
+            return documents.omitted() != null ? documents.omitted() : failed;
+        }
+    }
+
+    /** What goes into the file, and why the playable part does not when it does not. */
+    record Documents(List<byte[]> musicXml, String omitted) {
+    }
+
+    static Documents documents(byte[] chart, Score score, boolean playable) {
         List<byte[]> documents = new ArrayList<>();
         documents.add(chart);
-        String omitted = null;
-        if (playable) {
-            try {
-                documents.add(SheetDocuments.playable(score));
-            } catch (IllegalArgumentException | IllegalStateException e) {
-                omitted = reasonOf(e);
-            }
+        if (!playable) {
+            return new Documents(documents, null);
         }
-        synchronized (WRITING) {
-            String failed = engrave(documents, target);
-            return omitted != null ? omitted : failed;
+        try {
+            documents.add(SheetDocuments.playable(score));
+            return new Documents(documents, null);
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            return new Documents(documents, reasonOf(e));
         }
     }
 
@@ -142,7 +151,7 @@ final class SheetPdf {
             try (OutputStream out = new FileOutputStream(tmp)) {
                 document.writeTo(out);
             }
-        } catch (IOException | RuntimeException failure) {
+        } catch (Throwable failure) {
             //noinspection ResultOfMethodCallIgnored
             tmp.delete();
             throw failure;

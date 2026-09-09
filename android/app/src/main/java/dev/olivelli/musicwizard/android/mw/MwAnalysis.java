@@ -104,10 +104,17 @@ public final class MwAnalysis {
             throw new IOException("the recording is silent, so there is nothing to transcribe");
         }
 
-        Score score = new AudioTranscriber(report).transcribe(audio,
-                new AudioTranscriber.Options(null, null, null, trackMelody));
+        return melodyTracked(new AudioTranscriber(report).transcribe(audio,
+                new AudioTranscriber.Options(null, null, null, trackMelody)), trackMelody);
+    }
+
+    /**
+     * A run that tracked the melody and heard nothing leaves an empty track,
+     * which is how the page tells that apart from a run that never looked.
+     */
+    static Score melodyTracked(Score score, boolean trackMelody) {
         if (trackMelody && score.track(PartRole.LEAD_VOCAL).isEmpty()) {
-            score = score.withTrack(NoteTrack.empty(PartRole.LEAD_VOCAL, "Voice"));
+            return score.withTrack(NoteTrack.empty(PartRole.LEAD_VOCAL, "Voice"));
         }
         return score;
     }
@@ -191,7 +198,6 @@ public final class MwAnalysis {
         }
     }
 
-    /** The chart, exactly as the desktop's text renderer draws it. */
     /** The chart as {@code mw render} writes it, chords spelled from the piece as a whole. */
     public static String chartText(Score score) {
         return ChordChart.toText(SheetDocuments.page(score));

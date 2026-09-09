@@ -112,7 +112,7 @@ public class AnalysisJobsTest {
 
     @Test
     public void theMelodyChoiceReachesTheAnalyzerAsMade() {
-        java.util.List<Boolean> asked = new java.util.ArrayList<>();
+        List<Boolean> asked = new ArrayList<>();
         AnalysisJobs jobs = new AnalysisJobs(mainThread::add, (file, melody, progress) -> {
             asked.add(melody);
             return aScore();
@@ -123,7 +123,7 @@ public class AnalysisJobsTest {
         jobs.start(wav, false, new Screen());
         pumpUntil(() -> asked.size() == 2);
 
-        assertEquals(java.util.List.of(true, false), asked);
+        assertEquals(List.of(true, false), asked);
     }
 
     /**

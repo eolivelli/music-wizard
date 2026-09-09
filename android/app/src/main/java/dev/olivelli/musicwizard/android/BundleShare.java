@@ -263,7 +263,7 @@ final class BundleShare {
                 ? "not analyzed on the phone"
                 : MwAnalysis.summary(score)).append('\n');
         if (sheet != null) {
-            out.append("sheet: ").append(sheet).append('\n');
+            out.append("sheet: ").append(TakeSource.oneLine(sheet)).append('\n');
         }
         out.append("Music Wizard ").append(appVersion(application))
                 .append(" on Android ").append(Build.VERSION.RELEASE)
