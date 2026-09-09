@@ -49,9 +49,6 @@ public final class SheetRenderer {
 
     private static final Object LOCK = new Object();
 
-    /** Draws into {@code android.graphics.Bitmap}s; needs {@link #initialize} once. */
-    public static final String ENGINE_ANDROID = "android";
-
     /** Renders SVG text; no Android at all, which is what a JVM test uses. */
     public static final String ENGINE_SVG = "svg";
 
@@ -95,9 +92,8 @@ public final class SheetRenderer {
     }
 
     /**
-     * Loads the music font the Android engines draw with and registers the
-     * picture engine. Before the first render with {@link #ENGINE_ANDROID} or
-     * {@link #ENGINE_PICTURE}; later calls are no-ops.
+     * Loads the music font and registers the picture engine. Before the
+     * first render with {@link #ENGINE_PICTURE}; later calls are no-ops.
      */
     public static void initialize(android.content.Context context) {
         synchronized (LOCK) {
@@ -128,8 +124,7 @@ public final class SheetRenderer {
         }
         // Any other name falls back to alphaTab's default engine, whose
         // natives are excluded from the app.
-        if (!engine.equals(ENGINE_ANDROID) && !engine.equals(ENGINE_SVG)
-                && !engine.equals(ENGINE_PICTURE)) {
+        if (!engine.equals(ENGINE_SVG) && !engine.equals(ENGINE_PICTURE)) {
             return Result.failed("no such engine: " + engine, warnings);
         }
         synchronized (LOCK) {

@@ -35,8 +35,10 @@ marked `source: file`.
 Two shares, both through `FileProvider`:
 
 - **Share WAV** (library long-press): the audio alone.
-- **Share PDF** (result screen): the playable part over the chords when it
-  was asked for and heard, the chart alone otherwise, as `<take>.chords.pdf`.
+- **Open PDF** and **Share PDF** (result screen): the playable part over the
+  chords when it was asked for and heard, the chart alone otherwise, as
+  `<take>.chords.pdf`, opened in the phone's viewer or handed to the share
+  sheet.
 - **Share bundle** (library long-press and the result screen): one zip holding
   the recording, the chart as text, as MusicXML and as that PDF, the cached
   `score.json` where one could be written, the player's note when one was

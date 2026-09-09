@@ -19,13 +19,10 @@
     <string name="analyze">Analyze</string>
     <string name="reanalyze">Re-analyze</string>
     <string name="share_chart">Share chart</string>
-    <string name="show_text">Text</string>
-    <string name="show_sheet">Sheet</string>
-    <string name="zoom_in">+</string>
-    <string name="zoom_out">−</string>
-    <string name="sheet_failed">No sheet: %1$s</string>
     <string name="share_wav">Share WAV</string>
     <string name="share_pdf">Share PDF</string>
+    <string name="open_pdf">Open PDF</string>
+    <string name="pdf_no_viewer">No app on this phone opens a PDF.</string>
     <string name="pdf_building">Engraving the PDF…</string>
     <string name="pdf_failed">No PDF: %1$s</string>
     <string name="pdf_without_playable">PDF without the playable part: %1$s</string>

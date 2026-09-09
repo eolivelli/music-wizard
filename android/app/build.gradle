@@ -21,8 +21,8 @@ android {
         targetSdk = 35
         // Bumped per release now that updates are possible at all: an update
         // must not carry a versionCode below the installed one.
-        versionCode = 11
-        versionName = '0.9.1'
+        versionCode = 12
+        versionName = '0.9.2'
     }
 
     compileOptions {
@@ -167,8 +167,8 @@ dependencies {
     // declares, core-ktx and appcompat serve only its AlphaTabView widget,
     // which the app never creates (and that core-ktx wants a newer
     // compileSdk than this build's); the alphaSkia artifacts are the natives
-    // behind its "skia" engine, and the app draws with its "android" engine,
-    // which needs none.
+    // behind its "skia" engine, and the app draws through a canvas of its
+    // own, which needs none.
     implementation('net.alphatab:alphaTab:1.8.4') {
         exclude group: 'androidx.core', module: 'core-ktx'
         exclude group: 'androidx.appcompat'

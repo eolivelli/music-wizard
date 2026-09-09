@@ -27,9 +27,11 @@ The engraver, alphaTab, lives in the app alone, outside the reactor.
 
 On the device the pipeline runs decode → beats → chords → chart — the same
 estimators as the desktop, the chart engraved by alphaTab from the MusicXML
-the notation module writes and shared as a vector PDF through Android's
-`PdfDocument`; no LilyPond. The melody stage runs too when the result
-screen's **Playable part** is on, which it is by default: pure DSP on the
+the notation module writes into a vector PDF through Android's
+`PdfDocument`, opened in the phone's viewer or shared; no LilyPond, and
+nothing engraved on the screen itself, which shows the chart as text. The
+melody stage runs too when the result screen's **Playable part** is on,
+which it is by default: pure DSP on the
 mix, so a solo take yields its tune and a band yields whatever is loudest,
 and the PDF is then the playable part over the chords rather than the
 chart. The register
