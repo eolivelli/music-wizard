@@ -253,8 +253,7 @@ public final class ResultActivity extends MwActivity
     private void showRunning() {
         analyzeButton.setEnabled(false);
         shareButton.setEnabled(false);
-        pdfButton.setEnabled(false);
-        openButton.setEnabled(false);
+        enablePdf(false);
         // Nothing on screen is current until the run answers; a PDF asked for
         // the previous score is dropped on arrival.
         shown = null;
@@ -266,8 +265,7 @@ public final class ResultActivity extends MwActivity
         analyzeButton.setEnabled(true);
         analyzeButton.setText(R.string.analyze);
         shareButton.setEnabled(false);
-        pdfButton.setEnabled(false);
-        openButton.setEnabled(false);
+        enablePdf(false);
         status.setText(R.string.not_analyzed);
         chart.setText("");
         shareable = "";
@@ -286,8 +284,7 @@ public final class ResultActivity extends MwActivity
         analyzeButton.setEnabled(true);
         analyzeButton.setText(R.string.reanalyze);
         shareButton.setEnabled(true);
-        pdfButton.setEnabled(true);
-        openButton.setEnabled(true);
+        enablePdf(true);
         this.cacheNote = cacheNote;
         summary = summaryOf(score);
         showStatus();
@@ -316,6 +313,12 @@ public final class ResultActivity extends MwActivity
         status.setText(summary);
     }
 
+    /** Both PDF buttons, which are one choice made twice on the screen. */
+    private void enablePdf(boolean enabled) {
+        pdfButton.setEnabled(enabled);
+        openButton.setEnabled(enabled);
+    }
+
     /**
      * Engraves the score on screen into the PDF beside the take, then shares
      * or opens it. Rendered afresh each time: the file may belong to an older
@@ -326,8 +329,7 @@ public final class ResultActivity extends MwActivity
         if (score == null) {
             return;
         }
-        pdfButton.setEnabled(false);
-        openButton.setEnabled(false);
+        enablePdf(false);
         pdfRequested = score;
         pdfUse = use;
         Toast.makeText(this, R.string.pdf_building, Toast.LENGTH_SHORT).show();
@@ -341,8 +343,7 @@ public final class ResultActivity extends MwActivity
             return false;
         }
         pdfRequested = null;
-        pdfButton.setEnabled(true);
-        openButton.setEnabled(true);
+        enablePdf(true);
         return resumed;
     }
 
@@ -423,8 +424,7 @@ public final class ResultActivity extends MwActivity
         analyzeButton.setEnabled(true);
         analyzeButton.setText(R.string.analyze);
         shareButton.setEnabled(false);
-        pdfButton.setEnabled(false);
-        openButton.setEnabled(false);
+        enablePdf(false);
         status.setText("analysis failed: " + message);
         chart.setText("");
         shareable = "";

@@ -108,7 +108,7 @@ public class MwAnalysisTest {
         }
     }
 
-    /** The engraver's "skia" natives are excluded; the app draws with its "android" engine. */
+    /** The engraver's "skia" natives are excluded; the app draws through a canvas of its own. */
     @Test
     public void alphaSkiaIsNotOnTheClasspath() {
         try {
