@@ -23,6 +23,7 @@ import dev.olivelli.musicwizard.audio.AudioBuffer;
 import dev.olivelli.musicwizard.audio.AudioDecoder;
 import dev.olivelli.musicwizard.core.model.Note;
 import dev.olivelli.musicwizard.core.model.PartRole;
+import dev.olivelli.musicwizard.core.model.PitchSpelling;
 import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.dsp.PitchTracker;
 import dev.olivelli.musicwizard.testkit.SignalFactory;
@@ -83,5 +84,16 @@ class MelodyFloorTest {
                 PitchTracker.MAX_HZ))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("floor");
+        assertThatThrownBy(() -> AudioTranscriber.Options.floorUnder(PitchSpelling.parse("C7")))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("C7 is above");
+    }
+
+    @Test
+    @DisplayName("a floor with the melody stage off is a contradiction, refused as one")
+    void refusesAFloorWithoutTheStage() {
+        assertThatThrownBy(() -> new AudioTranscriber.Options(null, null, null, false, 160.0))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("needs the melody stage");
     }
 }

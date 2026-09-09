@@ -32,7 +32,6 @@ import dev.olivelli.musicwizard.core.model.LyricWord;
 import dev.olivelli.musicwizard.core.model.Lyrics;
 import dev.olivelli.musicwizard.core.model.NoteTrack;
 import dev.olivelli.musicwizard.core.model.PitchSpelling;
-import dev.olivelli.musicwizard.dsp.PitchTracker;
 import dev.olivelli.musicwizard.core.model.Provenance;
 import dev.olivelli.musicwizard.core.model.PartRole;
 import dev.olivelli.musicwizard.core.model.Score;
@@ -1721,12 +1720,11 @@ final class AnalyzeCommand implements Callable<Integer> {
             throw new IllegalArgumentException(
                     "--melody-floor wants a note name such as E3, got: " + melodyFloor);
         }
-        double floor = AudioTranscriber.Options.floorUnder(note);
-        if (!(floor < PitchTracker.MAX_HZ)) {
-            throw new IllegalArgumentException("--melody-floor " + melodyFloor.trim()
-                    + " is above the highest note the tracker reads");
+        try {
+            return AudioTranscriber.Options.floorUnder(note);
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("--melody-floor " + e.getMessage());
         }
-        return floor;
     }
 
     /** The typed meter, or null for "read it off the recording" (#700). */

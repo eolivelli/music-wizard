@@ -200,11 +200,19 @@ public final class AudioTranscriber {
          * reaches: half a semitone under it, so the note itself stays a
          * candidate rather than sitting on the tracker's edge, and never
          * under the tracker's own bound.
+         *
+         * @throws IllegalArgumentException if the note is above the highest the
+         *         tracker reads
          */
         public static double floorUnder(PitchSpelling note) {
             Objects.requireNonNull(note, "note");
-            return Math.max(PitchTracker.MIN_HZ,
+            double floor = Math.max(PitchTracker.MIN_HZ,
                     440.0 * Math.pow(2, (note.midiPitch() - 69 - 0.5) / 12.0));
+            if (!(floor < PitchTracker.MAX_HZ)) {
+                throw new IllegalArgumentException(
+                        note + " is above the highest note the tracker reads");
+            }
+            return floor;
         }
 
         /**

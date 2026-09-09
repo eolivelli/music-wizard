@@ -371,11 +371,33 @@ class RunManifestCliTest {
     }
 
     @Test
-    @DisplayName("the melody floor is written down as the frequency it became")
+    @DisplayName("the melody floor is written down as the frequency it became, and as typed")
     void theMelodyFloorIsRecorded() {
         analyze("--melody", "--skip-separation", "--melody-floor", "E3");
 
         assertThat(stage("melody").facts()).containsEntry("floor", "160.1 Hz");
+        assertThat(manifest().settings()).containsEntry("melody floor", "E3 and up");
+    }
+
+    @Test
+    @DisplayName("on a MIDI workspace the floor is checked and then warned about, not obeyed")
+    void theMelodyFloorOnMidiIsCheckedAndWarnedAbout() {
+        Path source = MidiFixtures.write(
+                MidiFixtures.fourChordSong(), directory.resolve("floor.mid"));
+        workspaceDirectory = directory.resolve("floor.mwz");
+        assertThat(CliRunner.run("init", source.toString(), "-w",
+                workspaceDirectory.toString()).exitCode()).isZero();
+
+        CliRunner.Result garbled = CliRunner.run("analyze", workspaceDirectory.toString(),
+                "--melody", "--melody-floor", "high");
+        assertThat(garbled.exitCode()).as(garbled.all()).isNotZero();
+        assertThat(garbled.all()).contains("note name such as E3");
+
+        CliRunner.Result warned = CliRunner.run("analyze", workspaceDirectory.toString(),
+                "--melody", "--melody-floor", "E3");
+        assertThat(warned.exitCode()).as(warned.all()).isZero();
+        assertThat(warned.all()).contains("--melody-floor has no effect on a MIDI workspace");
+        assertThat(manifest().settings()).doesNotContainKey("melody floor");
     }
 
     @Test
