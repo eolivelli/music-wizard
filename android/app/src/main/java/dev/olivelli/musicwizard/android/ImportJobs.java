@@ -171,12 +171,11 @@ final class ImportJobs {
      */
     private static final long MIN_FREE_BYTES = 250L * 1024 * 1024;
 
-    /**
-     * A pick this large is not a song. The bound that keeps the decoded WAV
-     * within {@link #MIN_FREE_BYTES} is on duration, {@link Fetch#MAX_SECONDS},
-     * applied by {@link AudioImport} to picks and links alike.
-     */
-    private static final long MAX_PICK_BYTES = 100L * 1024 * 1024;
+    /** The mono WAV of a take as long as a link may be, at the rate most containers decode at. */
+    private static final long WAV_BYTES = Fetch.MAX_SECONDS * 48_000L * 2;
+
+    /** Lossless stereo of that same length; {@link AudioImport} refuses anything longer. */
+    private static final long MAX_PICK_BYTES = WAV_BYTES * 2;
 
     private static ImportJobs instance;
 
@@ -436,6 +435,9 @@ final class ImportJobs {
                     fraction -> report(fetching, scale(fraction, 0, DOWNLOAD_SHARE)),
                     stop::get);
             container = fetched.file();
+            if (cacheDirectory.getUsableSpace() < WAV_BYTES) {
+                throw new IOException("there is not enough free space on this phone");
+            }
 
             report("decoding", DOWNLOAD_SHARE);
             decoded = new File(cacheDirectory, fetched.videoId() + ".wav");

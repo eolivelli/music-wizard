@@ -136,12 +136,6 @@ final class AudioImport {
         // would otherwise overflow into a deadline already in the past, and every
         // decode would fail at the first check with a message about progress.
         long declaredMillis = Math.max(0, Math.min(durationMicros / 1000, MAX_DURATION_MILLIS));
-        // The same length a link is refused at, so the WAV fits the free space
-        // the import checked for whatever the container's codec.
-        if (declaredMillis > Fetch.MAX_SECONDS * 1000) {
-            throw new IOException("that recording is longer than "
-                    + Fetch.MAX_SECONDS / 60 + " minutes");
-        }
         long deadline = System.nanoTime() / 1_000_000L
                 + Math.max(MIN_DEADLINE_MILLIS, declaredMillis * STALL_FACTOR);
 
@@ -265,12 +259,26 @@ final class AudioImport {
                 samples[i] = (short) Math.round(value * Short.MAX_VALUE);
             }
             writer.write(samples, samples.length / channels, channels);
+            refuseBeyondLinkLength(writer);
             return;
         }
         ShortBuffer shorts = buffer.asShortBuffer();
         short[] samples = new short[shorts.remaining()];
         shorts.get(samples);
         writer.write(samples, samples.length / channels, channels);
+        refuseBeyondLinkLength(writer);
+    }
+
+    /**
+     * Measured on what was written, not on what the container declares, which
+     * a headerless stream misstates either way. A second of slack, since a link
+     * is measured in whole seconds and must not fail after it downloaded whole.
+     */
+    private static void refuseBeyondLinkLength(WavWriter writer) throws IOException {
+        if (writer.frames() > (Fetch.MAX_SECONDS + 1) * (long) writer.sampleRate()) {
+            throw new IOException("that recording is longer than "
+                    + Fetch.MAX_SECONDS / 60 + " minutes");
+        }
     }
 
     private static int audioTrack(MediaExtractor extractor) throws IOException {
