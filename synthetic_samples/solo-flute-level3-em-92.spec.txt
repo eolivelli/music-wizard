@@ -1,0 +1,23 @@
+title: Solo flute, level three - notes held across the bar line over a minor form in E minor
+genre: folk-pop
+style: pop-ballad
+tempo: 92
+meter: 4/4
+key: E minor
+seed: 23
+melody: flute
+melody-level: 3
+accompaniment: none
+bars:
+# Verse: the minor loop i-VI-III-VII, twice
+Em C G D
+Em C G D
+# Bridge: the Andalusian descent i-VII-VI-V, twice, resting on the dominant
+Em D C B
+Em D C B
+# Chorus: one loop pass, then iv-V turned aside onto VI (deceptive cadence)
+Em C G D
+Am B C C
+# Close: iv-V-i twice, the tonic held (authentic cadence)
+Am B Em Em
+Am B Em Em

@@ -1,0 +1,23 @@
+title: Solo flute, level two - eighths and rests over an axis form in Bb
+genre: pop
+style: pop-rock
+tempo: 112
+meter: 4/4
+key: Bb major
+seed: 22
+melody: flute
+melody-level: 2
+accompaniment: none
+bars:
+# Verse: I-V-vi-IV, the axis loop, twice
+Bb F Gm Eb
+Bb F Gm Eb
+# Pre-chorus: ii-V-I, then ii-V resting on the dominant (half cadence)
+Cm F Bb Bb
+Cm F F F
+# Chorus: vi-IV-I-V, the axis rotation, twice
+Gm Eb Bb F
+Gm Eb Bb F
+# Close: IV-I plagal twice, then V-I and the tonic held (authentic cadence)
+Eb Bb Eb Bb
+F F Bb Bb
