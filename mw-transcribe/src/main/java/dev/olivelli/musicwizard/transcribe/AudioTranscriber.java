@@ -921,7 +921,8 @@ public final class AudioTranscriber {
      * beat from the grid stored beside them. Anchored the way
      * {@link TempoMap#fromBeatTimes} anchors: the audio before the first
      * tracked pulse is a whole number of <em>pulses</em> — not quarters, which
-     * are not whole dotted quarters — stretched to land exactly on it. The
+     * are not whole dotted quarters — stretched to land exactly on it, or
+     * left out when {@link TempoMap#leadInPulses} says it is too short. The
      * pulse is a parameter because the correction can say it is not the
      * counted beat (#139); this form leaves the bar phase unknown, which the
      * fullest overload carries (#84). The lead-in is
@@ -983,14 +984,13 @@ public final class AudioTranscriber {
 
         int leadInPulses = TempoMap.leadInPulses(
                 firstBeatSeconds, pulseSeconds, firstDownbeatPulse, pulsesPerBar);
-
-        double leadInTempo = 60.0 * leadInPulses * pulseQuarters / firstBeatSeconds;
-        if (!Double.isFinite(leadInTempo) || leadInTempo <= 0) {
-            // Only reachable from an absurdly small first beat, where cramming a
-            // whole pulse into it overflows. The phase is then unrepresentable,
-            // and the rate the user asked for is worth more than a thrown map.
-            return constant;
+        if (leadInPulses == 0) {
+            // Too short to model: the map's origin is the first tracked pulse.
+            return new TempoMap(
+                    List.of(new TempoMap.TempoSegment(0, firstBeatSeconds, quarterBpm, provenance)),
+                    List.of(new TempoMap.MeterChange(0, meter)));
         }
+        double leadInTempo = 60.0 * leadInPulses * pulseQuarters / firstBeatSeconds;
         return new TempoMap(
                 List.of(new TempoMap.TempoSegment(0, 0.0, leadInTempo, Provenance.DERIVED),
                         new TempoMap.TempoSegment(leadInPulses * pulseQuarters,

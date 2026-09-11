@@ -649,9 +649,7 @@ public final class Quantizer {
         }
 
         private static double rawBeat(TempoMap tempoMap, double seconds) {
-            // No reachable input converts negative today; this is the only
-            // place that would notice a future map whose anchoring loosened.
-            return Math.max(0, tempoMap.secondsToBeats(seconds));
+            return tempoMap.secondsToBeats(seconds);
         }
 
         int barCount() {

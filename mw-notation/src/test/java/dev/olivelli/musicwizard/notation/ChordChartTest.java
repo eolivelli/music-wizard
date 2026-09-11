@@ -428,16 +428,16 @@ class ChordChartTest {
     void headerAndBarsBothUseTheTrackedBeats() {
         // Every other fixture here uses a constant map or a grid starting at
         // t=0.0, and in both cases every source of a tempo agrees, so none of
-        // them can tell which one was read. This one has a lead-in: a whole pulse
-        // crammed into the 0.05s before the first tracked beat pulls the map's
-        // average to 124.3, against the 120 a musician would count.
+        // them can tell which one was read. This one has a lead-in past the
+        // fraction the map leaves out: a whole pulse crammed into it pulls the
+        // map's average above the 120 a musician would count.
         //
         // Both assertions matter and neither implies the other. The header and
         // the bar lines are separate readers of the same answer, and this PR has
         // twice shipped a fix that reached one reader and not the other.
         List<Double> pulses = new ArrayList<>();
         for (int i = 0; i < 24; i++) {
-            pulses.add(0.05 + i * 0.5);
+            pulses.add(0.13 + i * 0.5);
         }
         List<Chord> chords = new ArrayList<>();
         NoteLetter[] roots = {NoteLetter.C, NoteLetter.G, NoteLetter.A,
@@ -454,13 +454,13 @@ class ChordChartTest {
 
         assertThat(tracked.tempoMap().averageTempo(12.65))
                 .as("the map is inflated, so this fixture discriminates")
-                .isGreaterThan(124.0);
+                .isGreaterThan(123.0);
 
         assertThat(ChordChart.toText(tracked)).contains("Tempo  120 BPM");
         // At the tracked 120 a 4/4 bar is two seconds, so the harmony is six bars
-        // of one chord. Off the map's inflated average the bars are 1.93s, which
-        // rounds to a seventh bar with nothing in it -- a "%" continuation under
-        // a header that still says 120.
+        // of one chord. Off the map's inflated average the bars are shorter,
+        // which rounds to a seventh bar with nothing in it -- a "%" continuation
+        // under a header that still says 120.
         assertThat(ChordChart.barLines(tracked))
                 .allSatisfy(line -> assertThat(line).doesNotContain("%"));
         assertThat(String.join("", ChordChart.barLines(tracked)))

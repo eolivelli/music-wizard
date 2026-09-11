@@ -51,8 +51,9 @@ class AnalyzeCommandTest {
      * <p>A grid starting at exactly 0.0 is the trap pr-reviewer.md records: with no
      * lead-in, the tempo map's average equals the grid's own rate to the bit, so
      * every source of a tempo agrees and a test cannot tell which one was read.
-     * The 0.05 s here is a whole pulse crammed into a twentieth of one, which
-     * pulls the map's average to 124.5 against the grid's 120.
+     * So is one starting within the fraction of a pulse the map leaves out
+     * (#824). The lead-in here is past that fraction, so a whole pulse is
+     * crammed into it and the map's average is pulled above the grid's.
      */
     private static List<Double> pulses(int count, double interval) {
         List<Double> times = new ArrayList<>(count);
@@ -62,7 +63,7 @@ class AnalyzeCommandTest {
         return times;
     }
 
-    private static final double LEAD_IN = 0.05;
+    private static final double LEAD_IN = 0.13;
 
     private static Score trackedAt(double interval, TimeSignature meter) {
         List<Double> times = pulses(24, interval);
@@ -88,16 +89,17 @@ class AnalyzeCommandTest {
         @DisplayName("prints the tracked beats' tempo, not the map's inflated average")
         void prefersTheTrackedBeatsOverTheMap() {
             // fromBeatTimes forces a whole pulse into the audio before the first
-            // tracked beat, so the map's average runs above the real tempo --
-            // 124.5 for the 120 BPM grid below, and 122 for the longer fixture
-            // EndToEndIT uses, where the same one pulse is spread thinner. Guarded here
-            // because the two agree exactly whenever the grid starts at t=0, and
-            // a fixture that starts there cannot tell the two sources apart.
+            // tracked beat, so the map's average runs above the real tempo, by
+            // less on a longer fixture, where the same one pulse is spread
+            // thinner. Guarded here because the two agree exactly whenever the
+            // grid starts at t=0, or within the fraction of a pulse the map
+            // leaves out, and a fixture that starts there cannot tell the two
+            // sources apart.
             Score tracked = trackedAt(0.5, TimeSignature.FOUR_FOUR);
 
             assertThat(tracked.tempoMap().averageTempo(tracked.durationSeconds()))
                     .as("the map is inflated, so this fixture discriminates")
-                    .isGreaterThan(124.0);
+                    .isGreaterThan(123.0);
             assertThat(AnalyzeCommand.tempoLine(tracked)).isEqualTo("Tempo   120.0 BPM");
         }
 

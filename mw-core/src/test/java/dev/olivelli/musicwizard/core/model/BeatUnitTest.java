@@ -249,9 +249,12 @@ class BeatUnitTest {
                 }
                 TempoMap map = TempoMap.fromBeatTimes(pulses, TimeSignature.SIX_EIGHT);
 
+                // Anchored at second 0, or on the first pulse where the stretch
+                // before it is too short to be a lead-in at all.
+                boolean unmodelled = firstPulse / 0.5 < TempoMap.UNMODELLED_LEAD_IN_PULSES;
                 assertThat(map.beatsToSeconds(0.0))
-                        .as("anchored at second 0 for firstPulse=%s", firstPulse)
-                        .isCloseTo(0.0, within(1e-9));
+                        .as("origin for firstPulse=%s", firstPulse)
+                        .isCloseTo(unmodelled ? firstPulse : 0.0, within(1e-9));
                 for (int i = 0; i < pulses.size(); i++) {
                     double beat = map.secondsToBeats(pulses.get(i)) / 1.5;
                     assertThat(beat - Math.rint(beat))
@@ -412,10 +415,11 @@ class BeatUnitTest {
     class SimpleMetersUnchanged {
 
         /**
-         * {@code fromBeatTimes} exactly as it was before the beat unit existed,
-         * kept as the oracle. Every meter whose counted beat is a quarter has to
-         * agree with it to the last bit, because the whole pipeline's stored beat
-         * values were produced by it.
+         * {@code fromBeatTimes} as it was before the beat unit existed, kept as
+         * the oracle, with the lead-in rule restated as it stands (#824).
+         * Every meter whose counted beat is a quarter has to agree with it to
+         * the last bit, because the whole pipeline's stored beat values were
+         * produced by it.
          */
         private TempoMap asBefore(List<Double> beatSeconds, TimeSignature timeSignature) {
             double firstBeat = beatSeconds.get(0);
@@ -424,7 +428,8 @@ class BeatUnitTest {
             if (firstBeat > 0) {
                 double ratio = firstBeat / firstInterval;
                 long rounded = Double.isFinite(ratio) ? Math.round(Math.min(ratio, 1e6)) : 1;
-                leadInBeats = (int) Math.max(1, rounded);
+                leadInBeats = ratio < TempoMap.UNMODELLED_LEAD_IN_PULSES
+                        ? 0 : (int) Math.max(1, rounded);
             }
             List<TempoMap.TempoSegment> built = new ArrayList<>(beatSeconds.size() + 1);
             if (leadInBeats > 0) {
@@ -615,11 +620,11 @@ class BeatUnitTest {
         void oneTempoAnswerNotTwo() {
             List<Double> pulses = new ArrayList<>();
             for (int i = 0; i < 24; i++) {
-                pulses.add(0.05 + i * 0.5);
+                pulses.add(0.2 + i * 0.5);
             }
 
             // Tracked: the grid wins over the map, because fromBeatTimes crams a
-            // whole pulse into the 0.05s before the first tracked beat and the
+            // whole pulse into the lead-in before the first tracked beat and the
             // map's average is measurably high for it.
             Score tracked = Score.empty(TempoMap.fromBeatTimes(pulses, TimeSignature.SIX_EIGHT),
                             12.0)

@@ -234,11 +234,13 @@ the flux already hears is left alone, so a piano keeps the grid the flux
 gave it — and a mix, whose track is the loudest line's and speaks for
 stretches of it, not for the beat, stays as it was; the run's record names
 which evidence the grid was tracked from.
-`tools/baselines/score-solo.txt` carries the readings. What stands is the
-ramp's syncopation level (#826), a half-note line read at half tempo, the
-key signature on a line alone (#825), the whole bar of rests a page opens
-with when the first tracked beat is a downbeat inside the first pulse
-(#824), and a spare beat at a tracking-window seam (#827). The gate admits
+`tools/baselines/score-solo.txt` carries the readings. A first tracked
+beat a frame after the origin no longer opens the page on a bar of rests:
+a lead-in shorter than a fraction of a pulse is left out of the tempo map,
+whose origin then sits on that beat (#824). What stands is the ramp's
+syncopation level (#826), a half-note line read at half tempo, the key
+signature on a line alone (#825), and a spare beat at a tracking-window
+seam (#827). The gate admits
 real solo singing too — vocadito's clips are voiced well past it — and that
 corpus carries no beat truth, so what the route does to a sung line's grid
 is unmeasured: of the clips that move, as many land nearer the prior-free
