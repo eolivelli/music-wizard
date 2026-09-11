@@ -111,7 +111,7 @@ final class ReportTimeline {
         top = addLane("tempo", "Tempo", "quarter notes a minute", TEMPO_HEIGHT, top, true);
         top = addLane("chords", "Chords", "one block per span", CHORD_HEIGHT, top,
                 !score.chords().isEmpty());
-        top = addLane("key", "Key", "from the chords", KEY_HEIGHT, top,
+        top = addLane("key", "Key", "one block per span", KEY_HEIGHT, top,
                 !score.keys().isEmpty());
         top = addLane("melody", "Melody", "as estimated", ROLL_HEIGHT, top,
                 melody != null && !melody.isEmpty());
