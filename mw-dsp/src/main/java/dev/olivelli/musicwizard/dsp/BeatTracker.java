@@ -360,8 +360,7 @@ public final class BeatTracker {
     /**
      * How far, as a log ratio, a gap across the seam may sit from the most
      * regular one on offer and still be preferred for lying nearer the middle
-     * of the overlap: slack for the frame each program rounds to, not for a
-     * disagreement.
+     * of the overlap.
      */
     private static final double SEAM_TOLERANCE = 0.1;
 
