@@ -137,27 +137,29 @@ public record OnsetEnvelope(double[] strength, double frameRate) {
     }
 
     /**
-     * This envelope with a melody's note onsets added as onsets of its own.
+     * This envelope lifted to a full attack at each of a melody's note onsets.
      *
      * <p>For a melodic instrument playing alone, an onset is a change of
      * pitch, and the spectral flux hears one unevenly: how much energy a
      * change moves between bands depends on the interval and its direction,
      * so a tune that alternates two notes carries an accent pattern the music
      * does not, and a legato attack barely registers at all. The notes the
-     * melody stage segmented out of the pitch track are each one event of one
-     * weight — {@code tools/score-solo.py} is what says what that is worth
-     * (#814). The segmenter's notes rather than the raw track's changes of
-     * pitch, so that a glide or a vibrato is the one note it is and not a
-     * train of events.
+     * melody stage segmented out of the pitch track say where the onsets are
+     * — the segmenter's notes rather than the raw track's changes of pitch,
+     * so that a glide or a vibrato is the one note it is — and {@code
+     * tools/score-solo.py} is what says what that is worth (#814).
      *
-     * <p>Each event is spread over a few frames so that a beat period that is
-     * not a whole number of frames still correlates with itself, as the
-     * flux's filtered attacks do. The train is brought to this envelope's own
-     * scale before the two are summed, so its weight against the flux is
-     * {@link #NOTE_WEIGHT} whatever the count of notes, and the sum is
-     * renormalised, so a reader that takes the scale absolutely — the
-     * tracker's spacing penalty, the tempo sweep's accent ceiling — reads it
-     * as it reads the flux.
+     * <p>Each note is one event of one height, spread over a few frames so
+     * that a beat period that is not a whole number of frames still
+     * correlates with itself, as the flux's filtered attacks do; the train is
+     * brought to this envelope's own scale, so its height does not depend on
+     * how many notes there are. The envelope then takes the larger of the two
+     * at every frame rather than their sum: an attack the flux already hears
+     * is left as it is, so an instrument whose attacks are sharp keeps the
+     * grid the flux gave it, and only an attack the flux under-heard is
+     * lifted. The result is renormalised, so a reader that takes the scale
+     * absolutely — the tracker's spacing penalty, the tempo sweep's accent
+     * ceiling — reads it as it reads the flux.
      */
     public OnsetEnvelope withNoteOnsets(NoteTrack melody) {
         Objects.requireNonNull(melody, "melody");
@@ -172,26 +174,13 @@ public record OnsetEnvelope(double[] strength, double frameRate) {
             }
         }
         normalise(events);
-        double[] sum = new double[strength.length];
-        for (int i = 0; i < sum.length; i++) {
-            sum[i] = strength[i] + NOTE_WEIGHT * events[i];
+        double[] lifted = new double[strength.length];
+        for (int i = 0; i < lifted.length; i++) {
+            lifted[i] = Math.max(strength[i], events[i]);
         }
-        normalise(sum);
-        return new OnsetEnvelope(sum, frameRate);
+        normalise(lifted);
+        return new OnsetEnvelope(lifted, frameRate);
     }
-
-    /**
-     * The notes' weight against the flux, both at unit variance. Below one:
-     * at equal weight every solo package in {@code tools/baselines/score-solo.txt}
-     * reads as it does here, but a sung line's dotted phrasing then outranks
-     * its beat in the tempo sweep and some clips of solo singing land at the
-     * sweep's floor; at this weight those readings stay with the flux and
-     * every instrument row keeps its grid. Measured on the solo corpus and
-     * on vocadito's clips against estimators that share no prior with MW,
-     * and vocadito carries no beat truth, so it bounds the cost rather than
-     * confirming a gain there (#814).
-     */
-    private static final double NOTE_WEIGHT = 0.7;
 
     /**
      * Frames either side of a note onset its event is spread over. About the

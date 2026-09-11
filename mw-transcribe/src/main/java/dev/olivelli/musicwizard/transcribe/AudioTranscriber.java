@@ -267,8 +267,8 @@ public final class AudioTranscriber {
      *
      * <p>Supplied as a {@link Supplier} rather than a buffer because
      * separating costs minutes and this stage is off by default: nothing is
-     * separated unless {@link Options#trackMelody()} is set and the pipeline
-     * reaches the melody stage. It may return {@code null}, which means the
+     * separated unless {@link Options#trackMelody()} is set. It may return
+     * {@code null}, which means the
      * mix — that is how a caller whose separator failed degrades to the
      * behaviour of the overload above rather than to no melody at all. The
      * separation itself lives in the caller because {@code mw-transcribe}
@@ -762,6 +762,11 @@ public final class AudioTranscriber {
                 .computed();
     }
 
+    private static PitchTrack trackPitch(AudioBuffer signal, Options settings) {
+        Double floor = settings.melodyFloorHz();
+        return floor == null ? PitchTracker.track(signal) : PitchTracker.track(signal, floor);
+    }
+
     /**
      * How much of its sounding stretch a pitch track must be voiced for before
      * its notes count as onsets: a line playing alone is voiced nearly
@@ -785,11 +790,6 @@ public final class AudioTranscriber {
      * not how many seconds there are — so the notes stay on the recording's
      * timeline and align with the beats and chords read from the mix.
      */
-    private static PitchTrack trackPitch(AudioBuffer signal, Options settings) {
-        Double floor = settings.melodyFloorHz();
-        return floor == null ? PitchTracker.track(signal) : PitchTracker.track(signal, floor);
-    }
-
     private static AudioBuffer melodySignal(AudioBuffer audio, Supplier<AudioBuffer> vocalStem) {
         AudioBuffer stem = vocalStem == null ? null : vocalStem.get();
         if (stem == null) {

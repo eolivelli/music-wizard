@@ -93,7 +93,7 @@ instruments are the pair: a piano's attacks are heard by the onset envelope
 and a flute's are not, so the flute rows are what the beat read from the
 melody's notes was measured on (#814), and the piano rows are the control —
 their notes place as they did on the flux alone, and what the change did
-cost them is the lead-in bar of #824 on two rows. The syncopation level is
+cost them is the lead-in bar of #824 on one row. The syncopation level is
 #826 and the key column #825. Its baseline is
 `tools/baselines/score-solo.txt`, diffed by premerge and CI like the others.
 

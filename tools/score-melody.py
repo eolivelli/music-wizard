@@ -204,10 +204,9 @@ NOT_SEPARATED = "the vocal could not be separated"
 NO_STEM = "the melody is read from the full mix"
 REASONS = (NOT_SEPARATED, NO_STEM, FROM_MIX)
 
-# A recording nothing could be tracked in reaches no melody stage at all and
-# prints neither outcome. Scored as the zero notes it produced, which is what
-# the pinned loop scores it as: the two loops must not disagree about what an
-# unanalysable package is.
+# A recording nothing could be tracked in writes no melody. Scored as the zero
+# notes it produced, which is what the pinned loop scores it as: the two loops
+# must not disagree about what an unanalysable package is.
 NO_BEATS = "no beats found"
 
 
