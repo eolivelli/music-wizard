@@ -1,0 +1,20 @@
+title: Solo flute, level two, slow - eighths and rests over a doo-wop ballad in Eb
+genre: pop
+style: pop-ballad
+tempo: 66
+meter: 4/4
+key: Eb major
+seed: 25
+melody: flute
+melody-level: 2
+accompaniment: none
+bars:
+# Verse: the doo-wop I-vi-IV-V, twice
+Eb Cm Ab Bb
+Eb Cm Ab Bb
+# Bridge: IV-V-I, then ii-V resting on the dominant (half cadence)
+Ab Bb Eb Eb
+Fm Bb Bb Bb
+# Chorus: I-V-vi-IV, then IV-V-I and the tonic held (authentic cadence)
+Eb Bb Cm Ab
+Ab Bb Eb Eb

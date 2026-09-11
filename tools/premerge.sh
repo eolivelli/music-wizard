@@ -139,11 +139,11 @@ baseline_drift
 # executions, so it runs everything plain `verify` runs and the ITs as well;
 # running both would run the unit suite twice for nothing.
 if [ "$full" -eq 1 ]; then
-  step "1/10 full suite (unit + integration)"
+  step "1/11 full suite (unit + integration)"
   mvn -B -q -T 1C $REPO_ARGS -Pintegration verify \
     || { echo "FAIL: mvn -Pintegration verify"; fail=1; }
 else
-  step "1/10 build (suites left to CI; --full runs them here)"
+  step "1/11 build (suites left to CI; --full runs them here)"
   mvn -B -q -T 1C $REPO_ARGS -DskipTests package \
     || { echo "FAIL: mvn package"; fail=1; }
 fi
@@ -178,13 +178,13 @@ compare() { # $1 harness  $2 baseline  $3... harness args
   return 1
 }
 
-step "2/10 model harness vs baseline"
+step "2/11 model harness vs baseline"
 compare score-samples.py tools/baselines/score-samples.txt || { echo "FAIL: score-samples moved — if intended, regenerate the baseline and commit it"; fail=1; }
 
-step "3/10 chart harness vs baseline"
+step "3/11 chart harness vs baseline"
 compare score-chart.py tools/baselines/score-chart.txt || { echo "FAIL: score-chart moved — if intended, regenerate the baseline and commit it"; fail=1; }
 
-step "4/10 lyric harness vs baseline"
+step "4/11 lyric harness vs baseline"
 compare score-lyrics.py tools/baselines/score-lyrics.txt || { echo "FAIL: score-lyrics moved — if intended, regenerate the baseline and commit it"; fail=1; }
 
 # The transcription loop (#391): the same recordings through the ASR with no
@@ -192,27 +192,34 @@ compare score-lyrics.py tools/baselines/score-lyrics.txt || { echo "FAIL: score-
 # which is why it runs unconditionally like its siblings; it needs the sherpa
 # native, and a machine without one reports every row skipped rather than
 # failing (the harness prints the build command per row).
-step "5/10 transcription harness vs baseline"
+step "5/11 transcription harness vs baseline"
 compare score-lyrics.py tools/baselines/score-asr.txt --source asr || { echo "FAIL: score-lyrics --source asr moved — if intended, regenerate the baseline and commit it"; fail=1; }
 
 # The synthetic corpus (#447): every package committed, so CI runs this same
 # diff on the pull request; here it costs one analysis per package.
-step "6/10 synthetic harness vs baseline"
+step "6/11 synthetic harness vs baseline"
 compare score-synthetic.py tools/baselines/score-synthetic.txt || { echo "FAIL: score-synthetic moved — if intended, regenerate the baseline and commit it"; fail=1; }
 
 # The melody stage (#494), scored against each package's own MIDI melody track
 # rather than against its grid, and in seconds rather than on the beat axis --
 # see the harness's docstring for why those are the same decision. Committed
 # corpus, so CI runs this diff too.
-step "7/10 melody harness vs baseline"
+step "7/11 melody harness vs baseline"
 compare score-melody.py tools/baselines/score-melody.txt || { echo "FAIL: score-melody moved — if intended, regenerate the baseline and commit it"; fail=1; }
+
+# The page a solo instrument gets (#814): the same accompaniment-free packages,
+# taken through the playable part and scored on the grid rather than in
+# seconds, so the beat, the key and the notes are read off what was engraved.
+# Committed corpus, so CI runs this diff too.
+step "8/11 solo harness vs baseline"
+compare score-solo.py tools/baselines/score-solo.txt || { echo "FAIL: score-solo moved — if intended, regenerate the baseline and commit it"; fail=1; }
 
 # Real singing, annotated note by note (#502). Local-only: 69 MB of CC BY audio
 # the repository does not carry, so a machine without it reports every clip
 # skipped rather than failing. It measures the stage on a voice rather than on
 # a rendered instrument, and carries its own ceiling -- see the harness
 # docstring.
-step "8/10 melody harness vs baseline, on real singing"
+step "9/11 melody harness vs baseline, on real singing"
 compare score-melody.py tools/baselines/score-melody-vocadito.txt --source vocadito || { echo "FAIL: score-melody --source vocadito moved — if intended, regenerate the baseline and commit it"; fail=1; }
 
 # The same two corpora read the way analyze --melody reads a recording since
@@ -221,10 +228,10 @@ compare score-melody.py tools/baselines/score-melody-vocadito.txt --source vocad
 # under the melody and a melody alone move opposite ways. Local-only, and CI
 # cannot run them: they need a separation model this machine has downloaded,
 # and a machine without one skips every row.
-step "9/10 melody harness vs baseline, through the separated vocal"
+step "10/11 melody harness vs baseline, through the separated vocal"
 compare score-melody.py tools/baselines/score-melody-separated.txt --separated || { echo "FAIL: score-melody --separated moved — if intended, regenerate the baseline and commit it"; fail=1; }
 
-step "10/10 melody harness vs baseline, real singing through the separated vocal"
+step "11/11 melody harness vs baseline, real singing through the separated vocal"
 compare score-melody.py tools/baselines/score-melody-vocadito-separated.txt --source vocadito --separated || { echo "FAIL: score-melody --source vocadito --separated moved — if intended, regenerate the baseline and commit it"; fail=1; }
 
 step "what this run certified"

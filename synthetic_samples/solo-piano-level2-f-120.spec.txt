@@ -1,0 +1,23 @@
+title: Solo piano, level two - eighths and rests over a pop-rock form in F
+genre: pop
+style: pop-rock
+tempo: 120
+meter: 4/4
+key: F major
+seed: 32
+melody: piano
+melody-level: 2
+accompaniment: none
+bars:
+# Verse: I-V-vi-IV, the axis loop, twice
+F C Dm Bb
+F C Dm Bb
+# Pre-chorus: IV-V-I, then IV-V held on the dominant (half cadence)
+Bb C F F
+Bb C C C
+# Chorus: I-IV-V-I, the three-chord rock form, twice
+F Bb C F
+F Bb C F
+# Close: IV-V turned aside onto vi (deceptive cadence), then IV-V-I held
+Bb C Dm Dm
+Bb C F F

@@ -27,3 +27,13 @@ Melody, note by note against each package's own MIDI melody track
   pop-threechord-c-108: notes=58/88  F1@50ms 11.0%  F1@100ms 15.1%  pitch 32.3%  voiced 45.4%
   pop-waltz-d-108: no melody track; not scored
   rocknroll-12bar-a-168: notes=8/180  F1@50ms 0.0%  F1@100ms 0.0%  pitch 0.8%  voiced 2.4%
+  solo-flute-level1-d-100: notes=122/128  F1@50ms 4.0%  F1@100ms 8.8%  pitch 14.7%  voiced 58.8%
+  solo-flute-level2-bb-112: notes=85/112  F1@50ms 4.1%  F1@100ms 9.1%  pitch 14.0%  voiced 38.0%
+  solo-flute-level2-eb-66: notes=102/87  F1@50ms 24.3%  F1@100ms 34.9%  pitch 61.2%  voiced 85.9%
+  solo-flute-level3-em-92: notes=95/78  F1@50ms 40.5%  F1@100ms 57.8%  pitch 79.2%  voiced 93.0%
+  solo-flute-level4-a-138: notes=91/96  F1@50ms 9.6%  F1@100ms 15.0%  pitch 29.8%  voiced 64.1%
+  solo-piano-level1-ab-104: notes=14/128  F1@50ms 0.0%  F1@100ms 0.0%  pitch 0.0%  voiced 3.8%
+  solo-piano-level2-dm-63: notes=5/82  F1@50ms 0.0%  F1@100ms 0.0%  pitch 0.2%  voiced 0.7%
+  solo-piano-level2-f-120: notes=11/116  F1@50ms 0.0%  F1@100ms 0.0%  pitch 0.0%  voiced 2.2%
+  solo-piano-level3-e-88: notes=7/78  F1@50ms 0.0%  F1@100ms 2.4%  pitch 0.1%  voiced 1.7%
+  solo-piano-level4-cm-144: notes=1/97  F1@50ms 0.0%  F1@100ms 0.0%  pitch 0.4%  voiced 0.4%

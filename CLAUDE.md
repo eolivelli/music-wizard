@@ -276,7 +276,8 @@ the toolchain. `tools/score-synthetic.py` scores every package against its own
 spec, diffed against its baseline by premerge and CI both (#447). These sit
 between tiers 1 and 2 and are never quoted as product accuracy. Melody-only
 packages carry no evidence for their own chord grid, so the chord harness
-skips them and says so; `tools/score-melody.py` scores those.
+skips them and says so; `tools/score-melody.py` scores those in seconds and
+`tools/score-solo.py` scores the page they engrave.
 
 Lyric ground truth is gated on one thing only, and it is not the words'
 licence (see Licensing): a sung entry names its **language** — the hyphenation

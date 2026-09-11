@@ -217,6 +217,34 @@ separation model — so read premerge's output rather than CI for melody
 movement. *When* a sung note starts is
 genuinely ambiguous and #497 records the limit.
 
+**A single instrument playing a tune alone gets its beat from the notes it
+plays** (#814). `tools/score-solo.py` is the measurement that did not exist:
+the playable part, engraved and read back on the grid, against the package's
+own MIDI — because `score-melody.py` scores in seconds by design and the
+chord harness skips a package with no band, a flute whose notes read near
+perfectly in seconds engraved a page at half or double the tempo, or at a
+rate that was no multiple of it, and no row moved. The sustained instrument
+was the whole loss: the onset envelope hears a legato pitch change unevenly,
+by the interval and its direction, so a tune alternating two notes carries a
+two-beat accent the music does not have, and the sweep ranks the half tempo.
+Where the melody is read from the whole signal and the pitch track is voiced
+for most of the sounding stretch, the melody is segmented before the beats
+and the envelope is lifted to a full attack at each of its notes — an attack
+the flux already hears is left alone, so a piano keeps the grid the flux
+gave it — and a mix, whose track is the loudest line's and speaks for
+stretches of it, not for the beat, stays as it was; the run's record names
+which evidence the grid was tracked from.
+`tools/baselines/score-solo.txt` carries the readings. What stands is the
+ramp's syncopation level (#826), a half-note line read at half tempo, the
+key signature on a line alone (#825), the whole bar of rests a page opens
+with when the first tracked beat is a downbeat inside the first pulse
+(#824), and a spare beat at a tracking-window seam (#827). The gate admits
+real solo singing too — vocadito's clips are voiced well past it — and that
+corpus carries no beat truth, so what the route does to a sung line's grid
+is unmeasured: of the clips that move, as many land nearer the prior-free
+estimators of `.claude/skills/verify-tempo` as further, and one lands at
+the tempo sweep's floor (#829).
+
 **Every engraved part has a MusicXML twin** (#771): `chords.musicxml`,
 `chords-lyrics.musicxml`, `lead.musicxml`, `lead-playable.musicxml` and
 `voice.musicxml` beside the `.ly` of the same name, from the same

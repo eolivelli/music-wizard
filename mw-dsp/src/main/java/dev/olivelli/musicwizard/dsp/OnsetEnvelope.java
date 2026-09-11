@@ -18,6 +18,8 @@ package dev.olivelli.musicwizard.dsp;
 
 import dev.olivelli.musicwizard.audio.AudioBuffer;
 import dev.olivelli.musicwizard.audio.Spectrogram;
+import dev.olivelli.musicwizard.core.model.Note;
+import dev.olivelli.musicwizard.core.model.NoteTrack;
 import java.util.Objects;
 
 /**
@@ -133,6 +135,62 @@ public record OnsetEnvelope(double[] strength, double frameRate) {
         Spectrogram spectrogram = Spectrogram.compute(audio, ONSET_WINDOW, ONSET_HOP);
         return new Both(compute(spectrogram), pulseRegister(spectrogram));
     }
+
+    /**
+     * This envelope lifted to a full attack at each of a melody's note onsets.
+     *
+     * <p>For a melodic instrument playing alone, an onset is a change of
+     * pitch, and the spectral flux hears one unevenly: how much energy a
+     * change moves between bands depends on the interval and its direction,
+     * so a tune that alternates two notes carries an accent pattern the music
+     * does not, and a legato attack barely registers at all. The notes the
+     * melody stage segmented out of the pitch track say where the onsets are
+     * — the segmenter's notes rather than the raw track's changes of pitch,
+     * so that a glide or a vibrato is the one note it is — and {@code
+     * tools/score-solo.py} is what says what that is worth (#814).
+     *
+     * <p>Each note is one event of one height, spread over a few frames so
+     * that a beat period that is not a whole number of frames still
+     * correlates with itself, as the flux's filtered attacks do, and the
+     * train is brought to this envelope's own scale. The envelope then takes
+     * the larger of the two at every frame rather than their sum, so an
+     * instrument whose attacks are sharp keeps the grid the flux gave it
+     * (#830) and an attack the flux under-heard is lifted. The result is
+     * renormalised, so a reader
+     * that takes the scale absolutely — the tracker's spacing penalty, the
+     * tempo sweep's accent ceiling — reads it as it reads the flux. A melody
+     * with no notes leaves the envelope as it is.
+     */
+    public OnsetEnvelope withNoteOnsets(NoteTrack melody) {
+        Objects.requireNonNull(melody, "melody");
+        if (melody.isEmpty()) {
+            return this;
+        }
+        double[] events = new double[strength.length];
+        for (Note note : melody.notes()) {
+            int frame = (int) Math.round(note.onsetSeconds() * frameRate);
+            for (int k = -EVENT_HALF_WIDTH; k <= EVENT_HALF_WIDTH; k++) {
+                int j = frame + k;
+                if (j >= 0 && j < events.length) {
+                    events[j] += 1.0 - Math.abs(k) / (EVENT_HALF_WIDTH + 1.0);
+                }
+            }
+        }
+        normalise(events);
+        double[] lifted = new double[strength.length];
+        for (int i = 0; i < lifted.length; i++) {
+            lifted[i] = Math.max(strength[i], events[i]);
+        }
+        normalise(lifted);
+        return new OnsetEnvelope(lifted, frameRate);
+    }
+
+    /**
+     * Frames either side of a note onset its event is spread over. About the
+     * width the anti-aliased flux gives an attack, so the two kinds of event
+     * correlate alike.
+     */
+    private static final int EVENT_HALF_WIDTH = 3;
 
     /**
      * Computes the envelope from a spectrogram.

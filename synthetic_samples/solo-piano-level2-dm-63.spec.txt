@@ -1,0 +1,20 @@
+title: Solo piano, level two, slow - eighths and rests over a minor ballad in D minor
+genre: pop
+style: pop-ballad
+tempo: 63
+meter: 4/4
+key: D minor
+seed: 35
+melody: piano
+melody-level: 2
+accompaniment: none
+bars:
+# Verse: the minor loop i-VI-III-VII, twice
+Dm Bb F C
+Dm Bb F C
+# Chorus: iv-i-V-i, twice (authentic cadence each phrase)
+Gm Dm A Dm
+Gm Dm A Dm
+# Close: VI-V-i, then iv-V-i and the tonic held
+Bb A Dm Dm
+Gm A Dm Dm

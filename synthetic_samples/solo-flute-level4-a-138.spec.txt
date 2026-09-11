@@ -1,0 +1,23 @@
+title: Solo flute, level four - syncopation and leaps over a rock form in A
+genre: rock
+style: pop-rock
+tempo: 138
+meter: 4/4
+key: A major
+seed: 24
+melody: flute
+melody-level: 4
+accompaniment: none
+bars:
+# Verse: I-IV-V rock, twice, the second phrase held on V (half cadence)
+A D E A
+A D E E
+# Chorus: I-V-vi-IV, twice
+A E F#m D
+A E F#m D
+# Bridge: vi-IV-I-V, the axis rotation, twice
+F#m D A E
+F#m D A E
+# Close: IV-V turned aside onto vi (deceptive cadence), then IV-V-I held
+D E F#m F#m
+D E A A
