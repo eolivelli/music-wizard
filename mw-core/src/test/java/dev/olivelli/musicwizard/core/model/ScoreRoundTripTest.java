@@ -562,21 +562,34 @@ class ScoreRoundTripTest {
         }
 
         @Test
-        @DisplayName("requires the map to be anchored on both axes")
+        @DisplayName("requires the map to be anchored on the beat axis")
         void requiresAnchor() {
             assertThatThrownBy(() -> new TempoMap(
                     List.of(new TempoMap.TempoSegment(8, 10.0, 120)),
                     List.of(new TempoMap.MeterChange(0, TimeSignature.FOUR_FOUR))))
                     .isInstanceOf(IllegalArgumentException.class)
                     .hasMessageContaining("anchored");
+        }
 
-            // Anchoring only the beat axis still lets secondsToBeats(0) go negative,
-            // which is the failure the anchor exists to prevent.
-            assertThatThrownBy(() -> new TempoMap(
+        @Test
+        @DisplayName("converts the seconds before a map's origin to beat 0, never below")
+        void secondsBeforeTheOriginAreBeatZero() {
+            // A map whose origin is the first tracked pulse (#824): the audio
+            // before it is unmodelled, and the failure the anchor exists to
+            // prevent -- a negative beat nothing downstream can place -- must
+            // not come back through this door.
+            TempoMap map = new TempoMap(
                     List.of(new TempoMap.TempoSegment(0, 10.0, 120)),
-                    List.of(new TempoMap.MeterChange(0, TimeSignature.FOUR_FOUR))))
-                    .isInstanceOf(IllegalArgumentException.class)
-                    .hasMessageContaining("anchored");
+                    List.of(new TempoMap.MeterChange(0, TimeSignature.FOUR_FOUR)));
+
+            assertThat(map.secondsToBeats(0.0)).isZero();
+            assertThat(map.secondsToBeats(9.999)).isZero();
+            assertThat(map.secondsToBeats(10.0)).isZero();
+            assertThat(map.secondsToBeats(10.5)).isCloseTo(1.0, within(1e-9));
+            assertThat(map.beatsToSeconds(0.0)).isEqualTo(10.0);
+            assertThat(map.toMusicalTime(map.secondsToBeats(0.0)).bar()).isZero();
+            // And an anchored map answers the same for a time before it.
+            assertThat(TempoMap.constant(120).secondsToBeats(-1.0)).isZero();
         }
 
         @Test
@@ -599,20 +612,25 @@ class ScoreRoundTripTest {
         void leadInKeepsTrackedBeatsOnIntegers() {
             // The regression this guards: rounding the lead-in to zero and then
             // shifting the seconds axis puts every tracked beat up to half a beat
-            // off, and silently misaligns the whole map from the audio. It is also
-            // discontinuous -- one millisecond of difference in the tracker's first
-            // onset flipped the behaviour.
+            // off, and silently misaligns the whole map from the audio. A lead-in
+            // too short to model is left out instead (#824): the origin moves
+            // onto the first tracked beat, and every beat stays whole.
             for (double firstBeat : new double[] {
-                    0.001, 0.01, 0.05, 0.2499, 0.25, 0.2501, 0.4, 0.5, 1.0, 7.3, 30.0}) {
+                    0.001, 0.01, 0.05, 0.1249, 0.125, 0.2499, 0.25, 0.2501, 0.4, 0.5, 1.0,
+                    7.3, 30.0}) {
                 List<Double> beats = new java.util.ArrayList<>();
                 for (int i = 0; i < 40; i++) {
                     beats.add(firstBeat + i * 0.5);
                 }
                 TempoMap map = TempoMap.fromBeatTimes(beats, TimeSignature.FOUR_FOUR);
 
+                boolean unmodelled = firstBeat / 0.5 < TempoMap.UNMODELLED_LEAD_IN_PULSES;
                 assertThat(map.beatsToSeconds(0.0))
-                        .as("map anchored at second 0 for firstBeat=%s", firstBeat)
-                        .isCloseTo(0.0, within(1e-9));
+                        .as("origin for firstBeat=%s", firstBeat)
+                        .isCloseTo(unmodelled ? firstBeat : 0.0, within(1e-9));
+                assertThat(map.secondsToBeats(0.0))
+                        .as("second 0 converts for firstBeat=%s", firstBeat)
+                        .isZero();
 
                 for (int i = 0; i < beats.size(); i++) {
                     double beat = map.secondsToBeats(beats.get(i));

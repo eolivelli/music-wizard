@@ -176,14 +176,13 @@ public record TempoMap(List<TempoSegment> segments, List<MeterChange> meterChang
         segments = List.copyOf(segments);
         meterChanges = List.copyOf(meterChanges);
 
-        // Both axes must be anchored. Anchoring only the beat axis still allows
-        // secondsToBeats(0) to return a negative beat, which is the very failure
-        // the anchor exists to prevent.
-        if (segments.get(0).startBeat() != 0.0 || segments.get(0).startSeconds() != 0.0) {
+        // The beat axis is anchored at the first segment; the seconds axis may
+        // begin after the origin, and secondsToBeats clamps what precedes it
+        // rather than returning a negative beat.
+        if (segments.get(0).startBeat() != 0.0) {
             throw new IllegalArgumentException(
-                    "the first tempo segment must start at beat 0 and second 0 so that the map"
-                            + " is anchored, got beat " + segments.get(0).startBeat()
-                            + " at " + segments.get(0).startSeconds() + "s");
+                    "the first tempo segment must start at beat 0 so that the map is anchored,"
+                            + " got beat " + segments.get(0).startBeat());
         }
 
         for (int i = 1; i < segments.size(); i++) {
@@ -323,7 +322,8 @@ public record TempoMap(List<TempoSegment> segments, List<MeterChange> meterChang
      * some other pulse, such as one tracked at half tempo.
      *
      * <p>Every segment fitted to a beat interval is {@link Provenance#MEASURED};
-     * the lead-in, which no interval produced, is {@link Provenance#DERIVED}.
+     * the lead-in, which no interval produced, is {@link Provenance#DERIVED}
+     * where there is one -- see {@link #leadInPulses}.
      */
     public static TempoMap fromBeatTimes(List<Double> beatSeconds, TimeSignature timeSignature) {
         Objects.requireNonNull(timeSignature, "timeSignature");
@@ -441,19 +441,17 @@ public record TempoMap(List<TempoSegment> segments, List<MeterChange> meterChang
         double firstInterval = beatSeconds.get(1) - firstBeat;
 
         // A beat tracker never reports a beat at exactly t=0, so the audio before
-        // the first tracked beat is a lead-in. Left unmodelled it maps to negative
-        // beats, and any note or chord estimated in the intro then fails to
-        // convert. The lead-in is therefore given a whole number of pulses -- of
-        // pulses rather than of quarter beats, because a whole number of quarters
-        // is not a whole number of dotted quarters, and rounding to the wrong one
-        // puts the first tracked pulse a third of a beat off the grid in 6/8.
-        // When the downbeat phase is known, the count is furthermore chosen so
-        // the first downbeat lands on a bar line -- see leadInPulses.
-        //
-        // It must be at least one whenever the first beat is after t=0. The
-        // alternative -- shifting the seconds axis so the first tracked beat
-        // becomes the origin -- silently misaligns the entire map from the audio
-        // by up to half a beat, which is worse than the problem it solves.
+        // the first tracked beat is a lead-in, modelled as a whole number of
+        // pulses -- of pulses rather than of quarter beats, because a whole
+        // number of quarters is not a whole number of dotted quarters, and
+        // rounding to the wrong one puts the first tracked pulse a third of a
+        // beat off the grid in 6/8. When the downbeat phase is known, the count
+        // is furthermore chosen so the first downbeat lands on a bar line, and
+        // a lead-in too short to be a pulse is left out of the map altogether,
+        // whose origin then sits on the first tracked pulse -- see leadInPulses.
+        // Whatever the count, every tracked pulse sits on a whole pulse from the
+        // origin; the alternative -- shifting the seconds axis -- misaligns the
+        // entire map from the audio by up to half a beat.
         int leadInPulses = firstBeat > 0
                 ? leadInPulses(firstBeat, firstInterval, firstDownbeatPulse, pulsesPerBar)
                 : 0;
@@ -492,9 +490,22 @@ public record TempoMap(List<TempoSegment> segments, List<MeterChange> meterChang
     private static final int MAX_PULSES_PER_BAR = 1 << 18;
 
     /**
+     * The longest stretch before the first tracked pulse that is left out of
+     * the map rather than modelled as a lead-in, as a fraction of a pulse.
+     *
+     * <p>A tracker's first pulse is never at the origin, hop quantisation
+     * alone puts it a frame or two in, so a recording that starts on a
+     * downbeat would otherwise get a lead-in of one whole bar to keep that
+     * downbeat on a bar line -- a bar of rests nobody played (#824). Below a
+     * quarter of a pulse, what the map leaves out is shorter than the finest
+     * value a chart resolves.
+     */
+    public static final double UNMODELLED_LEAD_IN_PULSES = 0.25;
+
+    /**
      * The whole number of pulses to model the audio before the first tracked
      * pulse as: the count nearest the measured stretch that also puts the
-     * first downbeat on a bar line, and at least one.
+     * first downbeat on a bar line.
      *
      * <p>This is the one rule both map builders anchor with — {@code
      * fromBeatTimes} here and the constant-tempo fallback in the transcriber —
@@ -505,9 +516,14 @@ public record TempoMap(List<TempoSegment> segments, List<MeterChange> meterChang
      * that, the one nearest the measured stretch is taken, so the lead-in's
      * derived rate stays as close to the music's as the phase allows; a tie
      * between the two congruent neighbours takes the shorter, which invents
-     * less music. With the phase unknown — {@code pulsesPerBar} of 1 — every
-     * count satisfies it, and the rule is the pulse-only rounding it always
-     * was, half-up ties included.
+     * less music. Zero is a count like any other only while the stretch is
+     * under {@link #UNMODELLED_LEAD_IN_PULSES}: a zero-pulse lead-in puts the
+     * map's origin on the first tracked pulse, and what precedes it converts
+     * to beat 0. Past that the count is at least one, because a map that
+     * swallowed a longer stretch would put a pickup played in it on the
+     * downbeat. With the phase unknown — {@code pulsesPerBar} of 1 — every
+     * count satisfies the congruence, and the rule is the pulse-only rounding
+     * it always was, half-up ties included.
      *
      * @param firstBeatSeconds when the first tracked pulse falls, after 0
      * @param pulseSeconds     the length of one pulse
@@ -534,15 +550,18 @@ public record TempoMap(List<TempoSegment> segments, List<MeterChange> meterChang
                     "firstDownbeatPulse must be non-negative, got: " + firstDownbeatPulse);
         }
         double ratio = firstBeatSeconds / pulseSeconds;
+        // Reduced before the addition, so an index near Integer.MAX_VALUE
+        // cannot overflow the sum into a phase it never named; the count side
+        // cannot either, since both terms are bounded above.
+        int phase = Math.floorMod(firstDownbeatPulse, pulsesPerBar);
+        if (ratio < UNMODELLED_LEAD_IN_PULSES && phase == 0) {
+            return 0;
+        }
         // Guard the cast: a pathological interval (units confusion, say
         // samples for seconds) would otherwise overflow silently into a
         // nonsensical but structurally valid map.
         long rounded = Double.isFinite(ratio) ? Math.round(Math.min(ratio, 1e6)) : 1;
         int nearest = (int) Math.max(1, rounded);
-        // Reduced before the addition, so an index near Integer.MAX_VALUE
-        // cannot overflow the sum into a phase it never named; the count side
-        // cannot either, since both terms are bounded above.
-        int phase = Math.floorMod(firstDownbeatPulse, pulsesPerBar);
         int excess = Math.floorMod(nearest + phase, pulsesPerBar);
         if (excess == 0) {
             return nearest;
@@ -558,10 +577,17 @@ public record TempoMap(List<TempoSegment> segments, List<MeterChange> meterChang
         return segment.startSeconds() + (beat - segment.startBeat()) * segment.secondsPerBeat();
     }
 
-    /** Converts a wall-clock time to a musical position in quarter-note beats. */
+    /**
+     * Converts a wall-clock time to a musical position in quarter-note beats.
+     *
+     * <p>Never negative: a time before the first segment -- the unmodelled
+     * stretch before a first tracked pulse the map's origin sits on -- is
+     * beat 0, so that a note or chord estimated there still converts.
+     */
     public double secondsToBeats(double seconds) {
         TempoSegment segment = segmentAtSeconds(seconds);
-        return segment.startBeat() + (seconds - segment.startSeconds()) / segment.secondsPerBeat();
+        return Math.max(0.0,
+                segment.startBeat() + (seconds - segment.startSeconds()) / segment.secondsPerBeat());
     }
 
     /** The tempo segment governing a given beat. */
@@ -766,8 +792,8 @@ public record TempoMap(List<TempoSegment> segments, List<MeterChange> meterChang
      * The average tempo across the piece, ignoring a lead-in built to anchor the
      * map rather than to describe the music.
      *
-     * <p>Both {@link #fromBeatTimes} and a supplied-tempo override open with a
-     * {@link Provenance#DERIVED} segment whose rate is whatever it took to land
+     * <p>Both {@link #fromBeatTimes} and a supplied-tempo override may open with
+     * a {@link Provenance#DERIVED} segment whose rate is whatever it took to land
      * the first tracked pulse on a whole pulse. Nothing in the recording ran at
      * that rate -- on a short clip it is several times the real tempo -- so
      * averaging it in reports a figure the music never had. That distortion is

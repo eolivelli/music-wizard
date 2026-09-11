@@ -241,8 +241,9 @@ class ProvenanceTest {
             // in the last bits, as tracked intervals always do -- it did not.
             // The answer therefore jumped by a factor of two when a third beat
             // arrived: 121.2 for two beats, 59.7 for three.
-            List<Double> twoBeats = List.of(0.05, 1.04);
-            List<Double> threeBeats = List.of(0.05, 1.04, 2.06);
+            // Far enough from the origin to have a lead-in at all (#824).
+            List<Double> twoBeats = List.of(0.3, 1.29);
+            List<Double> threeBeats = List.of(0.3, 1.29, 2.31);
 
             for (List<Double> times : List.of(twoBeats, threeBeats)) {
                 BeatGrid grid = gridOf(times);

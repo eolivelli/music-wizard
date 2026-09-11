@@ -308,8 +308,8 @@ public final class MidiTranscriber {
      *
      * <p>A file with no tempo event, or whose first one is not at tick 0, is
      * played at 120 by the specification, so that is what the opening segment
-     * carries. It also satisfies the map's anchor at (beat 0, second 0), which
-     * has to hold whatever the file says.
+     * carries. It also satisfies the map's anchor at beat 0, which has to hold
+     * whatever the file says.
      */
     private List<TempoMap.TempoSegment> readTempoSegments(Track[] tracks, int ticksPerQuarter) {
         TreeMap<Long, Double> tempi = new TreeMap<>();

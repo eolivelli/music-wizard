@@ -173,7 +173,11 @@ certainty, and why the bass evidence that would settle it is future work
 `TempoMap.fromBeatTimes` fits one tempo segment per beat interval, preserving
 the measured timing exactly, and anchors a lead-in of whole pulses so the
 first downbeat lands on a bar line — the map and the grid stored beside it in
-one file must not disagree about where beat one is (#84, #501).
+one file must not disagree about where beat one is (#84, #501). A lead-in
+shorter than a fraction of a pulse is left out instead, and the map's origin
+is the first tracked beat (#824): a tracker never reports a beat at the
+origin, and a whole bar of lead-in for that frame was a bar of rests on every
+page.
 
 On the chart, where the grid's downbeats are every one of them a plausible
 bar, they *are* the bar lines (#187); a veto (`evenThroughout`) refuses a

@@ -338,8 +338,11 @@ class TempoOverrideTest {
     }
 
     private static List<Provenance> provenances(Score score) {
-        return score.tempoMap().segments().stream()
-                .map(TempoMap.TempoSegment::provenance).toList();
+        return provenances(score.tempoMap());
+    }
+
+    private static List<Provenance> provenances(TempoMap map) {
+        return map.segments().stream().map(TempoMap.TempoSegment::provenance).toList();
     }
 
     @Test
@@ -538,14 +541,13 @@ class TempoOverrideTest {
         assertThat(fromTheOrigin.estimatedTempo()).isCloseTo(90.0, within(1e-9));
 
         // The genuinely unreachable anchors, which is why the helper is
-        // package-private. First, one so small that cramming a whole pulse into
-        // it overflows to an infinite tempo: the rate the user asked for is worth
-        // more than a thrown map, so the phase is dropped rather than the
-        // analysis.
+        // package-private. First, one so small that it is not modelled at
+        // all: the origin is the pulse itself, at the rate the user asked for.
         TempoMap unrepresentable = AudioTranscriber.constantPulseFrom(
                 120, TimeSignature.FOUR_FOUR, Double.MIN_VALUE, Provenance.SUPPLIED);
         assertThat(unrepresentable.segments()).hasSize(1);
         assertThat(unrepresentable.initialTempo()).isEqualTo(120.0);
+        assertThat(unrepresentable.beatsToSeconds(0.0)).isEqualTo(Double.MIN_VALUE);
 
         // And a negative anchor cannot be produced by a grid, but must not build
         // a map with a segment running backwards if one ever reaches it.
@@ -553,6 +555,29 @@ class TempoOverrideTest {
                         120, TimeSignature.FOUR_FOUR, -1.0, Provenance.SUPPLIED))
                 .isEqualTo(TempoMap.constantPulse(
                         120, TimeSignature.FOUR_FOUR, Provenance.SUPPLIED));
+    }
+
+    @Test
+    @DisplayName("puts the origin on a first downbeat tracked a frame in, at the typed rate")
+    void aDownbeatJustAfterTheOriginNeedsNoAnchor() {
+        // The tracked map's rule (#824), through the supplied-tempo builder:
+        // a downbeat within a fraction of a pulse of the origin is the origin,
+        // not a whole bar of derived lead-in at some enormous rate.
+        TempoMap map = AudioTranscriber.constantPulseFrom(
+                120, TimeSignature.FOUR_FOUR, 0.046, Provenance.SUPPLIED, 1.0, 0, 4);
+
+        assertThat(provenances(map)).containsExactly(Provenance.SUPPLIED);
+        assertThat(map.beatsToSeconds(0.0)).isEqualTo(0.046);
+        assertThat(map.secondsToBeats(0.0)).isZero();
+        assertThat(map.secondsToBeats(0.046 + 2.0)).isCloseTo(4.0, within(1e-9));
+        assertThat(Score.empty(map, 12.0).estimatedTempo()).isEqualTo(120.0);
+
+        // The same stretch before a pulse that is not a downbeat keeps the
+        // lead-in its phase needs.
+        TempoMap phased = AudioTranscriber.constantPulseFrom(
+                120, TimeSignature.FOUR_FOUR, 0.046, Provenance.SUPPLIED, 1.0, 2, 4);
+        assertThat(provenances(phased)).containsExactly(Provenance.DERIVED, Provenance.SUPPLIED);
+        assertThat(phased.secondsToBeats(0.046)).isCloseTo(2.0, within(1e-9));
     }
 
     @Test

@@ -227,6 +227,90 @@ class TempoMapTest {
                     .isInstanceOf(IllegalArgumentException.class)
                     .hasMessageContaining("at least two beats");
         }
+
+        /** Pulses every half second from {@code first}, as a tracker reports them. */
+        private List<Double> pulsesFrom(double first) {
+            List<Double> pulses = new ArrayList<>();
+            for (int i = 0; i < 16; i++) {
+                pulses.add(first + i * 0.5);
+            }
+            return pulses;
+        }
+
+        @Test
+        @DisplayName("puts bar one on a first downbeat tracked a frame after the origin")
+        void aDownbeatJustAfterTheOriginOpensBarOne() {
+            // The tracker's first pulse is never at t=0, and a recording that
+            // starts on the beat used to get a whole bar of lead-in so that
+            // downbeat could stay on a bar line: a bar of rests on every page
+            // (#824). The stretch is left out instead, and the origin is the
+            // downbeat itself.
+            List<Double> pulses = pulsesFrom(0.046);
+            TempoMap map = TempoMap.fromBeatTimes(pulses, TimeSignature.FOUR_FOUR, 1.0, 0, 4);
+
+            assertThat(map.segments()).hasSize(pulses.size() - 1);
+            assertThat(map.segments().get(0).provenance()).isEqualTo(Provenance.MEASURED);
+            assertThat(map.beatsToSeconds(0.0)).isEqualTo(0.046);
+            assertThat(map.secondsToBeats(0.0)).isZero();
+            for (int i = 0; i < pulses.size(); i++) {
+                MusicalTime at = map.toMusicalTime(map.secondsToBeats(pulses.get(i)));
+                assertThat(at.bar()).as("pulse %d", i).isEqualTo(i / 4);
+                assertThat(at.beatInBar()).as("pulse %d", i).isCloseTo(i % 4, within(1e-9));
+            }
+        }
+
+        @Test
+        @DisplayName("keeps a lead-in that the downbeat phase needs, however short the stretch")
+        void aShortStretchStillCarriesAPhaseThatNeedsIt() {
+            // The same stretch, with the downbeat two pulses in: leaving the
+            // lead-in out would put bar one off the downbeat, so the count the
+            // phase asks for is kept and stretched over the frame as before.
+            List<Double> pulses = pulsesFrom(0.046);
+            TempoMap map = TempoMap.fromBeatTimes(pulses, TimeSignature.FOUR_FOUR, 1.0, 2, 4);
+
+            assertThat(map.segments().get(0).provenance()).isEqualTo(Provenance.DERIVED);
+            assertThat(map.beatsToSeconds(0.0)).isZero();
+            assertThat(map.secondsToBeats(pulses.get(0))).isCloseTo(2.0, within(1e-9));
+            MusicalTime downbeat = map.toMusicalTime(map.secondsToBeats(pulses.get(2)));
+            assertThat(downbeat.bar()).isEqualTo(1);
+            assertThat(downbeat.beatInBar()).isCloseTo(0.0, within(1e-9));
+        }
+
+        @Test
+        @DisplayName("models a longer stretch before a first downbeat as a whole bar")
+        void aLongerStretchBeforeADownbeatIsABarOfLeadIn() {
+            // Past the fraction the map leaves out, a lead-in is modelled so a
+            // pickup played in it has somewhere to go, and the phase makes it a
+            // whole bar.
+            List<Double> pulses = pulsesFrom(0.2);
+            TempoMap map = TempoMap.fromBeatTimes(pulses, TimeSignature.FOUR_FOUR, 1.0, 0, 4);
+
+            assertThat(map.segments().get(0).provenance()).isEqualTo(Provenance.DERIVED);
+            assertThat(map.beatsToSeconds(0.0)).isZero();
+            assertThat(map.secondsToBeats(pulses.get(0))).isCloseTo(4.0, within(1e-9));
+        }
+
+        @Test
+        @DisplayName("counts the lead-in by the one rule both map builders share")
+        void leadInPulsesRule() {
+            double under = TempoMap.UNMODELLED_LEAD_IN_PULSES * 0.5 * 0.99;
+            double at = TempoMap.UNMODELLED_LEAD_IN_PULSES * 0.5;
+
+            assertThat(TempoMap.leadInPulses(under, 0.5, 0, 4)).isZero();
+            assertThat(TempoMap.leadInPulses(under, 0.5, 8, 4))
+                    .as("the phase is a remainder").isZero();
+            assertThat(TempoMap.leadInPulses(under, 0.5, 0, 1))
+                    .as("with the phase unknown, every count is congruent").isZero();
+            assertThat(TempoMap.leadInPulses(under, 0.5, 2, 4))
+                    .as("a downbeat two pulses in needs two pulses of lead-in").isEqualTo(2);
+            assertThat(TempoMap.leadInPulses(at, 0.5, 0, 4))
+                    .as("at the bound the stretch is modelled, and the phase makes it a bar")
+                    .isEqualTo(4);
+            assertThat(TempoMap.leadInPulses(at, 0.5, 0, 1)).isEqualTo(1);
+            assertThat(TempoMap.leadInPulses(1.1, 0.5, 0, 4))
+                    .as("a stretch of two pulses before a downbeat rounds to the bar")
+                    .isEqualTo(4);
+        }
     }
 
     @Nested
@@ -567,8 +651,8 @@ class TempoMapTest {
                         .isSameAs(expected);
                 assertThat(Double.doubleToLongBits(map.secondsToBeats(seconds)))
                         .describedAs("%s: secondsToBeats(%s)", origin, seconds)
-                        .isEqualTo(Double.doubleToLongBits(expected.startBeat()
-                                + (seconds - expected.startSeconds()) / expected.secondsPerBeat()));
+                        .isEqualTo(Double.doubleToLongBits(Math.max(0.0, expected.startBeat()
+                                + (seconds - expected.startSeconds()) / expected.secondsPerBeat())));
             }
         }
 

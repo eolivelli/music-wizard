@@ -24,6 +24,7 @@ import dev.olivelli.musicwizard.arrange.QuantizedScore;
 import dev.olivelli.musicwizard.arrange.Quantizer;
 import dev.olivelli.musicwizard.arrange.SwingFeel;
 import dev.olivelli.musicwizard.core.model.Accidental;
+import dev.olivelli.musicwizard.core.model.BeatGrid;
 import dev.olivelli.musicwizard.core.model.Chord;
 import dev.olivelli.musicwizard.core.model.ChordProgression;
 import dev.olivelli.musicwizard.core.model.ChordQuality;
@@ -296,6 +297,49 @@ class LeadSheetTest {
                 .first(org.assertj.core.api.InstanceOfAssertFactories.STRING)
                 .as("the rest is gone entirely and the chord keeps only the pickup")
                 .isEqualTo("c4");
+    }
+
+    @Test
+    @DisplayName("opens both contexts on bar one when the first downbeat is tracked a frame in")
+    void aFirstDownbeatJustAfterTheOriginOpensBarOne() {
+        // The route a recording takes: pulses and notes in seconds, the first
+        // pulse a frame after the origin and a downbeat. The map used to give
+        // that frame a whole bar of lead-in, so the staff opened on a bar of
+        // rests the chart, barred on the grid's own downbeats, never had
+        // (#824).
+        List<Double> pulses = new ArrayList<>();
+        List<BeatGrid.Beat> beats = new ArrayList<>();
+        for (int i = 0; i < 16; i++) {
+            pulses.add(0.046 + i * 0.5);
+            beats.add(new BeatGrid.Beat(0.046 + i * 0.5, i % 4 == 0, i % 4));
+        }
+        TempoMap map = TempoMap.fromBeatTimes(pulses, TimeSignature.FOUR_FOUR, 1.0, 0, 4);
+        List<Note> notes = new ArrayList<>();
+        String[] sung = {"E4", "G4", "C5", "D5", "C5", "G4", "E4", "C4"};
+        for (int i = 0; i < sung.length; i++) {
+            notes.add(Note.ofSeconds(pulses.get(2 * i), 0.9, pitch(sung[i]).midiPitch(),
+                    Confidence.CERTAIN));
+        }
+        Score score = Score.empty(map, 8.5)
+                .withBeatGrid(new BeatGrid(beats, Confidence.of(0.9), Confidence.of(0.9)))
+                .withTrack(new NoteTrack(PartRole.LEAD_VOCAL, "Voice", notes, Confidence.CERTAIN))
+                .withChords(new ChordProgression(List.of(
+                        Chord.ofSeconds(pitch("C4"), ChordQuality.MAJOR,
+                                pulses.get(0), pulses.get(8), Confidence.of(0.9)),
+                        Chord.ofSeconds(pitch("G4"), ChordQuality.MAJOR,
+                                pulses.get(8), pulses.get(15) + 0.5, Confidence.of(0.9))),
+                        Confidence.of(0.9)));
+        QuantizedScore quantized = Quantizer.quantize(score);
+
+        String source = LeadSheet.toLilyPond(quantized, melodyOf(quantized));
+
+        List<String> staff = barsOf(context(source, "\\new Staff"));
+        assertThat(staff).hasSize(4);
+        assertThat(staff.getFirst()).startsWith("e'2").doesNotContain("R1");
+        assertThat(context(source, "\\new Staff")).doesNotContain("\\partial");
+        List<String> chords = barsOf(context(source, "\\new ChordNames"));
+        assertThat(chords).hasSameSizeAs(staff);
+        assertThat(chords.getFirst()).isEqualTo("c1");
     }
 
     @Test
