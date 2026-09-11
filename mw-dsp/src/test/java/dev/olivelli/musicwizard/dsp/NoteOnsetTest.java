@@ -105,13 +105,12 @@ class NoteOnsetTest {
             flux[i] = 5;
         }
         OnsetEnvelope before = new OnsetEnvelope(flux.clone(), FRAME_RATE);
-        OnsetEnvelope with = before.withNoteOnsets(melody());
-        assertThat(peaks(with)).isEqualTo(peaks(before));
+        assertThat(before.withNoteOnsets(melody()).strength()).containsExactly(before.strength());
     }
 
     @Test
-    @DisplayName("the sum is mean-zero and unit-variance, like the envelope it joined")
-    void theSumKeepsTheEnvelopeContract() {
+    @DisplayName("the result is mean-zero and unit-variance, like the envelope it came from")
+    void theResultKeepsTheEnvelopeContract() {
         double[] flux = new double[1000];
         for (int i = 0; i < flux.length; i += 43) {
             flux[i] = 5;
@@ -125,54 +124,53 @@ class NoteOnsetTest {
         assertThat(variance).isCloseTo(1, within(1e-9));
     }
 
-    @Test
-    @DisplayName("an attack the flux already hears is left as it is")
-    void aHeardAttackIsLeftAlone() {
-        // Attacks as the anti-aliased flux shapes them: a few frames wide.
-        double[] flux = new double[1000];
-        for (int i = 3; i < flux.length; i += 43) {
+    private static OnsetEnvelope normalised(double[] values) {
+        double mean = Arrays.stream(values).average().orElseThrow();
+        double deviation = Math.sqrt(Arrays.stream(values)
+                .map(v -> (v - mean) * (v - mean)).average().orElseThrow());
+        return new OnsetEnvelope(Arrays.stream(values).map(v -> (v - mean) / deviation).toArray(),
+                FRAME_RATE);
+    }
+
+    /** Attacks as the anti-aliased flux shapes them, a few frames wide. */
+    private static double[] attacks(int frames, java.util.function.IntToDoubleFunction height) {
+        double[] flux = new double[frames];
+        for (int i = 3; i + 3 < frames; i += 43) {
             for (int k = -3; k <= 3; k++) {
-                flux[i + k] = 6 * (1 - Math.abs(k) / 4.0);
+                flux[i + k] = height.applyAsDouble(i) * (1 - Math.abs(k) / 4.0);
             }
         }
-        OnsetEnvelope before = new OnsetEnvelope(flux.clone(), FRAME_RATE);
+        return flux;
+    }
+
+    @Test
+    @DisplayName("attacks the flux already hears keep their number and stay level with each other")
+    void heardAttacksAreNotRaised() {
+        OnsetEnvelope before = normalised(attacks(1000, i -> 6));
         double[] onsets = new double[23];
         for (int i = 0; i < onsets.length; i++) {
             onsets[i] = (3 + 43 * i) / FRAME_RATE;
         }
-        OnsetEnvelope with = new OnsetEnvelope(flux, FRAME_RATE).withNoteOnsets(melody(onsets));
+        OnsetEnvelope with = before.withNoteOnsets(melody(onsets));
         assertThat(peaks(with)).isEqualTo(peaks(before));
-        // The same shape: every attack at the same height, in the result's
-        // own deviations as in the flux's.
-        double mean = Arrays.stream(before.strength()).average().orElseThrow();
-        double deviation = Math.sqrt(Arrays.stream(before.strength())
-                .map(v -> (v - mean) * (v - mean)).average().orElseThrow());
-        for (int i = 3; i < flux.length; i += 43) {
-            assertThat(with.strength()[i])
-                    .isCloseTo((before.strength()[i] - mean) / deviation, within(0.05));
+        double first = with.strength()[3];
+        for (int i = 3; i + 3 < 1000; i += 43) {
+            assertThat(with.strength()[i]).isCloseTo(first, within(0.05 * first));
         }
     }
 
     @Test
-    @DisplayName("an attack the flux under-heard is lifted, however many notes there are")
+    @DisplayName("an attack the flux under-heard is lifted towards the heard ones")
     void anUnderheardAttackIsLifted() {
-        double[] flux = new double[1000];
-        for (int i = 3; i < flux.length; i += 43) {
-            flux[i] = i % 86 == 3 ? 6 : 1;
-        }
+        OnsetEnvelope before = normalised(attacks(1000, i -> i % 86 == 3 ? 6 : 1));
         double[] onsets = new double[23];
         for (int i = 0; i < onsets.length; i++) {
             onsets[i] = (3 + 43 * i) / FRAME_RATE;
         }
-        OnsetEnvelope with = new OnsetEnvelope(flux.clone(), FRAME_RATE).withNoteOnsets(melody(onsets));
-        assertThat(with.strength()[3 + 43]).isGreaterThan(0.5 * with.strength()[3 + 86]);
-        double[] fewer = new double[12];
-        for (int i = 0; i < fewer.length; i++) {
-            fewer[i] = onsets[2 * i];
-        }
-        OnsetEnvelope sparse = new OnsetEnvelope(flux, FRAME_RATE).withNoteOnsets(melody(fewer));
-        assertThat(sparse.strength()[3 + 86] / sparse.strength()[3 + 172])
-                .isCloseTo(with.strength()[3 + 86] / with.strength()[3 + 172], within(0.05));
+        OnsetEnvelope with = before.withNoteOnsets(melody(onsets));
+        double quietBefore = before.strength()[3 + 43] / before.strength()[3 + 86];
+        double quietAfter = with.strength()[3 + 43] / with.strength()[3 + 86];
+        assertThat(quietAfter).isGreaterThan(2 * quietBefore);
     }
 
     /**

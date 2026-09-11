@@ -151,18 +151,21 @@ public record OnsetEnvelope(double[] strength, double frameRate) {
      *
      * <p>Each note is one event of one height, spread over a few frames so
      * that a beat period that is not a whole number of frames still
-     * correlates with itself, as the flux's filtered attacks do; the train is
-     * brought to this envelope's own scale, so its height does not depend on
-     * how many notes there are. The envelope then takes the larger of the two
-     * at every frame rather than their sum: an attack the flux already hears
-     * is left as it is, so an instrument whose attacks are sharp keeps the
-     * grid the flux gave it, and only an attack the flux under-heard is
-     * lifted. The result is renormalised, so a reader that takes the scale
-     * absolutely — the tracker's spacing penalty, the tempo sweep's accent
-     * ceiling — reads it as it reads the flux.
+     * correlates with itself, as the flux's filtered attacks do, and the
+     * train is brought to this envelope's own scale. The envelope then takes
+     * the larger of the two at every frame rather than their sum: an attack
+     * the flux already hears is not raised by the train, so an instrument
+     * whose attacks are sharp keeps the grid the flux gave it, and an attack
+     * the flux under-heard is lifted. The result is renormalised, so a reader
+     * that takes the scale absolutely — the tracker's spacing penalty, the
+     * tempo sweep's accent ceiling — reads it as it reads the flux. A melody
+     * with no notes leaves the envelope as it is.
      */
     public OnsetEnvelope withNoteOnsets(NoteTrack melody) {
         Objects.requireNonNull(melody, "melody");
+        if (melody.isEmpty()) {
+            return this;
+        }
         double[] events = new double[strength.length];
         for (Note note : melody.notes()) {
             int frame = (int) Math.round(note.onsetSeconds() * frameRate);
