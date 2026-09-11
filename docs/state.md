@@ -231,15 +231,13 @@ Where the melody is read from the whole signal and the pitch track is voiced
 for most of the sounding stretch, the track's note changes now join the flux
 at equal weight, and a mix — whose track is the loudest line's and speaks for
 stretches of it, not for the beat — stays as it was; the run's record names
-which evidence the grid was tracked from. Consecutive tracking windows are
-also joined where they agree rather than at the later window's first frame,
-which handed the grid a spare beat at a seam on two of fourteen solo rows.
+which evidence the grid was tracked from.
 `tools/baselines/score-solo.txt` carries the readings: the piano rows and
 most flute rows place nearly every note in its bar; what stands is the
 ramp's syncopation level (#826), a half-note line read at half tempo, the
-key signature on a line alone (#825) and the whole bar of rests a page opens
+key signature on a line alone (#825), the whole bar of rests a page opens
 with when the first tracked beat is a downbeat inside the first pulse
-(#824).
+(#824), and a spare beat at a tracking-window seam on two rows (#827).
 
 **Every engraved part has a MusicXML twin** (#771): `chords.musicxml`,
 `chords-lyrics.musicxml`, `lead.musicxml`, `lead-playable.musicxml` and
