@@ -46,6 +46,7 @@ import dev.olivelli.musicwizard.dsp.HarmonicRhythm;
 import dev.olivelli.musicwizard.dsp.NnlsAblation;
 import dev.olivelli.musicwizard.dsp.NnlsChroma;
 import dev.olivelli.musicwizard.dsp.OnsetEnvelope;
+import dev.olivelli.musicwizard.dsp.PitchTrack;
 import dev.olivelli.musicwizard.dsp.PitchTracker;
 import java.nio.file.Path;
 import java.util.Arrays;
@@ -329,8 +330,30 @@ public final class AudioTranscriber {
         // spans are added to the same line further down.
         recordChroma(ChromaTracing.of(tuning, fit));
 
+        // The melody's own signal, and its pitch track when that signal is the
+        // whole recording: read before the beats, because on an instrument
+        // playing alone the changes of pitch are the onsets, and the flux
+        // hears them unevenly (#814). The track is read once and the melody
+        // stage below segments the same one. A stem is not read here — its
+        // changes are one voice's, and the grid is the band's — and a mix's
+        // track is not used either: it is the loudest line's, which speaks
+        // for stretches of the recording and not for the beat, and the share
+        // of the recording it speaks for is what tells the two apart.
+        AudioBuffer melodyAudio = settings.trackMelody() ? melodySignal(audio, vocalStem) : null;
+        PitchTrack mixPitches = null;
+        boolean pitchOnsets = false;
+        OnsetEnvelope rhythm = envelope;
+        if (melodyAudio == audio) {
+            progress.accept("tracking pitch, for the beat as well as the melody");
+            mixPitches = trackPitch(melodyAudio, settings);
+            pitchOnsets = mixPitches.voicedShare() >= LINE_ALONE_VOICED_SHARE;
+            if (pitchOnsets) {
+                rhythm = envelope.withNoteChanges(mixPitches);
+            }
+        }
+
         progress.accept("tracking beats");
-        BeatTracker.Result beats = BeatTracker.track(envelope, harmonicRhythm, onsets.pulseRegister());
+        BeatTracker.Result beats = BeatTracker.track(rhythm, harmonicRhythm, onsets.pulseRegister());
         if (beats.isEmpty()) {
             progress.accept("no beats found; returning an empty score");
             runLog.stage(BeatTrace.STAGE).trace(beats.trace()).computed("no pulse was found");
@@ -413,7 +436,7 @@ public final class AudioTranscriber {
         // does, but the same reading carries how many tracked pulses fill a bar,
         // and that is a fact about where the tracker landed rather than a rival
         // signature (#736).
-        MeterEstimator.Estimate reading = MeterEstimator.estimate(beatTimes, chroma, envelope);
+        MeterEstimator.Estimate reading = MeterEstimator.estimate(beatTimes, chroma, rhythm);
         boolean suppliedMeter = settings.timeSignature() != null;
         TimeSignature meter = suppliedMeter ? settings.timeSignature() : reading.meter();
 
@@ -480,7 +503,7 @@ public final class AudioTranscriber {
         // and a corrected pulse counts its own.
         DownbeatEstimator.Estimate downbeat = settings.firstDownbeatSeconds() != null
                 ? forcedDownbeat(beatTimes, settings.firstDownbeatSeconds(), pulsesPerBar)
-                : DownbeatEstimator.estimate(beatTimes, chroma, envelope, pulsesPerBar);
+                : DownbeatEstimator.estimate(beatTimes, chroma, rhythm, pulsesPerBar);
         BeatGrid tracked = BeatTracker.toBeatGrid(beats, downbeat);
         // Recorded on the grid rather than left to each reader, because the grid
         // is what a reader has: BeatGrid.steadyTempo and medianTempo convert a
@@ -528,7 +551,7 @@ public final class AudioTranscriber {
         tempoMap = tempoMap.withMeterChange(
                 meterOrigin(meter, suppliedMeter, suppliedMeter ? null : reading));
 
-        recordBeats(beats, meter, pulsesPerBar, suppliedMeter ? null : reading);
+        recordBeats(beats, meter, pulsesPerBar, suppliedMeter ? null : reading, pitchOnsets);
 
         progress.accept("estimating chords");
         ChordEstimator.Decoded decoded =
@@ -572,7 +595,6 @@ public final class AudioTranscriber {
         if (!settings.trackMelody()) {
             runLog.stage(MelodyTrace.STAGE).skipped("not asked for; analyze --melody reads one");
         } else {
-            AudioBuffer melodyAudio = melodySignal(audio, vocalStem);
             boolean separated = melodyAudio != audio;
             progress.accept(separated
                     ? "tracking the melody in the vocal stem"
@@ -593,13 +615,11 @@ public final class AudioTranscriber {
             // rounded on different grids can name the same sounding pitch two
             // ways. The band is also the better reference of the two, having
             // more of the recording in it than one voice does (#566).
-            Double floor = settings.melodyFloorHz();
-            if (floor != null) {
-                stage.fact("floor", String.format(Locale.ROOT, "%.1f Hz", floor));
+            if (settings.melodyFloorHz() != null) {
+                stage.fact("floor", String.format(Locale.ROOT, "%.1f Hz", settings.melodyFloorHz()));
             }
             MelodyEstimator.Segmented segmented = MelodyEstimator.explain(
-                    floor == null ? PitchTracker.track(melodyAudio)
-                            : PitchTracker.track(melodyAudio, floor),
+                    mixPitches != null ? mixPitches : trackPitch(melodyAudio, settings),
                     melodyEnvelope, tuning);
             NoteTrack melody = segmented.melody();
             recordMelody(stage, segmented.trace().readFrom(
@@ -692,9 +712,12 @@ public final class AudioTranscriber {
      *                 typed
      */
     private void recordBeats(BeatTracker.Result beats, TimeSignature meter, int pulsesPerBar,
-                             MeterEstimator.Estimate detected) {
+                             MeterEstimator.Estimate detected, boolean pitchOnsets) {
         BeatTrace trace = beats.trace();
         RunLog.Stage stage = runLog.stage(BeatTrace.STAGE).trace(trace);
+        stage.fact("onsets", pitchOnsets
+                ? "the spectral flux and the pitch track's note changes"
+                : "the spectral flux");
         stage.fact("meter", detected == null
                 ? meter + ", supplied"
                 : String.format(Locale.ROOT, "%s, read at %.0f%% confidence",
@@ -751,6 +774,21 @@ public final class AudioTranscriber {
      * not how many seconds there are — so the notes stay on the recording's
      * timeline and align with the beats and chords read from the mix.
      */
+    /**
+     * How much of its sounding stretch a pitch track must be voiced for before
+     * its note changes count as onsets: a line playing alone is voiced nearly
+     * throughout, a mix well under this — both corpora sit clear of it on
+     * either side, and {@code tools/score-solo.py} is where a package that
+     * fails the gate would show. Not a solo detector: a line with long rests
+     * falls back to the flux alone, which the run's record says.
+     */
+    static final double LINE_ALONE_VOICED_SHARE = 2.0 / 3.0;
+
+    private static PitchTrack trackPitch(AudioBuffer signal, Options settings) {
+        Double floor = settings.melodyFloorHz();
+        return floor == null ? PitchTracker.track(signal) : PitchTracker.track(signal, floor);
+    }
+
     private static AudioBuffer melodySignal(AudioBuffer audio, Supplier<AudioBuffer> vocalStem) {
         AudioBuffer stem = vocalStem == null ? null : vocalStem.get();
         if (stem == null) {

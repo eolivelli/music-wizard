@@ -135,6 +135,70 @@ public record OnsetEnvelope(double[] strength, double frameRate) {
     }
 
     /**
+     * This envelope with a pitch track's note changes added as onsets.
+     *
+     * <p>For a melodic instrument playing alone, an onset is a change of
+     * pitch, and the spectral flux hears one unevenly: how much energy a
+     * change moves between bands depends on the interval and its direction,
+     * so a tune that alternates two notes carries an accent pattern the music
+     * does not, and a legato attack barely registers at all. Read off the
+     * pitch track, every change is one event of one weight — {@code
+     * tools/score-solo.py} is what says what that is worth (#814).
+     *
+     * <p>A change is a move of more than half a semitone away from the note
+     * being held, or the voice returning after silence; a wobble that stays
+     * within the held note is not one. Each event is spread over a few frames
+     * so that a beat period that is not a whole number of frames still
+     * correlates with itself, as the flux's filtered attacks do. The train is
+     * brought to this envelope's own scale before the two are summed, so the
+     * changes and the flux carry equal weight whatever the count of changes
+     * — at a fixed height per change the flux's uneven attacks kept enough
+     * of a vote to walk the phase off by half a beat — and the sum is
+     * renormalised, so a reader that takes the scale absolutely, the
+     * tracker's spacing penalty or the tempo sweep's accent ceiling, reads it
+     * as it reads the flux.
+     */
+    public OnsetEnvelope withNoteChanges(PitchTrack pitches) {
+        Objects.requireNonNull(pitches, "pitches");
+        double[] changes = new double[strength.length];
+        double held = Double.NaN;
+        for (int i = 0; i < pitches.frameCount(); i++) {
+            if (!pitches.voiced()[i]) {
+                held = Double.NaN;
+                continue;
+            }
+            double midi = pitches.midiPitchAt(i);
+            if (Double.isNaN(held) || Math.abs(midi - held) > NOTE_CHANGE_SEMITONES) {
+                int frame = (int) Math.round(pitches.timeOf(i) * frameRate);
+                for (int k = -EVENT_HALF_WIDTH; k <= EVENT_HALF_WIDTH; k++) {
+                    int j = frame + k;
+                    if (j >= 0 && j < changes.length) {
+                        changes[j] += 1.0 - Math.abs(k) / (EVENT_HALF_WIDTH + 1.0);
+                    }
+                }
+                held = midi;
+            }
+        }
+        normalise(changes);
+        double[] sum = new double[strength.length];
+        for (int i = 0; i < sum.length; i++) {
+            sum[i] = strength[i] + changes[i];
+        }
+        normalise(sum);
+        return new OnsetEnvelope(sum, frameRate);
+    }
+
+    /** A pitch move past this, from the note being held, is a new note. */
+    private static final double NOTE_CHANGE_SEMITONES = 0.5;
+
+    /**
+     * Frames either side of a note change its event is spread over. About the
+     * width the anti-aliased flux gives an attack, so the two kinds of event
+     * correlate alike.
+     */
+    private static final int EVENT_HALF_WIDTH = 3;
+
+    /**
      * Computes the envelope from a spectrogram.
      *
      * <p><b>Not composable over slices.</b> The band floor is a share of the

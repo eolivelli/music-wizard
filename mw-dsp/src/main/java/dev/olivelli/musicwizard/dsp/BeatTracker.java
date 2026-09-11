@@ -186,13 +186,8 @@ public final class BeatTracker {
             // the one the estimator proposed, or a corrected window would go on
             // rejecting beats at the uncorrected spacing.
             double periodSeconds = 60.0 / beatsPerMinute;
-            double acceptUntil = (start + step) / envelope.frameRate();
-            boolean lastWindow = end >= envelope.length();
-            for (double beat : windowBeats) {
-                if ((lastWindow || beat < acceptUntil) && isNewBeat(beats, beat, periodSeconds)) {
-                    beats.add(beat);
-                }
-            }
+            join(beats, windowBeats, start / envelope.frameRate(),
+                    (start + step) / envelope.frameRate(), periodSeconds);
             tempoSum += beatsPerMinute;
             strengthSum += seed.strength();
             traced.add(traced(envelope, start, end, votes(bounds.get(w), step), seed,
@@ -327,6 +322,74 @@ public final class BeatTracker {
                 : (intervals[middle - 1] + intervals[middle]) / 2.0;
         return median > 0 ? 60.0 / median : fallback;
     }
+
+    /**
+     * Appends a window's beats to those accepted so far, joining the two
+     * where they agree.
+     *
+     * <p>Consecutive windows half-overlap, and both track the overlap; where
+     * the two put a beat on the same instant they agree on the phase, and the
+     * seam goes there — the earlier window's beats up to that instant, the
+     * later's from it. Cutting at the later window's first frame instead let
+     * a pair that disagreed there hand the grid a spare beat or a missing one
+     * at every seam, since a dynamic program's first beats have no
+     * predecessor to hold them and are the least constrained it places.
+     * Nearest the middle of the overlap where several agree, which is
+     * interior to both. Where they agree nowhere the old cut stands: the
+     * earlier window to the seam frame, the later from it, a beat that would
+     * land on an accepted one dropped.
+     *
+     * @param accepted     the beats so far, extended in place; the last
+     *                     window's beats run to its end and an earlier
+     *                     window's to its own end, to be trimmed by the next
+     * @param next         the window's beats, in order
+     * @param seamSeconds  the window's start, where the old rule cut
+     * @param overlapEnd   where the earlier window ended
+     */
+    static void join(List<Double> accepted, List<Double> next, double seamSeconds,
+                     double overlapEnd, double periodSeconds) {
+        double centre = (seamSeconds + overlapEnd) / 2;
+        double tolerance = SEAM_TOLERANCE * periodSeconds;
+        int cutAccepted = -1;
+        int resumeNext = -1;
+        double nearest = Double.MAX_VALUE;
+        for (int a = 0; a < accepted.size(); a++) {
+            double earlier = accepted.get(a);
+            if (earlier < seamSeconds || earlier > overlapEnd) {
+                continue;
+            }
+            for (int b = 0; b < next.size(); b++) {
+                double later = next.get(b);
+                if (Math.abs(later - earlier) <= tolerance
+                        && Math.abs(earlier - centre) < nearest) {
+                    nearest = Math.abs(earlier - centre);
+                    cutAccepted = a;
+                    resumeNext = b;
+                }
+            }
+        }
+        if (cutAccepted >= 0) {
+            accepted.subList(cutAccepted + 1, accepted.size()).clear();
+            accepted.addAll(next.subList(resumeNext + 1, next.size()));
+            return;
+        }
+        while (!accepted.isEmpty() && accepted.get(accepted.size() - 1) >= seamSeconds) {
+            accepted.remove(accepted.size() - 1);
+        }
+        for (double beat : next) {
+            if (isNewBeat(accepted, beat, periodSeconds)) {
+                accepted.add(beat);
+            }
+        }
+    }
+
+    /**
+     * How close two windows' beats must be, as a share of the period, to be
+     * the same beat: two programs over one envelope that agree on the phase
+     * put a beat on the same frame, so this is slack for the interpolation
+     * between frames, not for a disagreement.
+     */
+    private static final double SEAM_TOLERANCE = 0.1;
 
     /** Rejects a beat that would land on top of one already accepted. */
     private static boolean isNewBeat(List<Double> beats, double candidate,

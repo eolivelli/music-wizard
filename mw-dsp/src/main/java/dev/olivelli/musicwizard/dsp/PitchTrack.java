@@ -91,6 +91,28 @@ public record PitchTrack(
         return (frame * (double) hopSize + windowSize / 2.0) / sampleRate;
     }
 
+    /**
+     * The share of the sounding stretch — first voiced frame to last — that is
+     * voiced. Near one for a line playing alone, whose pitch is there whenever
+     * anything is; well under it for a mix, where the tracker gives up between
+     * the stretches one voice dominates. Zero for a track with no voiced frame.
+     */
+    public double voicedShare() {
+        int first = -1;
+        int last = -1;
+        int count = 0;
+        for (int i = 0; i < voiced.length; i++) {
+            if (voiced[i]) {
+                if (first < 0) {
+                    first = i;
+                }
+                last = i;
+                count++;
+            }
+        }
+        return first < 0 ? 0 : count / (double) (last - first + 1);
+    }
+
     /** The fractional MIDI pitch of a frame, whether or not it is voiced. */
     public double midiPitchAt(int frame) {
         return 69 + 12 * (Math.log(frequenciesHz[frame] / 440.0) / Math.log(2));
