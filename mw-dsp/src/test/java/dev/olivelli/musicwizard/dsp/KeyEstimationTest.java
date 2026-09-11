@@ -22,6 +22,9 @@ import dev.olivelli.musicwizard.core.model.Chord;
 import dev.olivelli.musicwizard.core.model.ChordProgression;
 import dev.olivelli.musicwizard.core.model.ChordQuality;
 import dev.olivelli.musicwizard.core.model.Confidence;
+import dev.olivelli.musicwizard.core.model.Note;
+import dev.olivelli.musicwizard.core.model.NoteTrack;
+import dev.olivelli.musicwizard.core.model.PartRole;
 import dev.olivelli.musicwizard.core.model.PitchSpelling;
 import dev.olivelli.musicwizard.core.workspace.KeyTrace;
 import java.util.ArrayList;
@@ -77,6 +80,29 @@ class KeyEstimationTest {
 
     private static String keyOf(ChordProgression progression) {
         return estimate(progression).key().displayName();
+    }
+
+    /** Seconds each note of a line lasts. */
+    private static final double BEAT = 0.5;
+
+    /** A line of one-beat notes, given as spelled pitches with their octave. */
+    private static NoteTrack line(String... pitches) {
+        List<Note> notes = new ArrayList<>();
+        for (int i = 0; i < pitches.length; i++) {
+            notes.add(Note.ofSeconds(i * BEAT, BEAT,
+                    PitchSpelling.parse(pitches[i]).midiPitch(), Confidence.of(0.9)));
+        }
+        return new NoteTrack(PartRole.LEAD_VOCAL, "line", notes, Confidence.of(0.9));
+    }
+
+    private static KeyEstimator.Estimate estimate(NoteTrack line) {
+        Optional<KeyEstimator.Estimate> estimate = KeyEstimator.estimate(line, 0, 60);
+        assertThat(estimate).as("an estimate for %s", line.notes()).isPresent();
+        return estimate.get();
+    }
+
+    private static String keyOf(NoteTrack line) {
+        return estimate(line).key().displayName();
     }
 
     private static KeyEstimator.Estimate estimate(ChordProgression progression) {
@@ -510,6 +536,92 @@ class KeyEstimationTest {
             assertThat(estimate.key().isQuantized())
                     .as("estimation works in seconds; the quantizer places it")
                     .isFalse();
+        }
+    }
+
+    @Nested
+    @DisplayName("a line playing alone (#825)")
+    class LineAlone {
+
+        @Test
+        @DisplayName("the line's own notes name the signature the chords read off it miss")
+        void theScaleNamesTheSignature() {
+            // A tune in G on chord tones of I, IV and V, as a solo flute plays
+            // it: named chord by chord this line leans to D, and its C naturals
+            // lie outside D major.
+            NoteTrack tune = line("D5", "B4", "G4", "B4", "C5", "E5", "G5", "E5",
+                    "D5", "F#5", "A5", "F#5", "G5", "B4", "D5", "G4");
+            assertThat(keyOf(tune)).isEqualTo("G major");
+        }
+
+        @Test
+        @DisplayName("time on the tonic separates the relative pair")
+        void theTonicNoteSeparatesThePair() {
+            // The same seven notes twice over, differing only in which of the
+            // pair's tonics the line dwells on.
+            assertThat(keyOf(line("C4", "D4", "E4", "F4", "G4", "A4", "B4", "C5", "C5", "C5")))
+                    .isEqualTo("C major");
+            assertThat(keyOf(line("C4", "D4", "E4", "F4", "G4", "A4", "B4", "A4", "A4", "A4")))
+                    .isEqualTo("A minor");
+        }
+
+        @Test
+        @DisplayName("the raised seventh names the minor when the tonics are level")
+        void theRaisedSeventhNamesTheMinor() {
+            // As much time on C as on A, and a G sharp, which C major does not hold.
+            assertThat(keyOf(line("A4", "C5", "E5", "G#5"))).isEqualTo("A minor");
+        }
+
+        @Test
+        @DisplayName("a line dwelling on its dominant stays in its tonic")
+        void theTonicWeightStaysUnderTheScale() {
+            // More time on G than on C, and one F: the fourth degree is what
+            // keeps this out of G major, and the tonic's weight is what would
+            // hand it over if it were heavier.
+            assertThat(keyOf(line("C4", "C4", "E4", "G4", "G4", "G4", "F4", "E4")))
+                    .isEqualTo("C major");
+        }
+
+        @Test
+        @DisplayName("the note the line closes on is read for nothing")
+        void theClosingNoteIsNotWeighed() {
+            NoteTrack onTheTonic = line("C4", "E4", "G4", "E4", "C4", "E4", "G4", "C5");
+            NoteTrack onTheFifth = line("C4", "E4", "G4", "E4", "C4", "E4", "C5", "G4");
+            assertThat(keyOf(onTheTonic)).isEqualTo("C major");
+            assertThat(keyOf(onTheFifth)).isEqualTo("C major");
+            assertThat(estimate(onTheFifth).trace().tonic().margin())
+                    .isEqualTo(estimate(onTheTonic).trace().tonic().margin());
+        }
+
+        @Test
+        @DisplayName("the trace says it read the notes, and its tallies count them")
+        void theTraceCountsNotes() {
+            KeyTrace trace = estimate(line("A4", "C5", "E5", "G#5", "A4")).trace();
+            assertThat(trace.source()).isEqualTo(KeyTrace.FROM_MELODY);
+            assertThat(trace.soundingSeconds()).isEqualTo(5 * BEAT);
+            assertThat(trace.candidates()).hasSize(24);
+            KeyTrace.Candidate minor = candidate(trace, "A minor");
+            assertThat(minor.tonicChordSpans()).isEqualTo(2);
+            assertThat(minor.tonicChordSeconds()).isEqualTo(2 * BEAT);
+            assertThat(minor.raisedSeventhSpans()).isEqualTo(1);
+            assertThat(minor.raisedSeventhSeconds()).isEqualTo(BEAT);
+            KeyTrace.Candidate major = candidate(trace, "C major");
+            assertThat(major.raisedSeventhSpans()).isZero();
+            assertThat(trace.tonic().margin())
+                    .isEqualTo(minor.score() - major.score());
+        }
+
+        @Test
+        @DisplayName("a line with no note names no key")
+        void noNotesNameNoKey() {
+            assertThat(KeyEstimator.estimate(NoteTrack.empty(PartRole.LEAD_VOCAL, "line"), 0, 60))
+                    .isEmpty();
+        }
+
+        private KeyTrace.Candidate candidate(KeyTrace trace, String key) {
+            return trace.candidates().stream()
+                    .filter(candidate -> candidate.key().equals(key))
+                    .findFirst().orElseThrow();
         }
     }
 }

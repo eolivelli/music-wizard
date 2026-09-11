@@ -281,6 +281,25 @@ class AnalysisReportTest {
     }
 
     @Test
+    @DisplayName("a key read from a line's notes is worded as notes, not chords (#825)")
+    void aKeyReadFromTheMelodyIsWordedAsNotes() {
+        KeyTrace fromChords = ReportFixtures.keyDecisions();
+        KeyTrace fromMelody = new KeyTrace(KeyTrace.FROM_MELODY, fromChords.soundingSeconds(),
+                fromChords.spanSeconds(), fromChords.weighed(), fromChords.candidates(),
+                fromChords.signature(), fromChords.tonic());
+        String page = AnalysisReport.toHtml(ReportFixtures.everything(), RECORDING,
+                ReportFixtures.run(), ReportFixtures.weighed(fromMelody));
+
+        assertThat(page).contains("a line playing alone, so the key was read from its notes",
+                "<dt>Notes sounded for</dt>",
+                "<th>Its own tonic note</th>",
+                "<td class=\"symbol\">A minor</td><td>1.143</td><td>1 note, 2s</td>",
+                "a note on the key's own tonic");
+        assertThat(page).doesNotContain("Chords sounded for", "Its own tonic chord",
+                "each chord's triad", "1 chord, 2s");
+    }
+
+    @Test
     @DisplayName("the key trace and the score it is drawn beside describe one piece of music")
     void theTraceAndTheScoreNameOneKey() {
         // A page whose key facts and key evidence disagreed would be
