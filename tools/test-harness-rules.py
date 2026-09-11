@@ -33,6 +33,7 @@ synthetic = import_module("score-synthetic")
 chart = import_module("score-chart")
 lyrics = import_module("score-lyrics")
 melody = import_module("score-melody")
+solo = import_module("score-solo")
 separation = import_module("measure-separation-cost")
 tempo = import_module("measure-tempo")
 vtt = import_module("vtt-to-lrc")
@@ -2624,6 +2625,103 @@ class SyntheticTempo(unittest.TestCase):
 
     def test_a_spec_with_no_tempo_says_so_rather_than_dividing_by_it(self):
         self.assertEqual("tempo unstated", synthetic.tempo_verdict(120.0, None))
+
+
+class SoloPageRules(unittest.TestCase):
+    """What tools/score-solo.py reads off a playable part and how it credits
+    it (#814)."""
+
+    @staticmethod
+    def page(measures: str, key: str = "<fifths>0</fifths><mode>major</mode>") -> Path:
+        """A MusicXML part whose divisions are a quarter, so a duration of 2
+        is a half note; the caller writes the measures."""
+        text = ("<score-partwise><part-list><score-part id=\"P1\"/></part-list>"
+                f"<part id=\"P1\"><measure number=\"1\"><attributes><divisions>1</divisions>"
+                f"<key>{key}</key></attributes>{measures}</part></score-partwise>")
+        handle = tempfile.NamedTemporaryFile("w", suffix=".musicxml", delete=False)
+        handle.write(text)
+        handle.close()
+        return Path(handle.name)
+
+    @staticmethod
+    def note(step: str, octave: int, duration: int, tie: str | None = None,
+             alter: int = 0) -> str:
+        tied = f"<tie type=\"{tie}\"/>" if tie else ""
+        altered = f"<alter>{alter}</alter>" if alter else ""
+        return (f"<note><pitch><step>{step}</step>{altered}<octave>{octave}</octave></pitch>"
+                f"<duration>{duration}</duration>{tied}</note>")
+
+    def test_notes_are_read_in_quarter_beats_from_the_page_s_origin(self):
+        page = self.page(self.note("C", 4, 1) + self.note("E", 4, 1)
+                         + "<note><rest/><duration>2</duration></note>"
+                         + "</measure><measure number=\"2\">" + self.note("G", 4, 4)
+                         + "</measure>")
+        read = solo.page_notes(page)
+        self.assertEqual([(0.0, 1.0, 60), (1.0, 1.0, 64), (4.0, 4.0, 67)], read["notes"])
+        self.assertEqual(2, read["measures"])
+        self.assertEqual((0, "major"), read["key"])
+
+    def test_a_tie_is_one_note_at_the_length_a_player_holds(self):
+        page = self.page(self.note("C", 4, 2) + self.note("G", 4, 2, "start")
+                         + "</measure><measure number=\"2\">" + self.note("G", 4, 1, "stop")
+                         + self.note("A", 4, 3) + "</measure>")
+        self.assertEqual([(0.0, 2.0, 60), (2.0, 3.0, 67), (5.0, 3.0, 69)],
+                         solo.page_notes(page)["notes"])
+
+    def test_a_sharp_and_a_flat_reach_the_same_midi_pitch(self):
+        page = self.page(self.note("C", 4, 1, alter=1) + self.note("D", 4, 1, alter=-1)
+                         + "</measure>")
+        self.assertEqual([61, 61], [n[2] for n in solo.page_notes(page)["notes"]])
+
+    def test_a_pickup_measure_shortens_the_origin_and_nothing_else(self):
+        page = self.page(self.note("G", 4, 1) + "</measure><measure number=\"2\">"
+                         + self.note("C", 5, 4) + "</measure>")
+        self.assertEqual([(0.0, 1.0, 67), (1.0, 4.0, 72)], solo.page_notes(page)["notes"])
+
+    def test_placed_needs_the_semitone_and_the_exact_beat(self):
+        reference = [(0.0, 1.0, 60), (1.0, 1.0, 64), (2.0, 2.0, 67)]
+        self.assertEqual(3, len(solo.placed(reference, reference, 0.0)))
+        late = [(0.0, 1.0, 60), (1.5, 1.0, 64), (2.0, 2.0, 67)]
+        self.assertEqual(2, len(solo.placed(late, reference, 0.0)))
+        wrong_octave = [(0.0, 1.0, 72), (1.0, 1.0, 64), (2.0, 2.0, 67)]
+        self.assertEqual(2, len(solo.placed(wrong_octave, reference, 0.0)))
+
+    def test_each_page_note_is_credited_once(self):
+        reference = [(0.0, 1.0, 60), (0.0, 1.0, 60)]
+        self.assertEqual(1, len(solo.placed([(0.0, 1.0, 60)], reference, 0.0)))
+
+    def test_the_shift_is_the_whole_bar_a_page_opened_late_by(self):
+        """The lead-in of #824: a page whose bar one is a bar of rests."""
+        reference = [(0.0, 1.0, 60), (1.0, 1.0, 64), (2.0, 1.0, 67), (3.0, 1.0, 72)]
+        late = [(on + 4.0, dur, pitch) for on, dur, pitch in reference]
+        self.assertEqual(4.0, solo.best_shift(late, reference))
+        self.assertEqual(4, len(solo.placed(late, reference, 4.0)))
+
+    def test_a_page_needing_no_shift_is_read_as_needing_none(self):
+        """Half the notes a beat late, half on time: the tie goes to the
+        smaller move, so the column says what a reader would."""
+        reference = [(0.0, 1.0, 60), (1.0, 1.0, 64), (2.0, 1.0, 67), (3.0, 1.0, 72)]
+        mixed = [(0.0, 1.0, 60), (1.0, 1.0, 64), (3.0, 1.0, 67), (4.0, 1.0, 72)]
+        self.assertEqual(0.0, solo.best_shift(mixed, reference))
+
+    def test_the_spec_key_is_read_as_a_signature_and_a_mode(self):
+        self.assertEqual((0, "major"), solo.spec_key("C major"))
+        self.assertEqual((0, "minor"), solo.spec_key("A minor"))
+        self.assertEqual((-2, "major"), solo.spec_key("Bb major"))
+        self.assertEqual((-5, "minor"), solo.spec_key("Bb minor"))
+        self.assertEqual((3, "minor"), solo.spec_key("F# minor"))
+        self.assertEqual((-3, "minor"), solo.spec_key("C minor"))
+        self.assertIsNone(solo.spec_key("C dorian"))
+
+    def test_only_an_accompaniment_free_package_is_scored(self):
+        """A band under the melody is measured by the other two harnesses; a
+        sheet column on it would fold both into one number."""
+        with tempfile.TemporaryDirectory() as tmp:
+            spec = Path(tmp) / "pop-x-c-100.spec.txt"
+            spec.write_text("tempo: 100\nkey: C major\naccompaniment: full\nbars:\nC\n")
+            (Path(tmp) / "pop-x-c-100.mp3").write_bytes(b"")
+            (Path(tmp) / "pop-x-c-100.mid").write_bytes(b"")
+            self.assertIn("not a solo package", solo.score_package(Path("mw.jar"), spec))
 
 
 if __name__ == "__main__":

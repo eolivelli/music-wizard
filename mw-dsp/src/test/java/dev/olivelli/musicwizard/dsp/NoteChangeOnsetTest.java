@@ -137,6 +137,54 @@ class NoteChangeOnsetTest {
                 within(0.35 * with.strength()[attack]));
     }
 
+    /**
+     * The flute's shape: an attack on every beat, alternating between two
+     * heights with the interval, so the envelope repeats at two beats more
+     * strongly than at one. A pitch track changing note on every beat is what
+     * the recording actually holds.
+     */
+    @Test
+    @DisplayName("attacks that alternate in height read half tempo until the note changes join them")
+    void alternatingAttacksReadHalfTempoWithoutTheNoteChanges() {
+        double tempo = 100;
+        double seconds = 30;
+        double period = 60 / tempo;
+        int frames = (int) (seconds * FRAME_RATE);
+        double[] flux = new double[frames];
+        java.util.Random noise = new java.util.Random(7);
+        for (int i = 0; i < frames; i++) {
+            flux[i] = 0.05 * noise.nextGaussian();
+        }
+        int beat = 0;
+        for (double t = 0; t < seconds; t += period, beat++) {
+            int at = (int) Math.round(t * FRAME_RATE);
+            double height = beat % 2 == 0 ? 3 : 1;
+            for (int k = -2; k <= 2; k++) {
+                if (at + k >= 0 && at + k < frames) {
+                    flux[at + k] += height * (1 - Math.abs(k) / 3.0);
+                }
+            }
+        }
+        OnsetEnvelope envelope = new OnsetEnvelope(flux, FRAME_RATE);
+        assertThat(TempoEstimator.estimate(envelope).beatsPerMinute())
+                .isCloseTo(tempo / 2, within(2.0));
+
+        int trackFrames = (int) (seconds * RATE / HOP);
+        double[] hz = new double[trackFrames];
+        boolean[] voiced = new boolean[trackFrames];
+        double[] voicedness = new double[trackFrames];
+        for (int i = 0; i < trackFrames; i++) {
+            double t = i * (double) HOP / RATE;
+            int onBeat = (int) Math.floor(t / period);
+            hz[i] = onBeat % 2 == 0 ? 440 : 587.33;
+            voiced[i] = true;
+            voicedness[i] = 1;
+        }
+        PitchTrack track = new PitchTrack(hz, voiced, voicedness, RATE, WINDOW, HOP);
+        assertThat(TempoEstimator.estimate(envelope.withNoteChanges(track)).beatsPerMinute())
+                .isCloseTo(tempo, within(2.0));
+    }
+
     @Test
     @DisplayName("the voiced share is read over the sounding stretch, not the whole track")
     void voicedShareIgnoresTheSilenceAroundTheMusic() {

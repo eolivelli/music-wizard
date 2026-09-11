@@ -28,7 +28,10 @@ it rather than the melody, so these take the band away. The stage does
 separate now (#559), and these packages are what says what a vocal separator
 costs a melody that is played rather than sung. A package with no
 accompaniment carries no evidence for its own chord grid and is skipped by the
-chord harness.
+chord harness. A package with none — the `solo-*` set, one instrument
+alone — is what `tools/score-solo.py` scores: the engraved playable part, on
+the grid, so the beat, the key and the notes are all read off the page
+(#814).
 
 ## What the agent does
 

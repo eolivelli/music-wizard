@@ -217,6 +217,30 @@ separation model — so read premerge's output rather than CI for melody
 movement. *When* a sung note starts is
 genuinely ambiguous and #497 records the limit.
 
+**A single instrument playing a tune alone gets its beat from the notes it
+plays** (#814). `tools/score-solo.py` is the measurement that did not exist:
+the playable part, engraved and read back on the grid, against the package's
+own MIDI — because `score-melody.py` scores in seconds by design and the
+chord harness skips a package with no band, a flute whose notes read near
+perfectly in seconds engraved a page at half or double the tempo, or at a
+rate that was no multiple of it, and no row moved. The sustained instrument
+was the whole loss: the onset envelope hears a legato pitch change unevenly,
+by the interval and its direction, so a tune alternating two notes carries a
+two-beat accent the music does not have, and the sweep ranks the half tempo.
+Where the melody is read from the whole signal and the pitch track is voiced
+for most of the sounding stretch, the track's note changes now join the flux
+at equal weight, and a mix — whose track is the loudest line's and speaks for
+stretches of it, not for the beat — stays as it was; the run's record names
+which evidence the grid was tracked from. Consecutive tracking windows are
+also joined where they agree rather than at the later window's first frame,
+which handed the grid a spare beat at a seam on two of fourteen solo rows.
+`tools/baselines/score-solo.txt` carries the readings: the piano rows and
+most flute rows place nearly every note in its bar; what stands is the
+ramp's syncopation level (#826), a half-note line read at half tempo, the
+key signature on a line alone (#825) and the whole bar of rests a page opens
+with when the first tracked beat is a downbeat inside the first pulse
+(#824).
+
 **Every engraved part has a MusicXML twin** (#771): `chords.musicxml`,
 `chords-lyrics.musicxml`, `lead.musicxml`, `lead-playable.musicxml` and
 `voice.musicxml` beside the `.ly` of the same name, from the same

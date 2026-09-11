@@ -132,7 +132,9 @@ final class AnalyzeCommand implements Callable<Integer> {
                     + "Read from the separated vocal where a separation provider is "
                     + "available, and otherwise from the mix — where the tracker is "
                     + "monophonic and returns the loudest periodic line, usually not "
-                    + "the voice, rather than failing. Audio only.")
+                    + "the voice, rather than failing. Read from the mix, an instrument "
+                    + "playing alone also gives the beat tracker its note changes as "
+                    + "onsets, which a sustained instrument's attacks are not. Audio only.")
     boolean melody;
 
     @Option(names = "--melody-floor", paramLabel = "NOTE",

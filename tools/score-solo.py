@@ -19,7 +19,7 @@ Columns, per package:
   shift     the page's origin against the spec's, in quarter beats: the offset
             at which the most notes land on their reference. Zero is a page
             whose bar one is the spec's bar one; a positive whole bar is a
-            bar of rests the page opens with that nothing played.
+            bar of rests the page opens with that nothing played (#824).
   notes     how many notes the page holds, against the MIDI melody track
   placed    note F1 at that shift: the right semitone at the right beat of
             the right bar, matched one-to-one. Exact, since a printed onset

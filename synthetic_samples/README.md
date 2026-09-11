@@ -82,6 +82,21 @@ price is that a package with no accompaniment carries no evidence for its own
 chord grid — `tools/score-synthetic.py` skips it, and its silence on the chord
 columns is not a failure to fix.
 
+**The `solo-*` packages are one instrument playing a tune alone** — flute
+and piano, each at every level of the ramp, in keys and at tempi the
+`melody-level*` packages do not use — and they exist for the page rather
+than for the tracker: `tools/score-solo.py` takes every accompaniment-free
+package through the playable part and scores what was engraved, on the grid,
+against the package's own MIDI — bar count, tempo, the whole-bar shift the
+page opens with, note placement, note length and key signature. The two
+instruments are the pair: a piano's attacks are heard by the onset envelope
+and a flute's are not, so the flute rows are what the beat read from the
+pitch track's note changes was measured on (#814), and the piano rows are the
+control that the change cost nothing where the flux already sufficed. Level
+four is the step both instruments still fail at (#826), and half the pages
+carry a wrong key signature (#825). Its baseline is
+`tools/baselines/score-solo.txt`, diffed by premerge and CI like the others.
+
 A package with a `pad` is scored on chords like any other, and reads far worse
 than the full-band packages do. That is not the pad's harmony being unclear: a
 package with no drums gives the beat tracker nothing percussive to lock to, so
