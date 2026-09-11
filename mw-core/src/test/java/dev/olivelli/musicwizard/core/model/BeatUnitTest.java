@@ -624,7 +624,7 @@ class BeatUnitTest {
             }
 
             // Tracked: the grid wins over the map, because fromBeatTimes crams a
-            // whole pulse into the 0.2s before the first tracked beat and the
+            // whole pulse into the lead-in before the first tracked beat and the
             // map's average is measurably high for it.
             Score tracked = Score.empty(TempoMap.fromBeatTimes(pulses, TimeSignature.SIX_EIGHT),
                             12.0)

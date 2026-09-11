@@ -428,9 +428,9 @@ class ChordChartTest {
     void headerAndBarsBothUseTheTrackedBeats() {
         // Every other fixture here uses a constant map or a grid starting at
         // t=0.0, and in both cases every source of a tempo agrees, so none of
-        // them can tell which one was read. This one has a lead-in: a whole pulse
-        // crammed into the 0.13s before the first tracked beat pulls the map's
-        // average to 123.5, against the 120 a musician would count.
+        // them can tell which one was read. This one has a lead-in past the
+        // fraction the map leaves out: a whole pulse crammed into it pulls the
+        // map's average above the 120 a musician would count.
         //
         // Both assertions matter and neither implies the other. The header and
         // the bar lines are separate readers of the same answer, and this PR has
@@ -458,9 +458,9 @@ class ChordChartTest {
 
         assertThat(ChordChart.toText(tracked)).contains("Tempo  120 BPM");
         // At the tracked 120 a 4/4 bar is two seconds, so the harmony is six bars
-        // of one chord. Off the map's inflated average the bars are 1.94s, which
-        // rounds to a seventh bar with nothing in it -- a "%" continuation under
-        // a header that still says 120.
+        // of one chord. Off the map's inflated average the bars are shorter,
+        // which rounds to a seventh bar with nothing in it -- a "%" continuation
+        // under a header that still says 120.
         assertThat(ChordChart.barLines(tracked))
                 .allSatisfy(line -> assertThat(line).doesNotContain("%"));
         assertThat(String.join("", ChordChart.barLines(tracked)))

@@ -450,8 +450,7 @@ public record TempoMap(List<TempoSegment> segments, List<MeterChange> meterChang
         // a lead-in too short to be a pulse is left out of the map altogether,
         // whose origin then sits on the first tracked pulse -- see leadInPulses.
         // Whatever the count, every tracked pulse sits on a whole pulse from the
-        // origin; the alternative -- shifting the seconds axis -- misaligns the
-        // entire map from the audio by up to half a beat.
+        // origin.
         int leadInPulses = firstBeat > 0
                 ? leadInPulses(firstBeat, firstInterval, firstDownbeatPulse, pulsesPerBar)
                 : 0;
@@ -496,9 +495,7 @@ public record TempoMap(List<TempoSegment> segments, List<MeterChange> meterChang
      * <p>A tracker's first pulse is never at the origin, hop quantisation
      * alone puts it a frame or two in, so a recording that starts on a
      * downbeat would otherwise get a lead-in of one whole bar to keep that
-     * downbeat on a bar line -- a bar of rests nobody played (#824). Below a
-     * quarter of a pulse, what the map leaves out is shorter than the finest
-     * value a chart resolves.
+     * downbeat on a bar line -- a bar of rests nobody played (#824).
      */
     public static final double UNMODELLED_LEAD_IN_PULSES = 0.25;
 
