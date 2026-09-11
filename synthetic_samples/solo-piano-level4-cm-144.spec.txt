@@ -1,0 +1,23 @@
+title: Solo piano, level four - syncopation and leaps over a minor rock form in C minor
+genre: rock
+style: pop-rock
+tempo: 144
+meter: 4/4
+key: C minor
+seed: 34
+melody: piano
+melody-level: 4
+accompaniment: none
+bars:
+# Verse: the two-chord vamp i-VI, twice
+Cm Ab Cm Ab
+Cm Ab Cm Ab
+# Chorus: the minor loop i-VI-III-VII, twice
+Cm Ab Eb Bb
+Cm Ab Eb Bb
+# Bridge: the Andalusian descent i-VII-VI-V, twice, resting on the dominant
+Cm Bb Ab G
+Cm Bb Ab G
+# Close: iv-V turned aside onto VI (deceptive cadence), then iv-V-i held
+Fm G Ab Ab
+Fm G Cm Cm

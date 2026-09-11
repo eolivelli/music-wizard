@@ -1,0 +1,23 @@
+title: Solo piano, level one - a chord tone on every beat over a pop ballad form in Ab
+genre: pop
+style: pop-ballad
+tempo: 104
+meter: 4/4
+key: Ab major
+seed: 31
+melody: piano
+melody-level: 1
+accompaniment: none
+bars:
+# Verse: I-IV-V-I, then I-IV-V held (half cadence)
+Ab Db Eb Ab
+Ab Db Eb Eb
+# Chorus: the doo-wop I-vi-IV-V, twice
+Ab Fm Db Eb
+Ab Fm Db Eb
+# Bridge: vi-IV-I-V, the axis rotation, twice
+Fm Db Ab Eb
+Fm Db Ab Eb
+# Close: ii-V-I (authentic cadence), then IV-I and the tonic held (plagal close)
+Bbm Eb Ab Ab
+Db Ab Ab Ab

@@ -1,0 +1,23 @@
+title: Solo piano, level three - notes held across the bar line over a ballad form in E
+genre: pop
+style: pop-ballad
+tempo: 88
+meter: 4/4
+key: E major
+seed: 33
+melody: piano
+melody-level: 3
+accompaniment: none
+bars:
+# Verse: the doo-wop I-vi-IV-V, twice
+E C#m A B
+E C#m A B
+# Pre-chorus: ii-V-I, then ii-V resting on the dominant (half cadence)
+F#m B E E
+F#m B B B
+# Chorus: I-V-vi-IV, the axis loop, twice
+E B C#m A
+E B C#m A
+# Close: IV-V turned aside onto vi (deceptive cadence), then IV-V-I held
+A B C#m C#m
+A B E E
