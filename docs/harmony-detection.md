@@ -1,8 +1,8 @@
 # How MW detects harmony: chords and key
 
 Two estimators produce chords — one for audio, one for MIDI. The key is
-estimated on the audio path only, from those chords; a MIDI file's declared
-key signatures are read, never estimated. The audio chain is where the
+estimated on the audio path only; a MIDI file's declared key signatures are
+read, never estimated. The audio chain is where the
 project's hardest lessons live.
 
 ## Why plain chroma fails on records
@@ -138,7 +138,8 @@ printed span-by-span reads as noise. Nothing is lost from the model — the
 
 ## Key detection (`KeyEstimator`)
 
-Reads the estimated chords, not chroma, and reports **two confidences**
+Reads the estimated chords, not chroma — or, on a line playing alone, the
+line's own notes (#825) — and reports **two confidences**
 because it makes two decisions of very different reliability: the key
 signature (reliable), and which of a relative pair is home (the half that
 fails). A loop that neither begins nor ends on its tonic gives that second

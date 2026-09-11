@@ -659,12 +659,14 @@ final class ReportPhases {
         boolean any = !score.keys().isEmpty();
         open("key", "Key", any ? Status.RECORDED : Status.ABSENT,
                 "On a recording the key is read from the estimated chords rather than from"
-                        + " chroma, and it is two decisions of very different reliability:"
+                        + " chroma -- or, on a line playing alone, from the line's own notes"
+                        + " -- and it is two decisions of very different reliability:"
                         + " which key signature the piece is written in, and which of a"
                         + " relative pair is home. The second is the one that fails. A score"
                         + " read from a MIDI file takes the key its own meta event declares,"
                         + " and is certain of it because the file said so.");
-        inOut("the chord spans on a recording; a declared key signature on a MIDI file",
+        inOut("the chord spans on a recording, or the notes of a line playing alone;"
+                        + " a declared key signature on a MIDI file",
                 "a key signature, and a tonic within it",
                 "one key span, with a confidence for each decision");
         if (!any) {
@@ -712,8 +714,14 @@ final class ReportPhases {
                     + " here to draw.");
             return;
         }
+        boolean fromMelody = KeyTrace.FROM_MELODY.equals(trace.source());
         out.element("h4", "What the two decisions were weighed from").line("");
-        facts(fact("Chords sounded for",
+        if (fromMelody) {
+            note("The recording is a line playing alone, so the key was read from its notes"
+                    + " rather than from the chords named over it: a chord read off a single"
+                    + " line is a chord per note or two, and leans to the dominant.");
+        }
+        facts(fact(fromMelody ? "Notes sounded for" : "Chords sounded for",
                         HtmlWriter.number(trace.soundingSeconds(), 2) + "s of "
                                 + HtmlWriter.number(trace.spanSeconds(), 2) + "s"),
                 fact("Which is", Math.round(100 * trace.weighed()) + "% of the span"));
@@ -723,8 +731,8 @@ final class ReportPhases {
                 + " confidence above its floor is scaled by the share above; the floor itself"
                 + " is what chance leaves and no amount of silence takes it away.");
         signatureDecision(trace.signature());
-        tonicDecision(trace.tonic(), trace.candidates());
-        candidateTable(trace.candidates());
+        tonicDecision(trace.tonic(), trace.candidates(), fromMelody);
+        candidateTable(trace.candidates(), fromMelody);
     }
 
     /** Which key signature won, and the best key outside the winning relative pair. */
@@ -745,19 +753,29 @@ final class ReportPhases {
      * Which of the relative pair is home, and the only two things able to say
      * so — a relative pair shares every scale note.
      */
-    private void tonicDecision(KeyTrace.Decision tonic, List<KeyTrace.Candidate> candidates) {
+    private void tonicDecision(KeyTrace.Decision tonic, List<KeyTrace.Candidate> candidates,
+                               boolean fromMelody) {
         out.element("h5", "Which of the relative pair is home").line("");
         facts(fact("Named", tonic.winner()),
                 fact("Its relative", tonic.runnerUp()),
                 fact("Margin", HtmlWriter.number(tonic.margin(), 3)));
-        relativePairTable(tonic, candidates);
-        note("A key and its relative minor share every note of the scale, so the scale cannot"
-                + " separate them. Two things can: a chord on the fifth degree of the minor"
-                + " key whose third is that key's raised seventh, which the relative major"
-                + " does not hold, and the key's own tonic chord, which is worth half again"
-                + " beyond fitting the scale. Where a chord opens or closes the recording is"
-                + " read for nothing at all — on a recording those two spans are a fade-in"
-                + " and a tail decoded from almost no signal.");
+        relativePairTable(tonic, candidates, fromMelody);
+        note(fromMelody
+                ? "A key and its relative minor share every note of the scale, so the scale"
+                        + " cannot separate them. Two things can: a note on the minor key's"
+                        + " raised seventh, which the relative major does not hold, and a note"
+                        + " on the key's own tonic, which is worth half again beyond fitting"
+                        + " the scale. The note the line closes on is read for nothing: a line"
+                        + " closes on the fifth or the third of its tonic chord as readily as"
+                        + " on the tonic."
+                : "A key and its relative minor share every note of the scale, so the scale"
+                        + " cannot separate them. Two things can: a chord on the fifth degree"
+                        + " of the minor key whose third is that key's raised seventh, which"
+                        + " the relative major does not hold, and the key's own tonic chord,"
+                        + " which is worth half again beyond fitting the scale. Where a chord"
+                        + " opens or closes the recording is read for nothing at all — on a"
+                        + " recording those two spans are a fade-in and a tail decoded from"
+                        + " almost no signal.");
         if (!"separated".equals(tonic.read())) {
             note("Here the two came to one score, so the harmony chose neither and the"
                     + " estimator did not guess. It wrote the major, the more often right of"
@@ -771,7 +789,8 @@ final class ReportPhases {
      * the one that won first — the trace lists its candidates in the order they
      * were scored, which is not an order this comparison is in.
      */
-    private void relativePairTable(KeyTrace.Decision tonic, List<KeyTrace.Candidate> candidates) {
+    private void relativePairTable(KeyTrace.Decision tonic, List<KeyTrace.Candidate> candidates,
+                                   boolean fromMelody) {
         List<KeyTrace.Candidate> pair = Stream.of(tonic.winner(), tonic.runnerUp())
                 .flatMap(key -> candidates.stream().filter(entry -> entry.key().equals(key)))
                 .toList();
@@ -780,47 +799,57 @@ final class ReportPhases {
         }
         // Not behind a disclosure: this is the comparison the phase is about.
         out.line("<table class=\"shown\"><thead><tr><th>Key</th><th>Score</th>"
-                + "<th>Its own tonic chord</th><th>Its raised seventh</th>"
+                + "<th>" + tonicColumn(fromMelody) + "</th><th>Its raised seventh</th>"
                 + "</tr></thead><tbody>");
-        pair.forEach(this::candidateRow);
+        pair.forEach(candidate -> candidateRow(candidate, fromMelody));
         out.line("</tbody></table>");
     }
 
     /** Every key that was scored, so the winner can be read against the field. */
-    private void candidateTable(List<KeyTrace.Candidate> candidates) {
+    private void candidateTable(List<KeyTrace.Candidate> candidates, boolean fromMelody) {
         if (candidates.isEmpty()) {
             note("No candidate key was scored.");
             return;
         }
         out.line("<details class=\"table\">");
         out.element("summary", "Every key that was scored");
-        out.line("<table><thead><tr><th>Key</th><th>Score</th><th>Its own tonic chord</th>"
-                + "<th>Its raised seventh</th></tr></thead><tbody>");
+        out.line("<table><thead><tr><th>Key</th><th>Score</th><th>" + tonicColumn(fromMelody)
+                + "</th><th>Its raised seventh</th></tr></thead><tbody>");
         candidates.stream()
                 .sorted(Comparator.comparingDouble(KeyTrace.Candidate::score).reversed())
-                .forEach(this::candidateRow);
+                .forEach(candidate -> candidateRow(candidate, fromMelody));
         out.line("</tbody></table>");
         out.line("</details>");
-        note("The score is a duration-weighted average over each chord's triad: how much of"
-                + " it lies in the key's scale, and half again where the chord is the key's"
-                + " own tonic chord. A seventh or a sixth is read for nothing, since a colour"
-                + " tone routinely leaves the key.");
+        note(fromMelody
+                ? "The score is a duration-weighted average over the line's notes: whether"
+                        + " each lies in the key's scale, and half again where it is the key's"
+                        + " own tonic."
+                : "The score is a duration-weighted average over each chord's triad: how much"
+                        + " of it lies in the key's scale, and half again where the chord is the"
+                        + " key's own tonic chord. A seventh or a sixth is read for nothing,"
+                        + " since a colour tone routinely leaves the key.");
+    }
+
+    private static String tonicColumn(boolean fromMelody) {
+        return fromMelody ? "Its own tonic note" : "Its own tonic chord";
     }
 
     /** One key and the evidence it was scored on, in either of the two tables. */
-    private void candidateRow(KeyTrace.Candidate candidate) {
+    private void candidateRow(KeyTrace.Candidate candidate, boolean fromMelody) {
         out.open("tr");
         out.element("td", candidate.key(), "class", "symbol");
         out.element("td", HtmlWriter.number(candidate.score(), 3));
-        out.element("td", sounded(candidate.tonicChordSpans(), candidate.tonicChordSeconds()));
+        out.element("td", sounded(candidate.tonicChordSpans(), candidate.tonicChordSeconds(),
+                fromMelody));
         out.element("td", sounded(candidate.raisedSeventhSpans(),
-                candidate.raisedSeventhSeconds()));
+                candidate.raisedSeventhSeconds(), fromMelody));
         out.line("</tr>");
     }
 
-    private static String sounded(int spans, double seconds) {
+    private static String sounded(int spans, double seconds, boolean fromMelody) {
+        String unit = fromMelody ? " note" : " chord";
         return spans == 0 ? "nothing"
-                : spans + (spans == 1 ? " chord, " : " chords, ")
+                : spans + unit + (spans == 1 ? ", " : "s, ")
                         + HtmlWriter.number(seconds, 2) + "s";
     }
 

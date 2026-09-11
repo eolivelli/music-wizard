@@ -21,6 +21,8 @@ import dev.olivelli.musicwizard.core.model.ChordProgression;
 import dev.olivelli.musicwizard.core.model.Confidence;
 import dev.olivelli.musicwizard.core.model.Key;
 import dev.olivelli.musicwizard.core.model.Mode;
+import dev.olivelli.musicwizard.core.model.Note;
+import dev.olivelli.musicwizard.core.model.NoteTrack;
 import dev.olivelli.musicwizard.core.workspace.KeyTrace;
 import java.util.ArrayList;
 import java.util.List;
@@ -98,6 +100,17 @@ import java.util.Optional;
  * makes a detector answer the relative major, since the minor's tonic is the
  * major's vi. It is left out on purpose.
  *
+ * <h2>A line playing alone</h2>
+ *
+ * <p>Chords read off a single line are a chord per note or two, leaning to
+ * the dominant, so {@link #estimate(NoteTrack, double, double)} reads the key
+ * from the line's own notes instead and weighs the same two things: how much
+ * of the line lies in the key's scale, where a minor key's scale includes its
+ * raised seventh — the harmonic-minor dominant's third, arriving as a note —
+ * and the tonic note, worth half again like the tonic chord above. The closing
+ * note is read for nothing: a line closes on the fifth or the third of its
+ * tonic chord as readily as on the tonic (#825).
+ *
  * <p>Modulation is out of scope (#228): one key is returned for the whole span.
  */
 public final class KeyEstimator {
@@ -118,8 +131,19 @@ public final class KeyEstimator {
     /** Semitones from a tonic to its dominant. */
     private static final int DOMINANT = 7;
 
+    /** Semitones from a tonic to its raised seventh, the harmonic minor's leading tone. */
+    private static final int RAISED_SEVENTH = 11;
+
     /** How much the key's own tonic chord is worth beyond fitting the scale. */
     private static final double TONIC_CHORD_WEIGHT = 0.5;
+
+    /**
+     * How much a note on the key's tonic is worth beyond fitting the scale, on
+     * a line alone. The tonic chord's weight, since it plays the same part:
+     * heavier, and the line's most-used note drags the key after it, which on
+     * a line that lives on its dominant is the wrong key.
+     */
+    private static final double TONIC_NOTE_WEIGHT = TONIC_CHORD_WEIGHT;
 
     /** Scores this close are one score; see {@link #beats}. */
     private static final double TIE = 1e-9;
@@ -227,12 +251,53 @@ public final class KeyEstimator {
         if (sounding <= 0) {
             return Optional.empty();
         }
-
         Weighed[][] evidence = new Weighed[12][2];
-        double[][] scores = new double[12][2];
         for (int tonic = 0; tonic < 12; tonic++) {
             for (Mode mode : Mode.values()) {
                 evidence[tonic][mode.ordinal()] = score(progression, tonic, mode);
+            }
+        }
+        return Optional.of(decide(KeyTrace.FROM_CHORDS, evidence, sounding,
+                startSeconds, endSeconds));
+    }
+
+    /**
+     * The key a line playing alone is in, read from its notes.
+     *
+     * <p>Empty when the line holds no note. The caller decides that the line
+     * is alone: a mix's melody is one voice of its harmony and says less about
+     * the key than the chords do.
+     *
+     * @param melody       the line's notes, in seconds
+     * @param startSeconds when the returned key takes effect
+     * @param endSeconds   when it stops
+     */
+    public static Optional<Estimate> estimate(NoteTrack melody,
+                                              double startSeconds, double endSeconds) {
+        Objects.requireNonNull(melody, "melody");
+        double sounding = 0;
+        for (Note note : melody.notes()) {
+            sounding += note.durationSeconds();
+        }
+        if (sounding <= 0) {
+            return Optional.empty();
+        }
+        Weighed[][] evidence = new Weighed[12][2];
+        for (int tonic = 0; tonic < 12; tonic++) {
+            for (Mode mode : Mode.values()) {
+                evidence[tonic][mode.ordinal()] = score(melody, tonic, mode);
+            }
+        }
+        return Optional.of(decide(KeyTrace.FROM_MELODY, evidence, sounding,
+                startSeconds, endSeconds));
+    }
+
+    /** Both decisions, from evidence already weighed, whichever source weighed it. */
+    private static Estimate decide(String source, Weighed[][] evidence, double sounding,
+                                   double startSeconds, double endSeconds) {
+        double[][] scores = new double[12][2];
+        for (int tonic = 0; tonic < 12; tonic++) {
+            for (Mode mode : Mode.values()) {
                 scores[tonic][mode.ordinal()] =
                         evidence[tonic][mode.ordinal()].total() / sounding;
             }
@@ -271,7 +336,7 @@ public final class KeyEstimator {
             }
         }
 
-        // How much of the span the chords actually accounted for. A margin says
+        // How much of the span the evidence actually accounted for. A margin says
         // which key won; it says nothing about how much was weighed, and the two
         // come apart badly -- half a second of one chord inside four minutes of
         // silence produces a maximal margin, because the score is an average
@@ -292,13 +357,13 @@ public final class KeyEstimator {
         Key key = Key.estimated(
                 Key.tonicOf(signatureOf(bestTonic, bestMode), bestMode), bestMode,
                 startSeconds, endSeconds, signature, tonic);
-        KeyTrace trace = new KeyTrace(KeyTrace.FROM_CHORDS, sounding,
+        KeyTrace trace = new KeyTrace(source, sounding,
                 endSeconds - startSeconds, weighed, candidates(evidence, sounding),
                 decision(name(bestTonic, bestMode), name(otherTonic, otherMode),
                         best - otherSignature),
                 decision(name(bestTonic, bestMode), name(relativeTonic, relativeMode),
                         best - relative));
-        return Optional.of(new Estimate(key, trace));
+        return new Estimate(key, trace);
     }
 
     /** Every key that was scored, and the evidence each of them got there on. */
@@ -331,8 +396,9 @@ public final class KeyEstimator {
     }
 
     /**
-     * What one key was worth over the progression, and the two tallies that are
-     * the only things able to separate it from its relative.
+     * What one key was worth over the evidence, and the two tallies that are
+     * the only things able to separate it from its relative: chord spans on
+     * the chord path, notes on the melody path.
      */
     private record Weighed(double total, int tonicChordSpans, double tonicChordSeconds,
                            int raisedSeventhSpans, double raisedSeventhSeconds) {
@@ -390,6 +456,39 @@ public final class KeyEstimator {
         }
         return new Weighed(total, tonicChordSpans, tonicChordSeconds,
                 raisedSeventhSpans, raisedSeventhSeconds);
+    }
+
+    /**
+     * Duration-weighted score of one key over a line's notes, not yet divided
+     * by the sounding time. The tallies count notes: on the tonic, and on the
+     * minor key's raised seventh.
+     */
+    private static Weighed score(NoteTrack melody, int tonic, Mode mode) {
+        int[] scale = mode == Mode.MINOR ? NATURAL_MINOR : MAJOR_SCALE;
+        double total = 0;
+        int tonicNotes = 0;
+        double tonicSeconds = 0;
+        int raisedSeventhNotes = 0;
+        double raisedSeventhSeconds = 0;
+        for (Note note : melody.notes()) {
+            int degree = Math.floorMod(note.pitchClass() - tonic, 12);
+            double fit;
+            if (mode == Mode.MINOR && degree == RAISED_SEVENTH) {
+                fit = 1;
+                raisedSeventhNotes++;
+                raisedSeventhSeconds += note.durationSeconds();
+            } else {
+                fit = inScale(degree, scale) ? 1 : 0;
+            }
+            boolean tonicNote = degree == 0;
+            if (tonicNote) {
+                tonicNotes++;
+                tonicSeconds += note.durationSeconds();
+            }
+            total += note.durationSeconds() * (fit + (tonicNote ? TONIC_NOTE_WEIGHT : 0));
+        }
+        return new Weighed(total, tonicNotes, tonicSeconds,
+                raisedSeventhNotes, raisedSeventhSeconds);
     }
 
     /**

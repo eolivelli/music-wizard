@@ -120,6 +120,58 @@ class KeyTraceOnTheAudioPathTest {
         assertThat(log.traces()).doesNotContainKey(KeyTrace.STAGE);
     }
 
+    /**
+     * A flute-like line alone: one sine per note, a note a beat, no rest --
+     * voiced throughout, which is what puts it on the line-alone route.
+     */
+    private static AudioBuffer lineAlone(int... midiPitches) {
+        double beat = 0.5;
+        float[] samples = new float[(int) (midiPitches.length * beat * SAMPLE_RATE)];
+        int at = 0;
+        for (int pitch : midiPitches) {
+            float[] note = SignalFactory.sine(SignalFactory.midiToHz(pitch), beat, SAMPLE_RATE);
+            System.arraycopy(note, 0, samples, at, Math.min(note.length, samples.length - at));
+            at += note.length;
+        }
+        return new AudioBuffer(samples, SAMPLE_RATE);
+    }
+
+    /** Four bars in G on chord tones of I, IV and V, twice over. */
+    private static AudioBuffer tuneInG() {
+        int[] once = {74, 71, 67, 71, 72, 76, 79, 76, 74, 78, 81, 78, 79, 71, 74, 67};
+        int[] twice = new int[once.length * 2];
+        System.arraycopy(once, 0, twice, 0, once.length);
+        System.arraycopy(once, 0, twice, once.length, once.length);
+        return lineAlone(twice);
+    }
+
+    private static final AudioTranscriber.Options WITH_MELODY =
+            new AudioTranscriber.Options(null, TimeSignature.FOUR_FOUR, null, true);
+
+    @Test
+    @DisplayName("a line alone has its key read from its notes (#825)")
+    void aLineAloneIsReadFromItsNotes() {
+        Score score = new AudioTranscriber(message -> { }, log).transcribe(tuneInG(), WITH_MELODY);
+
+        KeyTrace trace = recorded();
+        assertThat(trace.source()).isEqualTo(KeyTrace.FROM_MELODY);
+        assertThat(score.primaryKey().orElseThrow().displayName()).isEqualTo("G major");
+        assertThat(trace.tonic().winner()).isEqualTo("G major");
+        // The tallies count the line's notes on G, not chords.
+        assertThat(candidate(trace, "G major").tonicChordSpans()).isPositive();
+    }
+
+    @Test
+    @DisplayName("a melody read from a separated stem leaves the key to the chords")
+    void aStemLeavesTheKeyToTheChords() {
+        // The stem is one voice of the band; the key is the band's.
+        new AudioTranscriber(message -> { }, log).transcribe(minorLoop(), WITH_MELODY,
+                () -> new AudioBuffer(SignalFactory.sine(
+                        SignalFactory.midiToHz(69), 16.0, SAMPLE_RATE), SAMPLE_RATE));
+
+        assertThat(recorded().source()).isEqualTo(KeyTrace.FROM_CHORDS);
+    }
+
     private static KeyTrace.Candidate candidate(KeyTrace trace, String key) {
         return trace.candidates().stream()
                 .filter(entry -> entry.key().equals(key))

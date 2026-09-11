@@ -571,9 +571,20 @@ public final class AudioTranscriber {
         // is what the listener hears the piece as being in, and it does not stop
         // at the last chord the estimator was able to name. Score.keyAt would
         // otherwise answer nothing for the lead-in and the tail.
-        Optional<KeyEstimator.Estimate> key =
-                KeyEstimator.estimate(chords, 0, audio.durationSeconds());
-        key.ifPresentOrElse(
+        //
+        // On a line alone, from its notes rather than from the chords read off
+        // it, and behind the same gate as the beat: chords named over a single
+        // line are a chord per note or two and lean to the dominant (#825).
+        Optional<KeyEstimator.Estimate> key = noteOnsets
+                ? KeyEstimator.estimate(mixMelody.melody(), 0, audio.durationSeconds())
+                : Optional.empty();
+        if (key.isPresent()) {
+            progress.accept("a line alone: the key is read from its notes");
+        } else {
+            key = KeyEstimator.estimate(chords, 0, audio.durationSeconds());
+        }
+        Optional<KeyEstimator.Estimate> estimated = key;
+        estimated.ifPresentOrElse(
                 // Worded by the key itself, so this line, the summary and the
                 // chart cannot describe one key three ways.
                 estimate -> {
@@ -589,7 +600,7 @@ public final class AudioTranscriber {
         Score score = Score.empty(tempoMap, audio.durationSeconds())
                 .withBeatGrid(grid)
                 .withChords(chords)
-                .withKeys(key.map(estimate -> List.of(estimate.key())).orElse(List.of()));
+                .withKeys(estimated.map(estimate -> List.of(estimate.key())).orElse(List.of()));
 
         // Last, and from whatever the caller says the melody is in: there is no
         // separation in this module, so the signal is chosen by handing it in.

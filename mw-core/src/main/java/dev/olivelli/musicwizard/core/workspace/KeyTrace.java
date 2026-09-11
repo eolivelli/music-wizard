@@ -32,10 +32,12 @@ import java.util.Objects;
  * correct the key by hand needs to know which of them was the weak one.
  *
  * @param source           {@code chords} where the key was read off the
- *                         estimated chords, {@code declared} where the file
- *                         stated it and nothing was weighed
+ *                         estimated chords, {@code melody} where it was read
+ *                         off the notes of a line playing alone (#825),
+ *                         {@code declared} where the file stated it and
+ *                         nothing was weighed
  * @param soundingSeconds  how much of the span carried a chord that was not
- *                         {@code N.C.}
+ *                         {@code N.C.}, or a note on the melody source
  * @param spanSeconds      how long the key span is
  * @param weighed          the share of the span the chords accounted for, as it
  *                         entered both confidences. Not quite the ratio of the
@@ -63,6 +65,9 @@ public record KeyTrace(
     /** Read off the estimated chords. */
     public static final String FROM_CHORDS = "chords";
 
+    /** Read off the notes of a line playing alone. */
+    public static final String FROM_MELODY = "melody";
+
     /** Taken from what the file declares, with nothing weighed. */
     public static final String DECLARED = "declared";
 
@@ -83,15 +88,19 @@ public record KeyTrace(
      * the only things that can separate one: a chord on the fifth degree of a
      * minor key whose third is that key's raised seventh, and the key's own
      * tonic chord. Where they come out the same for both members of a pair,
-     * nothing in the harmony chose between them.
+     * nothing in the harmony chose between them. On the melody source the
+     * spans are notes: those on the key's tonic, and those on its raised
+     * seventh.
      *
      * @param key                  the key's name
-     * @param score                what the progression was worth to it,
+     * @param score                what the evidence was worth to it,
      *                             averaged over the sounding time
-     * @param tonicChordSpans      chords that were this key's own tonic chord
+     * @param tonicChordSpans      chords that were this key's own tonic chord,
+     *                             or notes on its tonic
      * @param tonicChordSeconds    how long they sounded for
      * @param raisedSeventhSpans   chords scored as this key's harmonic-minor
-     *                             dominant, which a major key never has
+     *                             dominant, which a major key never has, or
+     *                             notes on its raised seventh
      * @param raisedSeventhSeconds how long they sounded for
      */
     @JsonIgnoreProperties(ignoreUnknown = true)

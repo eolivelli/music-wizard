@@ -153,7 +153,8 @@ layered config, CLI) and the harmony half of M1b (decode, onsets, Ellis beat
 tracking, tuning-corrected chroma, chord recognition, key naming, chord chart,
 LilyPond). Four review rounds on `mw-core`.
 
-Key detection (#275) reads the estimated chords, not chroma, and reports two
+Key detection (#275) reads the estimated chords, not chroma — a line
+playing alone is the exception, below — and reports two
 confidences because it makes two decisions of very different reliability: the
 key signature, and which of a relative pair is home. The second is what fails —
 a loop that neither begins nor ends on its tonic gives it nothing to work with,
@@ -237,15 +238,20 @@ which evidence the grid was tracked from.
 `tools/baselines/score-solo.txt` carries the readings. A first tracked
 beat a frame after the origin no longer opens the page on a bar of rests:
 a lead-in shorter than a fraction of a pulse is left out of the tempo map,
-whose origin then sits on that beat (#824). What stands is the ramp's
-syncopation level (#826), a half-note line read at half tempo, the key
-signature on a line alone (#825), and a spare beat at a tracking-window
-seam (#827). The gate admits
+whose origin then sits on that beat (#824). Behind the same gate, the key
+is read from the line's notes rather than from the chords named over it,
+which on a single line are a chord per note or two leaning to the dominant
+(#825): the scale names the signature, and the tonic note and the minor's
+raised seventh separate the relative pair; where the line comes to rest is
+not weighed, since these lines close on any tone of the tonic chord. What
+stands is the ramp's syncopation level (#826), a half-note line read at
+half tempo, a line whose tonic is its rarest note and reads as its relative
+minor, and a spare beat at a tracking-window seam (#827). The gate admits
 real solo singing too — vocadito's clips are voiced well past it — and that
-corpus carries no beat truth, so what the route does to a sung line's grid
-is unmeasured: of the clips that move, as many land nearer the prior-free
-estimators of `.claude/skills/verify-tempo` as further, and one lands at
-the tempo sweep's floor (#829).
+corpus carries neither beat nor key truth, so what the route does to a sung
+line's grid and key is unmeasured: of the clips whose grid moves, as many
+land nearer the prior-free estimators of `.claude/skills/verify-tempo` as
+further, and one lands at the tempo sweep's floor (#829).
 
 **Every engraved part has a MusicXML twin** (#771): `chords.musicxml`,
 `chords-lyrics.musicxml`, `lead.musicxml`, `lead-playable.musicxml` and
