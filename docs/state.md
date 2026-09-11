@@ -245,8 +245,14 @@ which on a single line are a chord per note or two leaning to the dominant
 raised seventh separate the relative pair; where the line comes to rest is
 not weighed, since these lines close on any tone of the tonic chord. What
 stands is the ramp's syncopation level (#826), a half-note line read at
-half tempo, a line whose tonic is its rarest note and reads as its relative
-minor, and a spare beat at a tracking-window seam (#827). The gate admits
+half tempo, and a line whose tonic is its rarest note and reads as its
+relative minor. The spare beat at a tracking-window seam is closed (#827):
+windows are joined where their beats agree rather than at the later one's
+first frame, which on the real corpus removed the odd gap at half-window
+multiples from nearly every recording that had one, took the shuffle
+benchmark with seven such seams from nine bars in ten to nearly all on the
+root column, and cost two key readings that sat at the estimator's floor;
+`tools/baselines/score-samples.txt` has the readings. The gate admits
 real solo singing too — vocadito's clips are voiced well past it — and that
 corpus carries neither beat nor key truth, so what the route does to a sung
 line's grid and key is unmeasured: of the clips whose grid moves, as many
