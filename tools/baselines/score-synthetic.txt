@@ -5,7 +5,7 @@ Synthetic corpus, bar-by-bar against each package's own spec
   hiphop-m7vamp-bbm-90.mp3: bars=52/52  tempo 90.0/90 (x1.00)  meter OK  root 51.5/52 (99.0%)  root+quality 51.5/52 (99.0%)  split 1  key OK
   melody-level1-c-96.mp3: melody only; chords not scored
   melody-level2-g-84.mp3: melody only; chords not scored
-  melody-level2pad-g-84.mp3: bars=69/32  tempo 181.3/84 (x2.16)  meter OK  root 5.0/32 (15.6%)  root+quality 3.0/32 (9.4%)  split 0  key OK
+  melody-level2pad-g-84.mp3: bars=70/32  tempo 181.8/84 (x2.16)  meter OK  root 5.0/32 (15.6%)  root+quality 3.0/32 (9.4%)  split 0  key OK
   melody-level3-am-108.mp3: melody only; chords not scored
   melody-level4-f-126.mp3: melody only; chords not scored
   pop-68-threebar-am-144.mp3: bars=63/63  tempo 143.9/144 (x1.00)  meter OK  root 63.0/63 (100.0%)  root+quality 24.0/63 (38.1%)  split 0  key OK
@@ -24,3 +24,13 @@ Synthetic corpus, bar-by-bar against each package's own spec
   pop-threechord-c-108.mp3: bars=28/28  tempo 108.1/108 (x1.00)  meter OK  root 28.0/28 (100.0%)  root+quality 27.0/28 (96.4%)  split 0  key OK
   pop-waltz-d-108.mp3: bars=39/40  tempo 108.1/108 (x1.00)  meter OK  root 39.0/40 (97.5%)  root+quality 39.0/40 (97.5%)  split 0  key OK
   rocknroll-12bar-a-168.mp3: bars=47/48  tempo 168.1/168 (x1.00)  meter OK  root 44.0/48 (91.7%)  root+quality 19.5/48 (40.6%)  split 2  key OK
+  solo-flute-level1-d-100.mp3: melody only; chords not scored
+  solo-flute-level2-bb-112.mp3: melody only; chords not scored
+  solo-flute-level2-eb-66.mp3: melody only; chords not scored
+  solo-flute-level3-em-92.mp3: melody only; chords not scored
+  solo-flute-level4-a-138.mp3: melody only; chords not scored
+  solo-piano-level1-ab-104.mp3: melody only; chords not scored
+  solo-piano-level2-dm-63.mp3: melody only; chords not scored
+  solo-piano-level2-f-120.mp3: melody only; chords not scored
+  solo-piano-level3-e-88.mp3: melody only; chords not scored
+  solo-piano-level4-cm-144.mp3: melody only; chords not scored

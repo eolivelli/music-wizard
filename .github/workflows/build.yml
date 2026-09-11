@@ -149,6 +149,12 @@ jobs:
         run: |
           python3 tools/score-melody.py | tee target/score-melody.txt
           diff -u tools/baselines/score-melody.txt target/score-melody.txt
+      # The page a solo instrument gets (#814): the same packages through the
+      # playable part, scored on the grid; same jar, same job.
+      - name: Score the solo pages and diff the baseline
+        run: |
+          python3 tools/score-solo.py | tee target/score-solo.txt
+          diff -u tools/baselines/score-solo.txt target/score-solo.txt
 
   # Analyzes every committed sample and publishes the corpus status to the
   # run's summary page: tempo, meter and span count per file, plus the scored
