@@ -659,12 +659,14 @@ final class ReportPhases {
         boolean any = !score.keys().isEmpty();
         open("key", "Key", any ? Status.RECORDED : Status.ABSENT,
                 "On a recording the key is read from the estimated chords rather than from"
-                        + " chroma, and it is two decisions of very different reliability:"
+                        + " chroma -- or, on a line playing alone, from the line's own notes"
+                        + " -- and it is two decisions of very different reliability:"
                         + " which key signature the piece is written in, and which of a"
                         + " relative pair is home. The second is the one that fails. A score"
                         + " read from a MIDI file takes the key its own meta event declares,"
                         + " and is certain of it because the file said so.");
-        inOut("the chord spans on a recording; a declared key signature on a MIDI file",
+        inOut("the chord spans on a recording, or the notes of a line playing alone;"
+                        + " a declared key signature on a MIDI file",
                 "a key signature, and a tonic within it",
                 "one key span, with a confidence for each decision");
         if (!any) {

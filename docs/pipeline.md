@@ -34,7 +34,8 @@ decode ─ resample ─┬─ onset envelope ──┐
 6. **Downbeats** — which tracked beats begin bars, chosen from harmonic change.
 7. **Chords** — template matching over beat-synchronous chroma, decoded with
    Viterbi, with the bass register as a prior over roots.
-8. **Key** — read from the estimated chords, not from chroma.
+8. **Key** — read from the estimated chords, not from chroma; on a line
+   playing alone, from the line's own notes.
 9. **Score assembly** — everything lands in one `Score` on one time axis.
 10. **Quantize and engrave** — grid choice per bar, then LilyPond source and
    PDF, emitted straight from the domain model, with a MusicXML twin of every
