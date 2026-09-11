@@ -1654,6 +1654,101 @@ class BeatTrackingTest {
     }
 
     @Nested
+    @DisplayName("window seams")
+    class Seams {
+
+        private static List<Double> grid(double from, double to, double period) {
+            List<Double> beats = new ArrayList<>();
+            for (double at = from; at <= to + 1e-9; at += period) {
+                beats.add(at);
+            }
+            return beats;
+        }
+
+        private static List<Double> gaps(List<Double> beats) {
+            List<Double> gaps = new ArrayList<>();
+            for (int i = 1; i < beats.size(); i++) {
+                gaps.add(beats.get(i) - beats.get(i - 1));
+            }
+            return gaps;
+        }
+
+        @ParameterizedTest(name = "a click track at {0} BPM crosses every seam with no beat gained or lost")
+        @ValueSource(doubles = {92, 88, 63})
+        void aSeamAddsNoBeat(double bpm) {
+            // Long enough for several seams, at rates whose clicks sit at every
+            // phase against the half-window step -- the ones the solo corpus
+            // exposed among them (#827).
+            double period = 60.0 / bpm;
+            List<Double> beats = BeatTracker.track(
+                    envelopeOf(SignalFactory.clickTrack(bpm, 90, RATE))).beatTimes();
+
+            assertThat(beats).hasSizeGreaterThan(80);
+            assertThat(gaps(beats))
+                    .as("every gap is one period")
+                    .allSatisfy(gap -> assertThat(gap).isCloseTo(period, withinPercentage(20)));
+        }
+
+        @Test
+        @DisplayName("the cut goes where the windows agree, not at the later one's first frame")
+        void cutsWhereTheWindowsAgree() {
+            // The later program's first beat lands where the earlier put none,
+            // half a period off; from its second beat on the two agree.
+            List<Double> accepted = grid(0, 25, 1);
+            List<Double> next = new ArrayList<>(List.of(12.6));
+            next.addAll(grid(13, 37, 1));
+
+            BeatTracker.join(accepted, next, 12.5, 25, 1);
+
+            assertThat(accepted).isEqualTo(grid(0, 37, 1));
+        }
+
+        @Test
+        @DisplayName("two windows half a period apart throughout join at a long gap, not a short one")
+        void disagreeingWindowsJoinAtTheMoreRegularGap() {
+            List<Double> accepted = grid(0, 25, 1);
+            List<Double> next = grid(12.5, 37.5, 1);
+
+            BeatTracker.join(accepted, next, 12.5, 25, 1);
+
+            List<Double> odd = gaps(accepted).stream().filter(gap -> gap != 1.0).toList();
+            assertThat(odd).containsExactly(1.5);
+            assertThat(accepted.get(accepted.size() - 1)).isEqualTo(37.5);
+            // Interior to both programs rather than at either's edge.
+            int cut = gaps(accepted).indexOf(1.5);
+            assertThat(accepted.get(cut)).isBetween(15.0, 22.0);
+        }
+
+        @Test
+        @DisplayName("an earlier window that left the overlap empty is continued by the later one")
+        void continuesPastAnEmptyOverlap() {
+            List<Double> accepted = grid(0, 10, 1);
+            List<Double> next = grid(12.6, 37.6, 1);
+
+            BeatTracker.join(accepted, next, 12.5, 25, 1);
+
+            List<Double> expected = grid(0, 10, 1);
+            expected.addAll(grid(12.6, 37.6, 1));
+            assertThat(accepted).isEqualTo(expected);
+        }
+
+        @Test
+        @DisplayName("a tail shorter than a step is not a window of its own")
+        void noSliverWindow() {
+            OnsetEnvelope envelope = envelopeOf(SignalFactory.clickTrack(120, 27, RATE));
+            List<int[]> windows = BeatTracker.analysisWindows(envelope);
+
+            assertThat(windows).hasSize(2);
+            assertThat(windows.get(1)[1]).isEqualTo(envelope.length());
+            assertThat(windows).allSatisfy(window ->
+                    assertThat(window[1] - window[0]).isGreaterThanOrEqualTo(
+                            (int) Math.round(12.5 * envelope.frameRate())));
+            assertThat(BeatTracker.votingWindows(envelope))
+                    .usingRecursiveComparison().isEqualTo(windows);
+        }
+    }
+
+    @Nested
     @DisplayName("the marked pulse")
     class Marked {
 

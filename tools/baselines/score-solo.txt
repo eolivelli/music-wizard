@@ -6,8 +6,8 @@ Solo instrument, the playable part against each package's own MIDI, on the grid
   melody-level1-c-96: bars=25/24  tempo 96.4/96 (x1.00)  shift +0.00  notes=96/96  placed 100.0%  held 99.0%  key OK
   melody-level2-g-84: bars=17/32  tempo 42.0/84 (x0.50)  shift +2.00  notes=102/113  placed 9.3%  held 70.0%  key OK
   melody-level2pad-g-84: not a solo package; not scored
-  melody-level3-am-108: bars=34/32  tempo 108.3/108 (x1.00)  shift +0.00  notes=74/74  placed 100.0%  held 79.7%  key OK
-  melody-level4-f-126: bars=32/32  tempo 125.5/126 (x1.00)  shift +0.00  notes=94/95  placed 72.0%  held 83.8%  key OK
+  melody-level3-am-108: bars=34/32  tempo 108.1/108 (x1.00)  shift +0.00  notes=74/74  placed 100.0%  held 79.7%  key OK
+  melody-level4-f-126: bars=32/32  tempo 125.8/126 (x1.00)  shift +0.00  notes=94/95  placed 84.7%  held 82.5%  key OK
   pop-68-threebar-am-144: not a solo package; not scored
   pop-68-twobar-am-144: not a solo package; not scored
   pop-68-vamp-am-144: not a solo package; not scored
@@ -25,12 +25,12 @@ Solo instrument, the playable part against each package's own MIDI, on the grid
   pop-waltz-d-108: not a solo package; not scored
   rocknroll-12bar-a-168: not a solo package; not scored
   solo-flute-level1-d-100: bars=33/32  tempo 100.0/100 (x1.00)  shift +0.00  notes=128/128  placed 100.0%  held 99.2%  key OK
-  solo-flute-level2-bb-112: bars=33/32  tempo 111.6/112 (x1.00)  shift +0.00  notes=107/112  placed 97.7%  held 88.8%  key (-2, 'minor') WRONG
+  solo-flute-level2-bb-112: bars=33/32  tempo 112.0/112 (x1.00)  shift +0.00  notes=107/112  placed 97.7%  held 88.8%  key (-2, 'minor') WRONG
   solo-flute-level2-eb-66: bars=25/24  tempo 66.1/66 (x1.00)  shift +0.00  notes=84/87  placed 98.2%  held 88.1%  key OK
-  solo-flute-level3-em-92: bars=33/32  tempo 92.2/92 (x1.00)  shift +0.00  notes=77/78  placed 49.0%  held 89.5%  key OK
-  solo-flute-level4-a-138: bars=23/32  tempo 93.4/138 (x0.68)  shift -1.50  notes=87/96  placed 5.5%  held 80.0%  key OK
+  solo-flute-level3-em-92: bars=33/32  tempo 91.8/92 (x1.00)  shift +0.00  notes=77/78  placed 99.4%  held 88.3%  key OK
+  solo-flute-level4-a-138: bars=23/32  tempo 93.8/138 (x0.68)  shift -1.50  notes=87/96  placed 5.5%  held 80.0%  key OK
   solo-piano-level1-ab-104: bars=33/32  tempo 104.1/104 (x1.00)  shift +0.00  notes=128/128  placed 100.0%  held 99.2%  key OK
   solo-piano-level2-dm-63: bars=25/24  tempo 63.1/63 (x1.00)  shift +0.00  notes=82/82  placed 100.0%  held 89.0%  key OK
   solo-piano-level2-f-120: bars=33/32  tempo 120.1/120 (x1.00)  shift +0.00  notes=111/116  placed 97.8%  held 90.1%  key OK
-  solo-piano-level3-e-88: bars=33/32  tempo 87.9/88 (x1.00)  shift +0.00  notes=78/78  placed 96.2%  held 85.3%  key OK
-  solo-piano-level4-cm-144: bars=16/32  tempo 72.3/144 (x0.50)  shift +0.00  notes=82/97  placed 4.5%  held 0.0%  key OK
+  solo-piano-level3-e-88: bars=33/32  tempo 87.9/88 (x1.00)  shift +0.00  notes=78/78  placed 100.0%  held 85.9%  key OK
+  solo-piano-level4-cm-144: bars=16/32  tempo 72.0/144 (x0.50)  shift +0.00  notes=82/97  placed 4.5%  held 0.0%  key OK

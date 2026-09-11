@@ -59,8 +59,15 @@ supports no absolute threshold — see the javadoc before gating anything on it.
 
 Ellis (2007) dynamic programming: maximise onset strength at the beats plus a
 spacing penalty on deviating from the period, decoded exactly by
-backtracking. One tempo is assumed per window of tens of seconds; windows half-overlap
-and each contributes its first half.
+backtracking. One tempo is assumed per window of tens of seconds; windows
+half-overlap, and consecutive windows are joined inside the overlap at the pair
+of beats, one from each, whose gap is nearest one period — nearest the middle
+of the overlap among those within tolerance, where both programs are interior.
+A program's first beat has no predecessor and lands wherever its window starts,
+so cutting at the later window's first frame handed the grid a spare beat or a
+missing one at every seam the two disagreed at (#827). A tail shorter than half
+a window is not tracked on its own: the window before it already reaches the
+end.
 
 - **The penalty weight is the published one, and the base of the logarithm is
   part of the constant.** MW once shipped the penalty in log2 at the natural-

@@ -1,67 +1,67 @@
 samples with known ground truth:
-  blues-a-90bpm.mp3: bars=113  root 97.0/113 (85.8%)  root+quality 96.0/113 (85.0%)  split 10  N.C. 0.0% of 304s
-  blues-shuffle-a-106bpm.mp3: bars=146  root 131.0/146 (89.7%)  root+quality 79.0/146 (54.1%)  split 0  N.C. 0.2% of 343s
+  blues-a-90bpm.mp3: bars=113  root 96.5/113 (85.4%)  root+quality 96.5/113 (85.4%)  split 11  N.C. 0.0% of 304s
+  blues-shuffle-a-106bpm.mp3: bars=145  root 143.0/145 (98.6%)  root+quality 87.0/145 (60.0%)  split 0  N.C. 0.2% of 343s
   blues-e-90bpm.mp3: bars=111  root 110.0/111 (99.1%)  root+quality 92.0/111 (82.9%)  split 0  N.C. 0.0% of 302s
   slow-68-40.mp3: bars=121  root 117.0/121 (96.7%)  root+quality 99.0/121 (81.8%)  split 2  N.C. 0.0% of 372s
-  g-blues-shuffle-cc.mp3: bars=136  root 131.0/136 (96.3%)  root+quality 100.0/136 (73.5%)  split 0  N.C. 0.5% of 316s
+  g-blues-shuffle-cc.mp3: bars=136  root 131.0/136 (96.3%)  root+quality 101.0/136 (74.3%)  split 0  N.C. 0.5% of 316s
   bm-blues-slow.mp3: bars=124  root 115.0/124 (92.7%)  root+quality 95.0/124 (76.6%)  split 4  N.C. 0.1% of 336s
-  cm-blues-68-95.mp3: bars=183  root 72.0/183 (39.3%)  root+quality 59.5/183 (32.5%)  split 10  N.C. 1.4% of 347s
+  cm-blues-68-95.mp3: bars=183  root 72.5/183 (39.6%)  root+quality 60.0/183 (32.8%)  split 12  N.C. 1.4% of 347s
   waltz-am-e7-160.mp3: bars=278  root 140.0/278 (50.4%)  root+quality 140.0/278 (50.4%)  split 0  N.C. 0.4% of 319s
-  f-blues-swing-170.mp3: bars=111  root 24.5/111 (22.1%)  root+quality 14.0/111 (12.6%)  split 7  N.C. 0.7% of 316s
-  jazz-251-c-140.mp3: bars=175  root 68.5/175 (39.1%)  root+quality 53.0/175 (30.3%)  split 5  N.C. 0.3% of 304s
+  f-blues-swing-170.mp3: bars=111  root 24.0/111 (21.6%)  root+quality 15.5/111 (14.0%)  split 9  N.C. 0.7% of 316s
+  jazz-251-c-140.mp3: bars=175  root 68.5/175 (39.1%)  root+quality 51.0/175 (29.1%)  split 5  N.C. 0.3% of 304s
   fm7-vamp-110.mp3: bars=143  root 130.0/143 (90.9%)  root+quality 130.0/143 (90.9%)  split 0  N.C. 0.5% of 328s
   eb7-vamp-130.mp3: bars=165  root 161.0/165 (97.6%)  root+quality 161.0/165 (97.6%)  split 0  N.C. 0.5% of 309s
-  bossa-cm.mp3: bars=98  root 24.0/98 (24.5%)  root+quality 6.0/98 (6.1%)  split 0  N.C. 0.0% of 315s
-  pop-c-g-am-f-120.mp3: bars=57  root 57.0/57 (100.0%)  root+quality 57.0/57 (100.0%)  split 0  N.C. 0.0% of 114s
+  bossa-cm.mp3: bars=97  root 30.0/97 (30.9%)  root+quality 6.0/97 (6.2%)  split 0  N.C. 0.0% of 315s
+  pop-c-g-am-f-120.mp3: bars=56  root 56.0/56 (100.0%)  root+quality 56.0/56 (100.0%)  split 0  N.C. 0.0% of 114s
 bar phase the rows above rest on, at the estimator's own confidence in it (a phase nothing supports reports 0.3500):
-  phase blues-a-90bpm.mp3: beat 0 of 4 at 0.3633  root 85.8%  best beat 2 at 99.1%
-  phase blues-shuffle-a-106bpm.mp3: beat 3 of 4 at 0.3500  root 89.7%  best beat 0 at 95.5%
+  phase blues-a-90bpm.mp3: beat 0 of 4 at 0.3642  root 85.4%  best beat 2 at 99.1%
+  phase blues-shuffle-a-106bpm.mp3: beat 3 of 4 at 0.4084  root 98.6%  best beat 3 at 98.6%
   phase blues-e-90bpm.mp3: beat 3 of 4 at 0.4563  root 99.1%  best beat 2 at 99.1%
   phase slow-68-40.mp3: beat 0 of 6 at 0.3733  root 96.7%  best beat 5 at 99.2%
-  phase g-blues-shuffle-cc.mp3: beat 0 of 4 at 0.3827  root 96.3%  best beat 3 at 97.1%
+  phase g-blues-shuffle-cc.mp3: beat 0 of 4 at 0.3785  root 96.3%  best beat 3 at 97.1%
   phase bm-blues-slow.mp3: beat 5 of 6 at 0.3500  root 92.7%  best beat 2 at 99.2%
-  phase cm-blues-68-95.mp3: beat 0 of 2 at 0.4088  root 39.3%  best beat 0 at 39.3%
-  phase waltz-am-e7-160.mp3: beat 0 of 3 at 0.4216  root 50.4%  best beat 1 at 50.5%
-  phase f-blues-swing-170.mp3: beat 0 of 4 at 0.3757  root 22.1%  best beat 3 at 25.9%
-  phase jazz-251-c-140.mp3: beat 2 of 4 at 0.3532  root 39.1%  best beat 1 at 43.2%
-  phase fm7-vamp-110.mp3: beat 1 of 4 at 0.3637  root 90.9%  best beat 0 at 96.5%
+  phase cm-blues-68-95.mp3: beat 0 of 2 at 0.4071  root 39.6%  best beat 0 at 39.6%
+  phase waltz-am-e7-160.mp3: beat 0 of 3 at 0.4218  root 50.4%  best beat 1 at 50.5%
+  phase f-blues-swing-170.mp3: beat 0 of 4 at 0.3754  root 21.6%  best beat 3 at 25.9%
+  phase jazz-251-c-140.mp3: beat 2 of 4 at 0.3529  root 39.1%  best beat 1 at 43.8%
+  phase fm7-vamp-110.mp3: beat 1 of 4 at 0.3639  root 90.9%  best beat 0 at 96.5%
   phase eb7-vamp-130.mp3: beat 0 of 4 at 0.3500  root 97.6%  best beat 2 at 98.2%
-  phase bossa-cm.mp3: beat 0 of 4 at 0.3500  root 24.5%  best beat 2 at 27.8%
-  phase pop-c-g-am-f-120.mp3: beat 0 of 4 at 0.4299  root 100.0%  best beat 0 at 100.0%
+  phase bossa-cm.mp3: beat 1 of 4 at 0.4001  root 30.9%  best beat 1 at 30.9%
+  phase pop-c-g-am-f-120.mp3: beat 0 of 4 at 0.4281  root 100.0%  best beat 0 at 100.0%
 meters, against the meter each list.txt entry states:
   meter blues-a-90bpm.mp3: 4/4 at 90%  pulses/bar 4  want 4/4  OK
-  meter blues-shuffle-a-106bpm.mp3: 4/4 at 84%  pulses/bar 4  want 4/4  OK
+  meter blues-shuffle-a-106bpm.mp3: 4/4 at 90%  pulses/bar 4  want 4/4  OK
   meter blues-e-90bpm.mp3: 4/4 at 90%  pulses/bar 4  want 4/4  OK
   meter slow-68-40.mp3: 6/8 at 90%  pulses/bar 6  want 6/8  OK
   meter g-blues-shuffle-cc.mp3: 4/4 at 90%  pulses/bar 4  want 4/4  OK
   meter fm7-vamp-110.mp3: 4/4 at 63%  pulses/bar 4  want 4/4  OK
   meter eb7-vamp-130.mp3: 4/4 at 90%  pulses/bar 4  want 4/4  OK
-  meter bossa-cm.mp3: 4/4 at 59%  pulses/bar 4  want 4/4  OK
+  meter bossa-cm.mp3: 4/4 at 84%  pulses/bar 4  want 4/4  OK
   meter cm-blues-68-95.mp3: 6/8 at 61%  pulses/bar 2  want 6/8  OK
   meter waltz-am-e7-160.mp3: 3/4 at 90%  pulses/bar 3  want 3/4  OK
-  meter f-blues-swing-170.mp3: 4/4 at 71%  pulses/bar 4  want 4/4  OK
+  meter f-blues-swing-170.mp3: 4/4 at 72%  pulses/bar 4  want 4/4  OK
   meter jazz-251-c-140.mp3: 4/4 at 61%  pulses/bar 4  want 4/4  OK
   meter ballad-wine-roses-65.mp3: 4/4 at 81%  pulses/bar 4  want 4/4  OK
   meter pop-c-g-am-f-120.mp3: 4/4 at 90%  pulses/bar 4  want 4/4  OK
   meter pop-am-f-c-g-144.mp3: 4/4 at 90%  pulses/bar 4  want 4/4  OK
-  meter balorda-nostalgia.mp3: 6/8 at 51%  pulses/bar 2  want 6/8  OK
-  meter il-filo-rosso.mp3: 6/8 at 82%  pulses/bar 2  want 6/8  OK
+  meter balorda-nostalgia.mp3: 6/8 at 50%  pulses/bar 2  want 6/8  OK
+  meter il-filo-rosso.mp3: 6/8 at 62%  pulses/bar 2  want 6/8  OK
 keys, against the expected key for each file:
   key blues-a-90bpm.mp3: A major at 64%  want A major  OK
-  key blues-shuffle-a-106bpm.mp3: A major at 63%  want A major  OK
+  key blues-shuffle-a-106bpm.mp3: A major at 62%  want A major  OK
   key blues-e-90bpm.mp3: E major at 53%  want E major  OK
   key slow-68-40.mp3: A major at 60%  want A major  OK
   key g-blues-shuffle-cc.mp3: G major at 52%  want G major  OK
-  key fm7-vamp-110.mp3: F minor at 98%  want F minor  OK
+  key fm7-vamp-110.mp3: F minor at 93%  want F minor  OK
   key eb7-vamp-130.mp3: Eb major at 98%  want Eb major  OK
-  key bossa-cm.mp3: C minor at 5%  want C minor  OK
+  key bossa-cm.mp3: F minor at 6%  want C minor  WRONG
   key bm-blues-slow.mp3: B minor at 80%  want B minor  OK
-  key cm-blues-68-95.mp3: C minor at 32%  want C minor  OK
+  key cm-blues-68-95.mp3: C minor at 33%  want C minor  OK
   key waltz-am-e7-160.mp3: A minor at 56%  want A minor  OK
-  key f-blues-swing-170.mp3: F major at 5%  want F major  OK
+  key f-blues-swing-170.mp3: C major at 6%  want F major  WRONG
   key jazz-251-c-140.mp3: A minor at 60%  want C major  WRONG
   key ballad-wine-roses-65.mp3: F major at 5%  want F major  OK
-  key footprints-200.mp3: C minor at 23%  want C minor  OK
+  key footprints-200.mp3: C minor at 21%  want C minor  OK
   key pop-c-g-am-f-120.mp3: C major at 16%  want C major  OK
   key pop-am-f-c-g-144.mp3: C major at 10%  want A minor  WRONG
   key la-canzone-del-sole.mp3: A major at 9%  want A major  OK
@@ -69,7 +69,7 @@ keys, against the expected key for each file:
   key hanno-ucciso-luomo-ragno.mp3: A minor at 18%  want A minor  OK
   key generale.mp3: A major at 44%  want A major  OK
 minor-quality seconds where a musician confirms the recording holds no minor chord (want zero):
-  minor la-canzone-del-sole.mp3: 19.9s of 325s (6.1%)  spans 26/302  m 14.3s, m7 4.7s, m6 0.6s, m7b5 0.3s
+  minor la-canzone-del-sole.mp3: 20.0s of 325s (6.1%)  spans 26/304  m 14.4s, m7 4.6s, m6 0.6s, m7b5 0.3s
   minor johnny-b-goode.mp3: 3.2s of 160s (2.0%)  spans 5/88  m7 2.9s, m7b5 0.3s
 chords outside the complete set a musician stated for the whole recording (want zero):
-  vocabulary la-canzone-del-sole.mp3: D,E,A  outside-root 29.8s of 321.0s (9.3%)  outside-chord 75.4s (23.5%)  spans 49/302  N.C. 2.7s  F# 10.7s, G# 9.2s, G 5.6s, B 3.6s, C 0.3s, C# 0.3s
+  vocabulary la-canzone-del-sole.mp3: D,E,A  outside-root 29.7s of 321.0s (9.3%)  outside-chord 74.7s (23.3%)  spans 49/304  N.C. 2.7s  F# 10.8s, G# 9.1s, G 5.6s, B 3.6s, C 0.3s, C# 0.3s

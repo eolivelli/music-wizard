@@ -152,19 +152,11 @@ public final class BeatTracker {
         // property of the recording, and nothing was comparing the two.
         List<int[]> bounds = analysisWindows(envelope);
         List<TempoEstimator.Estimate> seeds = new ArrayList<>();
-        List<TempoEstimator.Estimate> voters = new ArrayList<>();
         for (int[] window : bounds) {
-            TempoEstimator.Estimate seed =
-                    TempoEstimator.estimateWindow(envelope, window[0], window[1], rhythm);
-            seeds.add(seed);
-            if (votes(window, step)) {
-                voters.add(seed);
-            }
+            seeds.add(TempoEstimator.estimateWindow(envelope, window[0], window[1], rhythm));
         }
 
-        // The register is read over the same windows that voted, and for the
-        // same reason: a sliver measures a phrase rather than the recording.
-        double agreed = pulseReference(voters);
+        double agreed = pulseReference(seeds);
         MarkedPulse.Octave octave =
                 MarkedPulse.resolve(agreed, envelope, pulseRegister, votingWindows(envelope));
         double reference = octave.rate();
@@ -182,21 +174,18 @@ public final class BeatTracker {
             double beatsPerMinute = divideOutSubdivision(seed.beatsPerMinute(), reference);
             List<Double> windowBeats = trackFixedTempo(envelope, beatsPerMinute, start, end);
 
-            // The gap test below scales with the period actually tracked, not
-            // the one the estimator proposed, or a corrected window would go on
-            // rejecting beats at the uncorrected spacing.
-            double periodSeconds = 60.0 / beatsPerMinute;
-            double acceptUntil = (start + step) / envelope.frameRate();
-            boolean lastWindow = end >= envelope.length();
-            for (double beat : windowBeats) {
-                if ((lastWindow || beat < acceptUntil) && isNewBeat(beats, beat, periodSeconds)) {
-                    beats.add(beat);
-                }
+            // The seam scales with the period actually tracked, not the one
+            // the estimator proposed, or a corrected window would be joined
+            // at the uncorrected spacing.
+            if (w == 0) {
+                beats.addAll(windowBeats);
+            } else {
+                join(beats, windowBeats, start / envelope.frameRate(),
+                        (start + step) / envelope.frameRate(), 60.0 / beatsPerMinute);
             }
             tempoSum += beatsPerMinute;
             strengthSum += seed.strength();
-            traced.add(traced(envelope, start, end, votes(bounds.get(w), step), seed,
-                    beatsPerMinute));
+            traced.add(traced(envelope, start, end, true, seed, beatsPerMinute));
         }
 
         double meanStrength = windows > 0 ? strengthSum / windows : 0;
@@ -227,9 +216,10 @@ public final class BeatTracker {
 
     /**
      * The half-overlapping windows one tempo is assumed within, as
-     * {@code {fromFrame, toFrame}}. Each contributes only its first half to the
-     * beats, so every beat comes from a window where it sits away from the
-     * edge.
+     * {@code {fromFrame, toFrame}}, each at least a step long: a shorter tail
+     * lies wholly inside the window before it, which already reaches the
+     * recording's end, and a rate measured over a phrase is not a reading of
+     * the recording (#827). Every window returned votes on the pulse.
      */
     static List<int[]> analysisWindows(OnsetEnvelope envelope) {
         int windowFrames = (int) Math.round(WINDOW_SECONDS * envelope.frameRate());
@@ -237,7 +227,7 @@ public final class BeatTracker {
         List<int[]> windows = new ArrayList<>();
         for (int start = 0; start < envelope.length(); start += step) {
             int end = Math.min(envelope.length(), start + windowFrames);
-            if (end - start < 16) {
+            if (end - start < step) {
                 break;
             }
             windows.add(new int[] {start, end});
@@ -248,11 +238,6 @@ public final class BeatTracker {
     /**
      * The windows that get a say in what the recording's pulse is.
      *
-     * <p>The tail window can be a fraction of a second — {@link
-     * #analysisWindows} admits sixteen frames, about a tenth of one — and a
-     * rate measured over that is not a reading of the recording. Such a window
-     * is still tracked, since its beats are wanted.
-     *
      * <p>A recording shorter than half a window has no window that clears
      * that bar, and one tempo is assumed over the whole of it. Its span is
      * then the span the rate was decided over, which is what this has to
@@ -261,21 +246,11 @@ public final class BeatTracker {
      * over rather than none at all.
      */
     static List<int[]> votingWindows(OnsetEnvelope envelope) {
-        int step = stepFrames(envelope);
-        List<int[]> windows = new ArrayList<>();
-        for (int[] window : analysisWindows(envelope)) {
-            if (votes(window, step)) {
-                windows.add(window);
-            }
-        }
+        List<int[]> windows = new ArrayList<>(analysisWindows(envelope));
         if (windows.isEmpty() && envelope.length() >= 16) {
             windows.add(new int[] {0, envelope.length()});
         }
         return windows;
-    }
-
-    private static boolean votes(int[] window, int step) {
-        return window[1] - window[0] >= step;
     }
 
     /** How far apart the windows start: half a window, so they half-overlap. */
@@ -328,15 +303,73 @@ public final class BeatTracker {
         return median > 0 ? 60.0 / median : fallback;
     }
 
-    /** Rejects a beat that would land on top of one already accepted. */
-    private static boolean isNewBeat(List<Double> beats, double candidate,
-                                     double beatPeriodSeconds) {
-        if (beats.isEmpty()) {
-            return true;
+    /**
+     * Appends a window's beats to those accepted so far, cutting over to them
+     * inside the overlap the two windows both tracked.
+     *
+     * <p>The cut goes between a beat of each window: the pair whose gap is
+     * nearest one period by the program's own measure, and among the pairs
+     * within the tolerance of that, the one nearest the middle of the
+     * overlap, which is interior to both programs. Cutting at the later
+     * window's first frame instead handed the grid a spare beat or a missing
+     * one at every seam the two disagreed at, since a program's first beat
+     * has no predecessor and is the least constrained it places (#827).
+     *
+     * @param accepted      the beats so far, running to the earlier window's
+     *                      end; extended in place
+     * @param next          the later window's beats, in order
+     * @param overlapStart  where the later window starts
+     * @param overlapEnd    where the earlier window ends
+     * @param periodSeconds the later window's tracked period
+     */
+    static void join(List<Double> accepted, List<Double> next, double overlapStart,
+                     double overlapEnd, double periodSeconds) {
+        List<Cut> cuts = new ArrayList<>();
+        double centre = (overlapStart + overlapEnd) / 2;
+        for (int a = accepted.size() - 1; a >= 0 && accepted.get(a) >= overlapStart; a--) {
+            double earlier = accepted.get(a);
+            for (int b = 0; b < next.size() && next.get(b) <= overlapEnd; b++) {
+                double later = next.get(b);
+                if (later > earlier) {
+                    cuts.add(new Cut(a, b, Math.abs(Math.log((later - earlier) / periodSeconds)),
+                            Math.abs((earlier + later) / 2 - centre)));
+                }
+            }
         }
-        double last = beats.get(beats.size() - 1);
-        return candidate - last > 0.4 * beatPeriodSeconds;
+        if (cuts.isEmpty()) {
+            for (double beat : next) {
+                if (accepted.isEmpty()
+                        || beat - accepted.get(accepted.size() - 1) > DUPLICATE_GAP * periodSeconds) {
+                    accepted.add(beat);
+                }
+            }
+            return;
+        }
+        double regular = cuts.stream().mapToDouble(Cut::deviation).min().getAsDouble();
+        Cut cut = cuts.stream()
+                .filter(candidate -> candidate.deviation() <= regular + SEAM_TOLERANCE)
+                .min(java.util.Comparator.comparingDouble(Cut::distance))
+                .get();
+        accepted.subList(cut.accepted() + 1, accepted.size()).clear();
+        accepted.addAll(next.subList(cut.next(), next.size()));
     }
+
+    private record Cut(int accepted, int next, double deviation, double distance) {
+    }
+
+    /**
+     * How far, as a log ratio, a gap across the seam may sit from the most
+     * regular one on offer and still be preferred for lying nearer the middle
+     * of the overlap.
+     */
+    private static final double SEAM_TOLERANCE = 0.1;
+
+    /**
+     * Where the earlier window left no beat in the overlap to cut at, the
+     * later window's beats are appended, one landing on the last accepted
+     * beat dropped.
+     */
+    private static final double DUPLICATE_GAP = 0.4;
 
     /**
      * The ratios by which a window's seed may be a subdivision of the
