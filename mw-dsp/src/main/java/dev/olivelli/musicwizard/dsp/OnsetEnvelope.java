@@ -153,10 +153,10 @@ public record OnsetEnvelope(double[] strength, double frameRate) {
      * that a beat period that is not a whole number of frames still
      * correlates with itself, as the flux's filtered attacks do, and the
      * train is brought to this envelope's own scale. The envelope then takes
-     * the larger of the two at every frame rather than their sum: an attack
-     * the flux already hears is not raised by the train, so an instrument
-     * whose attacks are sharp keeps the grid the flux gave it, and an attack
-     * the flux under-heard is lifted. The result is renormalised, so a reader
+     * the larger of the two at every frame rather than their sum, so an
+     * instrument whose attacks are sharp keeps the grid the flux gave it
+     * (#830) and an attack the flux under-heard is lifted. The result is
+     * renormalised, so a reader
      * that takes the scale absolutely — the tracker's spacing penalty, the
      * tempo sweep's accent ceiling — reads it as it reads the flux. A melody
      * with no notes leaves the envelope as it is.

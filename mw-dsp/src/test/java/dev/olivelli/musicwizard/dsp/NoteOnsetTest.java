@@ -147,6 +147,8 @@ class NoteOnsetTest {
     @DisplayName("attacks the flux already hears keep their number and stay level with each other")
     void heardAttacksAreNotRaised() {
         OnsetEnvelope before = normalised(attacks(1000, i -> 6));
+        // One attack fewer than the flux holds, on purpose: a sum would raise
+        // the noted attacks above the one left without a note.
         double[] onsets = new double[23];
         for (int i = 0; i < onsets.length; i++) {
             onsets[i] = (3 + 43 * i) / FRAME_RATE;
@@ -196,14 +198,16 @@ class NoteOnsetTest {
         for (double t = 0; t < seconds; t += period, beat++) {
             onsets.add(t);
             int at = (int) Math.round(t * FRAME_RATE);
-            double height = beat % 2 == 0 ? 3 : 1;
+            double height = beat % 2 == 0 ? 3 : 0.1;
             for (int k = -2; k <= 2; k++) {
                 if (at + k >= 0 && at + k < frames) {
                     flux[at + k] += height * (1 - Math.abs(k) / 3.0);
                 }
             }
         }
-        OnsetEnvelope envelope = new OnsetEnvelope(flux, FRAME_RATE);
+        // At the envelope's own scale, as the flux arrives: the half-tempo
+        // reading must be the accents' doing and not the fixture's.
+        OnsetEnvelope envelope = normalised(flux);
         assertThat(TempoEstimator.estimate(envelope).beatsPerMinute())
                 .isCloseTo(tempo / 2, within(2.0));
 
