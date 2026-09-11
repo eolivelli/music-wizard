@@ -16,10 +16,10 @@ Columns, per package:
 
   bars      measures on the page, against bars in the spec
   tempo     what analyze printed, against the spec's, as score-synthetic reads it
-  shift     the page's origin against the spec's, in quarter beats: the offset
-            at which the most notes land on their reference. Zero is a page
-            whose bar one is the spec's bar one; a positive whole bar is a
-            bar of rests the page opens with that nothing played (#824).
+  shift     the offset, in quarter beats, at which the most notes land on
+            their reference. Zero is a page whose bar one is the spec's bar
+            one; a positive whole bar is a bar of rests the page opens with
+            that nothing played (#824).
   notes     how many notes the page holds, against the MIDI melody track
   placed    note F1 at that shift: the right semitone at the right beat of
             the right bar, matched one-to-one. Exact, since a printed onset
@@ -177,14 +177,14 @@ def placed(estimate: list, reference: list, shift: float) -> list[tuple[int, int
 
 
 def best_shift(estimate: list, reference: list) -> float:
-    """The page offset that puts the most notes on their reference: zero, or
-    the distance from the reference's first note to one of the page's opening
-    notes. Ties go to the smaller move, so a page that needs none is read as
-    needing none."""
+    """The offset at which the most notes land on their reference: zero, or
+    the distance between one of the page's opening notes and one of the
+    reference's, so a page that dropped its first note is still read. Ties go
+    to the smaller move, so a page that needs none is read as needing none."""
     if not estimate or not reference:
         return 0.0
-    first = reference[0][0]
-    candidates = {0.0} | {round(e_on - first, 6) for e_on, _, _ in estimate[:8]}
+    candidates = {0.0} | {round(e_on - r_on, 6)
+                          for e_on, _, _ in estimate[:8] for r_on, _, _ in reference[:8]}
     return max(sorted(candidates, key=abs), key=lambda s: len(placed(estimate, reference, s)))
 
 

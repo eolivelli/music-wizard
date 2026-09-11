@@ -91,10 +91,10 @@ against the package's own MIDI — bar count, tempo, the whole-bar shift the
 page opens with, note placement, note length and key signature. The two
 instruments are the pair: a piano's attacks are heard by the onset envelope
 and a flute's are not, so the flute rows are what the beat read from the
-pitch track's note changes was measured on (#814), and the piano rows are the
-control that the change cost nothing where the flux already sufficed. Level
-four is the step both instruments still fail at (#826), and half the pages
-carry a wrong key signature (#825). Its baseline is
+melody's notes was measured on (#814), and the piano rows are the control —
+their notes place as they did on the flux alone, and what the change did
+cost them is the lead-in bar of #824 on two rows. The syncopation level is
+#826 and the key column #825. Its baseline is
 `tools/baselines/score-solo.txt`, diffed by premerge and CI like the others.
 
 A package with a `pad` is scored on chords like any other, and reads far worse

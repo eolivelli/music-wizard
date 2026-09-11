@@ -2697,6 +2697,11 @@ class SoloPageRules(unittest.TestCase):
         self.assertEqual(4.0, solo.best_shift(late, reference))
         self.assertEqual(4, len(solo.placed(late, reference, 4.0)))
 
+    def test_a_page_that_dropped_its_first_note_is_still_read(self):
+        reference = [(0.0, 1.0, 60), (1.0, 1.0, 64), (2.0, 1.0, 67), (3.0, 1.0, 72)]
+        late = [(5.0, 1.0, 64), (6.0, 1.0, 67), (7.0, 1.0, 72)]
+        self.assertEqual(4.0, solo.best_shift(late, reference))
+
     def test_a_page_needing_no_shift_is_read_as_needing_none(self):
         """Half the notes a beat late, half on time: the tie goes to the
         smaller move, so the column says what a reader would."""

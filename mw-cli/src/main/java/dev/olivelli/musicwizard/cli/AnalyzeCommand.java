@@ -133,7 +133,7 @@ final class AnalyzeCommand implements Callable<Integer> {
                     + "available, and otherwise from the mix — where the tracker is "
                     + "monophonic and returns the loudest periodic line, usually not "
                     + "the voice, rather than failing. Read from the mix, an instrument "
-                    + "playing alone also gives the beat tracker its note changes as "
+                    + "playing alone also gives the beat tracker its notes as "
                     + "onsets, which a sustained instrument's attacks are not. Audio only.")
     boolean melody;
 

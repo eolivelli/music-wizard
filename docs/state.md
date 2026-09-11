@@ -228,16 +228,19 @@ was the whole loss: the onset envelope hears a legato pitch change unevenly,
 by the interval and its direction, so a tune alternating two notes carries a
 two-beat accent the music does not have, and the sweep ranks the half tempo.
 Where the melody is read from the whole signal and the pitch track is voiced
-for most of the sounding stretch, the track's note changes now join the flux
-at equal weight, and a mix — whose track is the loudest line's and speaks for
-stretches of it, not for the beat — stays as it was; the run's record names
-which evidence the grid was tracked from.
-`tools/baselines/score-solo.txt` carries the readings: the piano rows and
-most flute rows place nearly every note in its bar; what stands is the
+for most of the sounding stretch, the melody is segmented before the beats
+and its notes join the flux at equal weight, and a mix — whose track is the
+loudest line's and speaks for stretches of it, not for the beat — stays as
+it was; the run's record names which evidence the grid was tracked from.
+`tools/baselines/score-solo.txt` carries the readings. What stands is the
 ramp's syncopation level (#826), a half-note line read at half tempo, the
 key signature on a line alone (#825), the whole bar of rests a page opens
 with when the first tracked beat is a downbeat inside the first pulse
-(#824), and a spare beat at a tracking-window seam on two rows (#827).
+(#824), and a spare beat at a tracking-window seam (#827). The gate admits
+real solo singing too — vocadito's clips are voiced well past it — and that
+corpus carries no beat truth, so what the route does to a sung line's grid
+is unmeasured: the sweep on the pull request says how many clips moved,
+not which side is right.
 
 **Every engraved part has a MusicXML twin** (#771): `chords.musicxml`,
 `chords-lyrics.musicxml`, `lead.musicxml`, `lead-playable.musicxml` and

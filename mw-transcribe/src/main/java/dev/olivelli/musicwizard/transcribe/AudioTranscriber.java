@@ -330,25 +330,27 @@ public final class AudioTranscriber {
         // spans are added to the same line further down.
         recordChroma(ChromaTracing.of(tuning, fit));
 
-        // The melody's own signal, and its pitch track when that signal is the
-        // whole recording: read before the beats, because on an instrument
-        // playing alone the changes of pitch are the onsets, and the flux
-        // hears them unevenly (#814). The track is read once and the melody
-        // stage below segments the same one. A stem is not read here — its
-        // changes are one voice's, and the grid is the band's — and a mix's
-        // track is not used either: it is the loudest line's, which speaks
-        // for stretches of the recording and not for the beat, and the share
-        // of the recording it speaks for is what tells the two apart.
+        // The melody's own signal, and its notes when that signal is the whole
+        // recording: segmented before the beats, because on an instrument
+        // playing alone the notes are the onsets, and the flux hears a
+        // legato attack unevenly (#814). Segmented once; the melody stage
+        // below writes this same track. A stem is not read here — its notes
+        // are one voice's, and the grid is the band's — and a mix's track is
+        // not used either: it is the loudest line's, which speaks for
+        // stretches of the recording and not for the beat, and the share of
+        // the recording it speaks for is what tells the two apart.
         AudioBuffer melodyAudio = settings.trackMelody() ? melodySignal(audio, vocalStem) : null;
-        PitchTrack mixPitches = null;
-        boolean pitchOnsets = false;
+        MelodyEstimator.Segmented mixMelody = null;
+        boolean noteOnsets = false;
         OnsetEnvelope rhythm = envelope;
         if (melodyAudio == audio) {
-            progress.accept("tracking pitch, for the beat as well as the melody");
-            mixPitches = trackPitch(melodyAudio, settings);
-            pitchOnsets = mixPitches.voicedShare() >= LINE_ALONE_VOICED_SHARE;
-            if (pitchOnsets) {
-                rhythm = envelope.withNoteChanges(mixPitches);
+            progress.accept("tracking the melody in the full mix");
+            PitchTrack pitches = trackPitch(melodyAudio, settings);
+            mixMelody = MelodyEstimator.explain(pitches, envelope, tuning);
+            noteOnsets = pitches.voicedShare() >= LINE_ALONE_VOICED_SHARE;
+            if (noteOnsets) {
+                progress.accept("a line alone: its notes join the onsets the beat is tracked from");
+                rhythm = envelope.withNoteOnsets(mixMelody.melody());
             }
         }
 
@@ -551,7 +553,7 @@ public final class AudioTranscriber {
         tempoMap = tempoMap.withMeterChange(
                 meterOrigin(meter, suppliedMeter, suppliedMeter ? null : reading));
 
-        recordBeats(beats, meter, pulsesPerBar, suppliedMeter ? null : reading, pitchOnsets);
+        recordBeats(beats, meter, pulsesPerBar, suppliedMeter ? null : reading, noteOnsets);
 
         progress.accept("estimating chords");
         ChordEstimator.Decoded decoded =
@@ -596,9 +598,9 @@ public final class AudioTranscriber {
             runLog.stage(MelodyTrace.STAGE).skipped("not asked for; analyze --melody reads one");
         } else {
             boolean separated = melodyAudio != audio;
-            progress.accept(separated
-                    ? "tracking the melody in the vocal stem"
-                    : "tracking the melody in the full mix");
+            if (separated) {
+                progress.accept("tracking the melody in the vocal stem");
+            }
             RunLog.Stage stage = runLog.stage(MelodyTrace.STAGE)
                     .fact("read from", separated ? "the separated vocal" : "the full mix");
             // The envelope of the signal being tracked, not of the mix. It
@@ -618,9 +620,8 @@ public final class AudioTranscriber {
             if (settings.melodyFloorHz() != null) {
                 stage.fact("floor", String.format(Locale.ROOT, "%.1f Hz", settings.melodyFloorHz()));
             }
-            MelodyEstimator.Segmented segmented = MelodyEstimator.explain(
-                    mixPitches != null ? mixPitches : trackPitch(melodyAudio, settings),
-                    melodyEnvelope, tuning);
+            MelodyEstimator.Segmented segmented = mixMelody != null ? mixMelody
+                    : MelodyEstimator.explain(trackPitch(melodyAudio, settings), melodyEnvelope, tuning);
             NoteTrack melody = segmented.melody();
             recordMelody(stage, segmented.trace().readFrom(
                     separated ? MelodyTrace.SEPARATED_VOCAL : MelodyTrace.FULL_MIX));
@@ -712,11 +713,11 @@ public final class AudioTranscriber {
      *                 typed
      */
     private void recordBeats(BeatTracker.Result beats, TimeSignature meter, int pulsesPerBar,
-                             MeterEstimator.Estimate detected, boolean pitchOnsets) {
+                             MeterEstimator.Estimate detected, boolean noteOnsets) {
         BeatTrace trace = beats.trace();
         RunLog.Stage stage = runLog.stage(BeatTrace.STAGE).trace(trace);
-        stage.fact("onsets", pitchOnsets
-                ? "the spectral flux and the pitch track's note changes"
+        stage.fact("onsets", noteOnsets
+                ? "the spectral flux and the melody's notes"
                 : "the spectral flux");
         stage.fact("meter", detected == null
                 ? meter + ", supplied"
@@ -762,6 +763,16 @@ public final class AudioTranscriber {
     }
 
     /**
+     * How much of its sounding stretch a pitch track must be voiced for before
+     * its notes count as onsets: a line playing alone is voiced nearly
+     * throughout, a mix well under this — both corpora sit clear of it on
+     * either side, and {@code tools/score-solo.py} is where a package that
+     * fails the gate would show. Not a solo detector: a line with long rests
+     * falls back to the flux alone.
+     */
+    static final double LINE_ALONE_VOICED_SHARE = 2.0 / 3.0;
+
+    /**
      * What the melody stage listens to: the caller's stem, or the mix when
      * there is no stem to be had. The mix arm returns the very buffer it was
      * given, which is what lets the caller keep the mix's own envelope.
@@ -774,16 +785,6 @@ public final class AudioTranscriber {
      * not how many seconds there are — so the notes stay on the recording's
      * timeline and align with the beats and chords read from the mix.
      */
-    /**
-     * How much of its sounding stretch a pitch track must be voiced for before
-     * its note changes count as onsets: a line playing alone is voiced nearly
-     * throughout, a mix well under this — both corpora sit clear of it on
-     * either side, and {@code tools/score-solo.py} is where a package that
-     * fails the gate would show. Not a solo detector: a line with long rests
-     * falls back to the flux alone, which the run's record says.
-     */
-    static final double LINE_ALONE_VOICED_SHARE = 2.0 / 3.0;
-
     private static PitchTrack trackPitch(AudioBuffer signal, Options settings) {
         Double floor = settings.melodyFloorHz();
         return floor == null ? PitchTracker.track(signal) : PitchTracker.track(signal, floor);

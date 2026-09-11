@@ -18,6 +18,8 @@ package dev.olivelli.musicwizard.dsp;
 
 import dev.olivelli.musicwizard.audio.AudioBuffer;
 import dev.olivelli.musicwizard.audio.Spectrogram;
+import dev.olivelli.musicwizard.core.model.Note;
+import dev.olivelli.musicwizard.core.model.NoteTrack;
 import java.util.Objects;
 
 /**
@@ -135,64 +137,64 @@ public record OnsetEnvelope(double[] strength, double frameRate) {
     }
 
     /**
-     * This envelope with a pitch track's note changes added as onsets.
+     * This envelope with a melody's note onsets added as onsets of its own.
      *
      * <p>For a melodic instrument playing alone, an onset is a change of
      * pitch, and the spectral flux hears one unevenly: how much energy a
      * change moves between bands depends on the interval and its direction,
      * so a tune that alternates two notes carries an accent pattern the music
-     * does not, and a legato attack barely registers at all. Read off the
-     * pitch track, every change is one event of one weight — {@code
-     * tools/score-solo.py} is what says what that is worth (#814).
+     * does not, and a legato attack barely registers at all. The notes the
+     * melody stage segmented out of the pitch track are each one event of one
+     * weight — {@code tools/score-solo.py} is what says what that is worth
+     * (#814). The segmenter's notes rather than the raw track's changes of
+     * pitch, so that a glide or a vibrato is the one note it is and not a
+     * train of events.
      *
-     * <p>A change is a move of more than half a semitone away from the note
-     * being held, or the voice returning after silence; a wobble that stays
-     * within the held note is not one. Each event is spread over a few frames
-     * so that a beat period that is not a whole number of frames still
-     * correlates with itself, as the flux's filtered attacks do. The train is
-     * brought to this envelope's own scale before the two are summed, so the
-     * changes and the flux carry equal weight whatever the count of changes
-     * — at a fixed height per change the flux's uneven attacks kept enough
-     * of a vote to walk the phase off by half a beat — and the sum is
-     * renormalised, so a reader that takes the scale absolutely, the
-     * tracker's spacing penalty or the tempo sweep's accent ceiling, reads it
+     * <p>Each event is spread over a few frames so that a beat period that is
+     * not a whole number of frames still correlates with itself, as the
+     * flux's filtered attacks do. The train is brought to this envelope's own
+     * scale before the two are summed, so its weight against the flux is
+     * {@link #NOTE_WEIGHT} whatever the count of notes, and the sum is
+     * renormalised, so a reader that takes the scale absolutely — the
+     * tracker's spacing penalty, the tempo sweep's accent ceiling — reads it
      * as it reads the flux.
      */
-    public OnsetEnvelope withNoteChanges(PitchTrack pitches) {
-        Objects.requireNonNull(pitches, "pitches");
-        double[] changes = new double[strength.length];
-        double held = Double.NaN;
-        for (int i = 0; i < pitches.frameCount(); i++) {
-            if (!pitches.voiced()[i]) {
-                held = Double.NaN;
-                continue;
-            }
-            double midi = pitches.midiPitchAt(i);
-            if (Double.isNaN(held) || Math.abs(midi - held) > NOTE_CHANGE_SEMITONES) {
-                int frame = (int) Math.round(pitches.timeOf(i) * frameRate);
-                for (int k = -EVENT_HALF_WIDTH; k <= EVENT_HALF_WIDTH; k++) {
-                    int j = frame + k;
-                    if (j >= 0 && j < changes.length) {
-                        changes[j] += 1.0 - Math.abs(k) / (EVENT_HALF_WIDTH + 1.0);
-                    }
+    public OnsetEnvelope withNoteOnsets(NoteTrack melody) {
+        Objects.requireNonNull(melody, "melody");
+        double[] events = new double[strength.length];
+        for (Note note : melody.notes()) {
+            int frame = (int) Math.round(note.onsetSeconds() * frameRate);
+            for (int k = -EVENT_HALF_WIDTH; k <= EVENT_HALF_WIDTH; k++) {
+                int j = frame + k;
+                if (j >= 0 && j < events.length) {
+                    events[j] += 1.0 - Math.abs(k) / (EVENT_HALF_WIDTH + 1.0);
                 }
-                held = midi;
             }
         }
-        normalise(changes);
+        normalise(events);
         double[] sum = new double[strength.length];
         for (int i = 0; i < sum.length; i++) {
-            sum[i] = strength[i] + changes[i];
+            sum[i] = strength[i] + NOTE_WEIGHT * events[i];
         }
         normalise(sum);
         return new OnsetEnvelope(sum, frameRate);
     }
 
-    /** A pitch move past this, from the note being held, is a new note. */
-    private static final double NOTE_CHANGE_SEMITONES = 0.5;
+    /**
+     * The notes' weight against the flux, both at unit variance. Below one:
+     * at equal weight every solo package in {@code tools/baselines/score-solo.txt}
+     * reads as it does here, but a sung line's dotted phrasing then outranks
+     * its beat in the tempo sweep and some clips of solo singing land at the
+     * sweep's floor; at this weight those readings stay with the flux and
+     * every instrument row keeps its grid. Measured on the solo corpus and
+     * on vocadito's clips against estimators that share no prior with MW,
+     * and vocadito carries no beat truth, so it bounds the cost rather than
+     * confirming a gain there (#814).
+     */
+    private static final double NOTE_WEIGHT = 0.7;
 
     /**
-     * Frames either side of a note change its event is spread over. About the
+     * Frames either side of a note onset its event is spread over. About the
      * width the anti-aliased flux gives an attack, so the two kinds of event
      * correlate alike.
      */
