@@ -422,6 +422,25 @@ def bar_shares(spans, start: float, end: float) -> dict:
     return bar_credit(longest)
 
 
+def grid_bars(lines: list[float], spans) -> list[tuple[float, float]]:
+    """The bars a set of bar lines cuts: one from each line to the next, and
+    one opened on the last line wherever a span reaches past it, closed one
+    bar on at the length of the bar before it.
+
+    Closed on a bar length rather than at the recording's end so that a
+    trailing silence cannot take the last bar, and opened only where a span
+    reaches past the line so that a grid ending on one is not charged an empty
+    bar (#834).
+    """
+    if len(lines) < 2:
+        return []
+    bars = list(zip(lines, lines[1:]))
+    last = lines[-1]
+    if any(s["endSeconds"] > last for s in spans):
+        bars.append((last, last + (last - lines[-2])))
+    return bars
+
+
 def accuracy(shares: list, want: list) -> tuple[float, float]:
     """Bars correct on root and on root+quality, at the cycle's best rotation.
 
@@ -455,8 +474,7 @@ def score(mp3: Path, doc: dict, truth: list[str]) -> None:
         print(f"  {mp3.name}: no usable beat grid")
         return
 
-    bars = list(zip(downbeats, downbeats[1:]))
-    shares = [bar_shares(spans, a, b) for a, b in bars]
+    shares = [bar_shares(spans, a, b) for a, b in grid_bars(downbeats, spans)]
 
     root_ok, full_ok = accuracy(shares, parse_truth(truth))
     nc_time = sum(s["endSeconds"] - s["startSeconds"]
@@ -529,7 +547,7 @@ def phase_roots(doc: dict, truth: str, per_bar: int) -> list[float]:
     scores = []
     for phase in range(per_bar):
         lines = beats[phase::per_bar]
-        shares = [bar_shares(spans, a, b) for a, b in zip(lines, lines[1:])]
+        shares = [bar_shares(spans, a, b) for a, b in grid_bars(lines, spans)]
         root_ok, _ = accuracy(shares, want)
         scores.append(100 * root_ok / len(shares))
     return scores

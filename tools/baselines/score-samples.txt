@@ -1,32 +1,32 @@
 samples with known ground truth:
   blues-a-90bpm.mp3: bars=113  root 96.5/113 (85.4%)  root+quality 96.5/113 (85.4%)  split 11  N.C. 0.0% of 304s
-  blues-shuffle-a-106bpm.mp3: bars=145  root 143.0/145 (98.6%)  root+quality 87.0/145 (60.0%)  split 0  N.C. 0.2% of 343s
-  blues-e-90bpm.mp3: bars=111  root 110.0/111 (99.1%)  root+quality 92.0/111 (82.9%)  split 0  N.C. 0.0% of 302s
+  blues-shuffle-a-106bpm.mp3: bars=146  root 143.0/146 (97.9%)  root+quality 87.0/146 (59.6%)  split 0  N.C. 0.2% of 343s
+  blues-e-90bpm.mp3: bars=112  root 111.0/112 (99.1%)  root+quality 93.0/112 (83.0%)  split 0  N.C. 0.0% of 302s
   slow-68-40.mp3: bars=121  root 117.0/121 (96.7%)  root+quality 99.0/121 (81.8%)  split 2  N.C. 0.0% of 372s
-  g-blues-shuffle-cc.mp3: bars=136  root 131.0/136 (96.3%)  root+quality 101.0/136 (74.3%)  split 0  N.C. 0.5% of 316s
-  bm-blues-slow.mp3: bars=124  root 115.0/124 (92.7%)  root+quality 95.0/124 (76.6%)  split 4  N.C. 0.1% of 336s
+  g-blues-shuffle-cc.mp3: bars=137  root 131.0/137 (95.6%)  root+quality 101.0/137 (73.7%)  split 0  N.C. 0.5% of 316s
+  bm-blues-slow.mp3: bars=125  root 116.0/125 (92.8%)  root+quality 96.0/125 (76.8%)  split 4  N.C. 0.1% of 336s
   cm-blues-68-95.mp3: bars=183  root 72.5/183 (39.6%)  root+quality 60.0/183 (32.8%)  split 12  N.C. 1.4% of 347s
   waltz-am-e7-160.mp3: bars=278  root 140.0/278 (50.4%)  root+quality 140.0/278 (50.4%)  split 0  N.C. 0.4% of 319s
   f-blues-swing-170.mp3: bars=111  root 24.0/111 (21.6%)  root+quality 15.5/111 (14.0%)  split 9  N.C. 0.7% of 316s
-  jazz-251-c-140.mp3: bars=175  root 68.5/175 (39.1%)  root+quality 51.0/175 (29.1%)  split 5  N.C. 0.3% of 304s
-  fm7-vamp-110.mp3: bars=143  root 130.0/143 (90.9%)  root+quality 130.0/143 (90.9%)  split 0  N.C. 0.5% of 328s
-  eb7-vamp-130.mp3: bars=165  root 161.0/165 (97.6%)  root+quality 161.0/165 (97.6%)  split 0  N.C. 0.5% of 309s
-  bossa-cm.mp3: bars=97  root 30.0/97 (30.9%)  root+quality 6.0/97 (6.2%)  split 0  N.C. 0.0% of 315s
-  pop-c-g-am-f-120.mp3: bars=56  root 56.0/56 (100.0%)  root+quality 56.0/56 (100.0%)  split 0  N.C. 0.0% of 114s
+  jazz-251-c-140.mp3: bars=176  root 68.5/176 (38.9%)  root+quality 51.0/176 (29.0%)  split 5  N.C. 0.3% of 304s
+  fm7-vamp-110.mp3: bars=144  root 130.0/144 (90.3%)  root+quality 130.0/144 (90.3%)  split 0  N.C. 0.5% of 328s
+  eb7-vamp-130.mp3: bars=166  root 162.0/166 (97.6%)  root+quality 162.0/166 (97.6%)  split 0  N.C. 0.5% of 309s
+  bossa-cm.mp3: bars=98  root 30.0/98 (30.6%)  root+quality 6.0/98 (6.1%)  split 0  N.C. 0.0% of 315s
+  pop-c-g-am-f-120.mp3: bars=57  root 57.0/57 (100.0%)  root+quality 57.0/57 (100.0%)  split 0  N.C. 0.0% of 114s
 bar phase the rows above rest on, at the estimator's own confidence in it (a phase nothing supports reports 0.3500):
   phase blues-a-90bpm.mp3: beat 0 of 4 at 0.3642  root 85.4%  best beat 2 at 99.1%
-  phase blues-shuffle-a-106bpm.mp3: beat 3 of 4 at 0.4084  root 98.6%  best beat 3 at 98.6%
-  phase blues-e-90bpm.mp3: beat 3 of 4 at 0.4563  root 99.1%  best beat 2 at 99.1%
+  phase blues-shuffle-a-106bpm.mp3: beat 3 of 4 at 0.4084  root 97.9%  best beat 3 at 97.9%
+  phase blues-e-90bpm.mp3: beat 3 of 4 at 0.4563  root 99.1%  best beat 3 at 99.1%
   phase slow-68-40.mp3: beat 0 of 6 at 0.3733  root 96.7%  best beat 5 at 99.2%
-  phase g-blues-shuffle-cc.mp3: beat 0 of 4 at 0.3785  root 96.3%  best beat 3 at 97.1%
-  phase bm-blues-slow.mp3: beat 5 of 6 at 0.3500  root 92.7%  best beat 2 at 99.2%
+  phase g-blues-shuffle-cc.mp3: beat 0 of 4 at 0.3785  root 95.6%  best beat 3 at 97.1%
+  phase bm-blues-slow.mp3: beat 5 of 6 at 0.3500  root 92.8%  best beat 2 at 99.2%
   phase cm-blues-68-95.mp3: beat 0 of 2 at 0.4071  root 39.6%  best beat 0 at 39.6%
-  phase waltz-am-e7-160.mp3: beat 0 of 3 at 0.4218  root 50.4%  best beat 1 at 50.5%
-  phase f-blues-swing-170.mp3: beat 0 of 4 at 0.3754  root 21.6%  best beat 3 at 25.9%
-  phase jazz-251-c-140.mp3: beat 2 of 4 at 0.3529  root 39.1%  best beat 1 at 43.8%
-  phase fm7-vamp-110.mp3: beat 1 of 4 at 0.3639  root 90.9%  best beat 0 at 96.5%
+  phase waltz-am-e7-160.mp3: beat 0 of 3 at 0.4218  root 50.4%  best beat 0 at 50.4%
+  phase f-blues-swing-170.mp3: beat 0 of 4 at 0.3754  root 21.6%  best beat 3 at 25.7%
+  phase jazz-251-c-140.mp3: beat 2 of 4 at 0.3529  root 38.9%  best beat 1 at 43.8%
+  phase fm7-vamp-110.mp3: beat 1 of 4 at 0.3639  root 90.3%  best beat 0 at 95.8%
   phase eb7-vamp-130.mp3: beat 0 of 4 at 0.3500  root 97.6%  best beat 2 at 98.2%
-  phase bossa-cm.mp3: beat 1 of 4 at 0.4001  root 30.9%  best beat 1 at 30.9%
+  phase bossa-cm.mp3: beat 1 of 4 at 0.4001  root 30.6%  best beat 1 at 30.6%
   phase pop-c-g-am-f-120.mp3: beat 0 of 4 at 0.4281  root 100.0%  best beat 0 at 100.0%
 meters, against the meter each list.txt entry states:
   meter blues-a-90bpm.mp3: 4/4 at 90%  pulses/bar 4  want 4/4  OK

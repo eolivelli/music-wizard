@@ -153,6 +153,50 @@ class ModelBars(unittest.TestCase):
         self.assertEqual({}, samples.bar_shares([span("C", 0.0, 1.0)], 2.0, 3.0))
 
 
+class GridBars(unittest.TestCase):
+    """#834: the last bar line opens a bar too, or the recording's final bar
+    is never scored. Both chord harnesses and the phase block cut here."""
+
+    def test_a_bar_runs_from_each_line_to_the_next(self):
+        self.assertEqual([(0.0, 4.0), (4.0, 8.0)],
+                         samples.grid_bars([0.0, 4.0, 8.0], [span("C", 0.0, 8.0)]))
+
+    def test_the_last_line_opens_a_bar_where_a_chord_reaches_past_it(self):
+        spans = [span("C", 0.0, 8.0), span("G", 8.0, 11.0)]
+        self.assertEqual([(0.0, 4.0), (4.0, 8.0), (8.0, 12.0)],
+                         samples.grid_bars([0.0, 4.0, 8.0], spans))
+
+    def test_the_last_bar_is_as_long_as_the_bar_before_it(self):
+        spans = [span("C", 0.0, 14.0)]
+        self.assertEqual((13.0, 18.0), samples.grid_bars([0.0, 4.0, 8.0, 13.0], spans)[-1])
+
+    def test_the_last_bar_ends_one_bar_on_not_at_the_recording_s_end(self):
+        """A silence running to the end of the file would otherwise cover more
+        of the last bar than the chord that was heard in it."""
+        spans = [span("C", 0.0, 8.0), span("G", 8.0, 11.0), no_chord(11.0, 40.0)]
+        a, b = samples.grid_bars([0.0, 4.0, 8.0], spans)[-1]
+        self.assertEqual({G: 1.0}, samples.bar_shares(spans, a, b))
+
+    def test_a_last_line_nothing_reaches_past_opens_no_bar(self):
+        spans = [span("C", 0.0, 8.0)]
+        self.assertEqual([(0.0, 4.0), (4.0, 8.0)], samples.grid_bars([0.0, 4.0, 8.0], spans))
+
+    def test_one_line_cuts_no_bar(self):
+        self.assertEqual([], samples.grid_bars([0.0], [span("C", 0.0, 8.0)]))
+
+    def test_the_chord_table_scores_the_last_bar(self):
+        # Four downbeats and harmony to the end of the fourth bar.
+        line = score_line(doc(ALTERNATING), "C G")
+        self.assertIn("bars=4 ", line)
+        self.assertIn("root 4.0/4 (100.0%)", line)
+
+    def test_the_synthetic_row_scores_the_last_bar(self):
+        spec = synthetic.parse_spec_text("tempo: 60\nbars:\nC G C G\n")
+        line = synthetic.package_row("x", spec, doc(ALTERNATING), "Tempo 60.0 BPM")
+        self.assertIn("bars=4/4", line)
+        self.assertIn("root 4.0/4 (100.0%)", line)
+
+
 QUALITY_CONSTANT = re.compile(
     r"\s*([A-Z][A-Z0-9_]*)\(\"([^\"]*)\",\s*(?:true|false)((?:,\s*\d+)*)\)\s*[,;]")
 
@@ -207,6 +251,14 @@ def grid_shorthand_qualities() -> list[tuple[str, str, str]]:
     return java_enum_constants(java_source(
         "mw-teacher/src/main/java/dev/olivelli/musicwizard/teacher/ChordSymbol.java"),
         "Quality", SHORTHAND_CONSTANT)
+
+
+def score_line(document: dict, truth: str) -> str:
+    """The one line score prints for a recording."""
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out):
+        samples.score(Path("x.mp3"), document, truth)
+    return out.getvalue().strip()
 
 
 def minor_line(spans: list[dict], duration: float = 10.0) -> str:
@@ -722,9 +774,11 @@ def doc(spans: list[dict], beats: int = 16, phase: int = 0, per_bar: int = 4,
     }
 
 
-# Four beats of C then four of G, twice: one chord to the bar at phase 0.
+# Four beats of C then four of G, twice, and two more of C so that the last
+# bar of a grid begun two beats in is halved like the others: one chord to the
+# bar at phase 0.
 ALTERNATING = [span("C", 0.0, 4.0), span("G", 4.0, 8.0),
-               span("C", 8.0, 12.0), span("G", 12.0, 16.0)]
+               span("C", 8.0, 12.0), span("G", 12.0, 16.0), span("C", 16.0, 18.0)]
 
 
 class BarPhase(unittest.TestCase):
@@ -760,11 +814,8 @@ class BarPhase(unittest.TestCase):
         index; they are the same bars, and a phase column that disagreed with
         the row it qualifies would be worse than none."""
         d = doc(ALTERNATING, phase=2)
-        downbeats = [b["seconds"] for b in d["beatGrid"]["beats"] if b["downbeat"]]
-        shares = [samples.bar_shares(ALTERNATING, a, b)
-                  for a, b in zip(downbeats, downbeats[1:])]
-        root, _ = samples.accuracy(shares, samples.parse_truth("C G"))
-        self.assertEqual(100 * root / len(shares),
+        row = re.search(r"root ([\d.]+)/(\d+) ", score_line(d, "C G"))
+        self.assertEqual(100 * float(row.group(1)) / int(row.group(2)),
                          samples.phase_roots(d, "C G", 4)[2])
 
     def test_a_phase_that_halves_every_bar_scores_below_the_right_one(self):

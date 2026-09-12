@@ -174,6 +174,11 @@ def score_package(jar: Path, spec_file: Path) -> str:
     if spec["headers"].get("accompaniment") == "none":
         return f"  {name}.mp3: melody only; chords not scored"
     doc, printed = samples.analyze_with_output(jar, mp3)
+    return package_row(name, spec, doc, printed)
+
+
+def package_row(name: str, spec: dict, doc: dict, printed: str) -> str:
+    """One package's line, from the score document and what `analyze` printed."""
     tempo = tempo_verdict(printed_tempo(printed), spec["headers"].get("tempo"))
 
     spans = doc.get("chords", {}).get("chords", [])
@@ -184,8 +189,8 @@ def score_package(jar: Path, spec_file: Path) -> str:
         # that ran at the wrong multiple of the beat, and that says so.
         return f"  {name}.mp3: no usable beat grid  {tempo}"
 
-    bars = list(zip(downbeats, downbeats[1:]))
-    shares = [samples.bar_shares(spans, a, b) for a, b in bars]
+    shares = [samples.bar_shares(spans, a, b)
+              for a, b in samples.grid_bars(downbeats, spans)]
     want = spec["bars"]
     root_ok, full_ok = sequence_accuracy(shares, want)
 
