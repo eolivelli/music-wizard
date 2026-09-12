@@ -260,7 +260,13 @@ real solo singing too — vocadito's clips are voiced well past it — and that
 corpus carries neither beat nor key truth, so what the route does to a sung
 line's grid and key is unmeasured: of the clips whose grid moves, as many
 land nearer the prior-free estimators of `.claude/skills/verify-tempo` as
-further, and one lands at the tempo sweep's floor (#829).
+further. One landed at the tempo sweep's floor — a sung motif's period was
+the notes' strongest, and nothing on a line alone bars it as the harmony
+bars the same shape on a band — so a window whose notes put its rate at
+the edge of the sweep's range is seeded from the flux's own reading
+instead, unless that sits at the edge too (#829). The instrument rows did
+not move, and the sung clips the notes move onto an interior half or third
+are left as they are: no beat truth says which side is right.
 
 **Every engraved part has a MusicXML twin** (#771): `chords.musicxml`,
 `chords-lyrics.musicxml`, `lead.musicxml`, `lead-playable.musicxml` and

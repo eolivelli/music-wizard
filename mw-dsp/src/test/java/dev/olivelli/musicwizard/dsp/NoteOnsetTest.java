@@ -216,6 +216,64 @@ class NoteOnsetTest {
                 .isCloseTo(tempo, within(2.0));
     }
 
+    /**
+     * The sung shape (#829): the flux hears a beat, and the notes repeat a
+     * two-note motif whose period sits at the sweep's floor, which the train
+     * then makes the strongest period in the envelope.
+     */
+    private static OnsetEnvelope[] beatUnderAMotifAtTheFloor(double seconds) {
+        double period = 60 / 120.0;
+        int frames = (int) (seconds * FRAME_RATE);
+        double[] flux = new double[frames];
+        java.util.Random noise = new java.util.Random(7);
+        for (int i = 0; i < frames; i++) {
+            flux[i] = 0.05 * noise.nextGaussian();
+        }
+        for (double t = 0; t < seconds; t += period) {
+            int at = (int) Math.round(t * FRAME_RATE);
+            for (int k = -2; k <= 2; k++) {
+                if (at + k >= 0 && at + k < frames) {
+                    flux[at + k] += 1 - Math.abs(k) / 3.0;
+                }
+            }
+        }
+        OnsetEnvelope heard = normalised(flux);
+        List<Double> onsets = new ArrayList<>();
+        for (double t = 0.1; t < seconds; t += 3 * period) {
+            onsets.add(t);
+            onsets.add(t + 0.2);
+        }
+        NoteTrack motif = melody(onsets.stream().mapToDouble(Double::doubleValue).toArray());
+        return new OnsetEnvelope[] {heard, heard.withNoteOnsets(motif)};
+    }
+
+    @Test
+    @DisplayName("notes that put a window's rate at the sweep's floor yield to the flux's reading")
+    void aRateTheNotesPutAtTheFloorYieldsToTheFlux() {
+        for (double seconds : new double[] {12, 40}) {
+            OnsetEnvelope[] both = beatUnderAMotifAtTheFloor(seconds);
+            OnsetEnvelope heard = both[0];
+            OnsetEnvelope lifted = both[1];
+            assertThat(TempoEstimator.estimate(heard).beatsPerMinute()).isCloseTo(120, within(2.0));
+            assertThat(TempoEstimator.estimate(lifted).beatsPerMinute())
+                    .isEqualTo(TempoEstimator.MIN_TEMPO);
+            assertThat(BeatTracker.track(lifted, HarmonicRhythm.none(), null).beatsPerMinute())
+                    .isCloseTo(TempoEstimator.MIN_TEMPO, within(2.0));
+            assertThat(BeatTracker.track(lifted, HarmonicRhythm.none(), null, heard)
+                    .beatsPerMinute()).isCloseTo(120, within(2.0));
+        }
+    }
+
+    @Test
+    @DisplayName("a rate the flux itself reads at the floor is left where it is")
+    void aRateTheFluxReadsAtTheFloorStands() {
+        OnsetEnvelope lifted = beatUnderAMotifAtTheFloor(20)[1];
+        // Lifted twice over: the notes' envelope stands in for the flux, so
+        // both readings sit at the floor and there is nothing to yield to.
+        assertThat(BeatTracker.track(lifted, HarmonicRhythm.none(), null, lifted)
+                .beatsPerMinute()).isCloseTo(TempoEstimator.MIN_TEMPO, within(2.0));
+    }
+
     @Test
     @DisplayName("the voiced share is read over the sounding stretch, not the whole track")
     void voicedShareIgnoresTheSilenceAroundTheMusic() {

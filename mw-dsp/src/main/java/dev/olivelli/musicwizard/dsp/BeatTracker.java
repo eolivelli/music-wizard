@@ -123,6 +123,20 @@ public final class BeatTracker {
      */
     public static Result track(OnsetEnvelope envelope, HarmonicRhythm rhythm,
                                OnsetEnvelope pulseRegister) {
+        return track(envelope, rhythm, pulseRegister, null);
+    }
+
+    /**
+     * The same, for an envelope a melody's notes were lifted into
+     * ({@link OnsetEnvelope#withNoteOnsets}), with the envelope as the flux
+     * alone heard it beside it. A window whose notes put its rate at the
+     * edge of {@link TempoEstimator}'s range is seeded from the flux's own
+     * reading instead, unless that sits at the edge too: a sung motif's
+     * period can be the notes' strongest and no rate anyone taps (#829).
+     * Pass {@code null} for {@code heard} where no notes were lifted in.
+     */
+    public static Result track(OnsetEnvelope envelope, HarmonicRhythm rhythm,
+                               OnsetEnvelope pulseRegister, OnsetEnvelope heard) {
         Objects.requireNonNull(envelope, "envelope");
         Objects.requireNonNull(rhythm, "rhythm");
         if (envelope.length() < 16 || envelope.isFlat()) {
@@ -131,7 +145,7 @@ public final class BeatTracker {
 
         int windowFrames = (int) Math.round(WINDOW_SECONDS * envelope.frameRate());
         if (envelope.length() <= windowFrames) {
-            TempoEstimator.Estimate tempo = TempoEstimator.estimate(envelope, rhythm);
+            TempoEstimator.Estimate tempo = seed(envelope, heard, 0, envelope.length(), rhythm);
             MarkedPulse.Octave octave = MarkedPulse.resolve(tempo.beatsPerMinute(), envelope,
                     pulseRegister, votingWindows(envelope));
             double rate = octave.rate();
@@ -153,7 +167,7 @@ public final class BeatTracker {
         List<int[]> bounds = analysisWindows(envelope);
         List<TempoEstimator.Estimate> seeds = new ArrayList<>();
         for (int[] window : bounds) {
-            seeds.add(TempoEstimator.estimateWindow(envelope, window[0], window[1], rhythm));
+            seeds.add(seed(envelope, heard, window[0], window[1], rhythm));
         }
 
         double agreed = pulseReference(seeds);
@@ -192,6 +206,17 @@ public final class BeatTracker {
         double fallback = windows > 0 ? tempoSum / windows : TempoEstimator.PREFERRED_TEMPO;
         return new Result(beats, tempoOf(beats, fallback), Confidence.clamped(meanStrength),
                 new BeatTrace(agreed, reference, traced(octave), traced));
+    }
+
+    /** One window's seed, bounded as the four-argument {@link #track} says. */
+    private static TempoEstimator.Estimate seed(OnsetEnvelope envelope, OnsetEnvelope heard,
+                                                int from, int to, HarmonicRhythm rhythm) {
+        TempoEstimator.Estimate seed = TempoEstimator.estimateWindow(envelope, from, to, rhythm);
+        if (heard == null || !TempoEstimator.atEdgeOfRange(seed.beatsPerMinute())) {
+            return seed;
+        }
+        TempoEstimator.Estimate own = TempoEstimator.estimateWindow(heard, from, to, rhythm);
+        return TempoEstimator.atEdgeOfRange(own.beatsPerMinute()) ? seed : own;
     }
 
     private static BeatTrace.Window traced(OnsetEnvelope envelope, int start, int end,
