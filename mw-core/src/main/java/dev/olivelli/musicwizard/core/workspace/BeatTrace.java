@@ -90,8 +90,6 @@ public record BeatTrace(
      *
      * @param fromSeconds  where the window starts
      * @param toSeconds    where it ends
-     * @param voted        whether it was one of the windows the reference pulse
-     *                     was taken from
      * @param seedPulse    the rate its own sweep chose, in pulses a minute
      * @param periodicity  the share of the window's energy that rate explains
      * @param peakiness    how concentrated the window's attacks are
@@ -103,7 +101,6 @@ public record BeatTrace(
     public record Window(
             double fromSeconds,
             double toSeconds,
-            boolean voted,
             double seedPulse,
             double periodicity,
             double peakiness,

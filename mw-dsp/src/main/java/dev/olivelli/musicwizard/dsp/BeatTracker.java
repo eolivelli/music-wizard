@@ -139,7 +139,7 @@ public final class BeatTracker {
             return new Result(beats, tempoOf(beats, rate),
                     Confidence.clamped(tempo.strength()),
                     new BeatTrace(tempo.beatsPerMinute(), rate, traced(octave),
-                            List.of(traced(envelope, 0, envelope.length(), true, tempo, rate))));
+                            List.of(traced(envelope, 0, envelope.length(), tempo, rate))));
         }
 
         int step = stepFrames(envelope);
@@ -185,7 +185,7 @@ public final class BeatTracker {
             }
             tempoSum += beatsPerMinute;
             strengthSum += seed.strength();
-            traced.add(traced(envelope, start, end, true, seed, beatsPerMinute));
+            traced.add(traced(envelope, start, end, seed, beatsPerMinute));
         }
 
         double meanStrength = windows > 0 ? strengthSum / windows : 0;
@@ -195,15 +195,14 @@ public final class BeatTracker {
     }
 
     private static BeatTrace.Window traced(OnsetEnvelope envelope, int start, int end,
-                                           boolean voted, TempoEstimator.Estimate seed,
-                                           double trackedPulse) {
+                                           TempoEstimator.Estimate seed, double trackedPulse) {
         List<BeatTrace.Candidate> candidates = seed.candidates().stream()
                 .map(candidate -> new BeatTrace.Candidate(candidate.beatsPerMinute(),
                         candidate.score(), candidate.chosen()))
                 .toList();
         return new BeatTrace.Window(start / envelope.frameRate(), end / envelope.frameRate(),
-                voted, seed.beatsPerMinute(), seed.periodicity(), seed.peakiness(),
-                trackedPulse, candidates);
+                seed.beatsPerMinute(), seed.periodicity(), seed.peakiness(), trackedPulse,
+                candidates);
     }
 
     private static BeatTrace.Octave traced(MarkedPulse.Octave octave) {

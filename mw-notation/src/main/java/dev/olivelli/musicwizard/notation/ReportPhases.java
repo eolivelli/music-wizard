@@ -1900,7 +1900,7 @@ final class ReportPhases {
         out.element("summary", "Every analysis window");
         out.line("<table><thead><tr><th>#</th><th>From</th><th>To</th><th>Seeded at</th>"
                 + "<th>Tracked at</th><th>Periodicity</th><th>Peakiness</th>"
-                + "<th>Voted</th></tr></thead><tbody>");
+                + "</tr></thead><tbody>");
         List<BeatTrace.Window> windows = trace.windows();
         for (int i = 0; i < windows.size(); i++) {
             BeatTrace.Window window = windows.get(i);
@@ -1912,7 +1912,6 @@ final class ReportPhases {
             out.element("td", ReportTimeline.bpm(window.trackedPulse()));
             out.element("td", HtmlWriter.number(window.periodicity(), 3));
             out.element("td", HtmlWriter.number(window.peakiness(), 3));
-            out.element("td", window.voted() ? "yes" : "no");
             out.line("</tr>");
         }
         out.line("</tbody></table>");
