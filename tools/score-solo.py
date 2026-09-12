@@ -35,12 +35,9 @@ page. Each is read off its own column.
 A package with anything playing under the melody is not scored on the notes:
 its tracker reads a mix (score-melody's caveat) and its grid reads the band
 (score-synthetic's row), and a sheet column on it would fold both into one
-number. A package with `accompaniment: pad` — a sustained voicing under the
-line — gets its key column alone, through the same route, with the source the
-run read it from beside it: the line-alone gate is a voiced-share gate and a
-line over a pad passes it, so the key is read from the line's notes there
-while the pad's harmony goes unweighed, and this row is where that shows
-(#833). These rows are tier one-and-a-half and never product accuracy — see
+number. A package with `accompaniment: pad` gets its key column alone, through
+the same route, with the source the run's key trace records beside it (#833).
+These rows are tier one-and-a-half and never product accuracy — see
 synthetic_samples/README.md.
 
 Usage:  python3 tools/score-solo.py [--jar mw-cli/target/mw.jar] [--pinned]

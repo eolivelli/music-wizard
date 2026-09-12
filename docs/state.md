@@ -246,11 +246,10 @@ raised seventh separate the relative pair; where the line comes to rest is
 not weighed, since these lines close on any tone of the tonic chord. What
 stands is the ramp's syncopation level (#826), a half-note line read at
 half tempo, and a line whose tonic is its rarest note and reads as its
-relative minor. The gate is on voiced share, so a line over a sustained pad
-takes the same key path with the pad's harmony unweighed; the pad package's
-row in `score-solo.txt` is where that is measured, and it stays there
-because on the solo packages the notes name the key where the chords read
-off them do not, and weighing both costs rows that are right (#833). The spare beat at a tracking-window seam is closed (#827):
+relative minor. A line over a sustained pad passes the same gate and reads
+its key the same way; the pad package's row in `score-solo.txt` measures
+that, and the estimator is left as it is because weighing the chords in
+costs solo rows that are right (#833). The spare beat at a tracking-window seam is closed (#827):
 windows are joined where their beats agree rather than at the later one's
 first frame, which on the real corpus removed the odd gap at half-window
 multiples from nearly every recording that had one, took the shuffle

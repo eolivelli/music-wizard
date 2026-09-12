@@ -2736,9 +2736,10 @@ class SoloPageRules(unittest.TestCase):
             (ws / "run" / "traces.json").write_text('{"schemaVersion": 1, "traces": {}}')
             self.assertEqual("nothing", solo.key_source(ws))
 
-    def test_only_an_accompaniment_free_package_is_scored(self):
+    def test_a_package_with_a_band_is_not_scored(self):
         """A band under the melody is measured by the other two harnesses; a
-        sheet column on it would fold both into one number."""
+        sheet column on it would fold both into one number. A pad gets its
+        key column alone (#833)."""
         with tempfile.TemporaryDirectory() as tmp:
             spec = Path(tmp) / "pop-x-c-100.spec.txt"
             spec.write_text("tempo: 100\nkey: C major\naccompaniment: full\nbars:\nC\n")
