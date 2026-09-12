@@ -31,7 +31,7 @@ class RunTracesTest {
     private static BeatTrace beats() {
         return new BeatTrace(240.5, 120.25,
                 new BeatTrace.Octave(true, 6.5, 0.04, 0.82, 3, 1, true),
-                List.of(new BeatTrace.Window(0, 25, true, 240.5, 0.61, 0.88, 120.25,
+                List.of(new BeatTrace.Window(0, 25, 240.5, 0.61, 0.88, 120.25,
                         List.of(new BeatTrace.Candidate(240.5, 0.47, true),
                                 new BeatTrace.Candidate(120.25, 0.31, false)))));
     }
@@ -78,6 +78,25 @@ class RunTracesTest {
 
             assertThat(read.traces().keySet()).containsExactly("beats", "aardvark");
         }
+    }
+
+    @Test
+    @DisplayName("a window field an older build wrote is skipped, not fatal")
+    void aRetiredWindowFieldIsSkipped() {
+        // Workspaces written before #835 carry a per-window flag this build
+        // no longer has. An unreadable trace is an empty one (below), so the
+        // window itself has to be asserted, not just the absence of a throw.
+        String json = "{\"schemaVersion\":1,\"traces\":{\"beats\":{"
+                + "\"agreedPulse\":240.5,\"referencePulse\":120.25,\"octave\":null,"
+                + "\"windows\":[{\"fromSeconds\":0,\"toSeconds\":25,\"voted\":true,"
+                + "\"seedPulse\":240.5,\"periodicity\":0.61,\"peakiness\":0.88,"
+                + "\"trackedPulse\":120.25,\"candidates\":[]}]}}}";
+
+        BeatTrace read = RunTraceJson.fromJson(json)
+                .trace(BeatTrace.STAGE, BeatTrace.class).orElseThrow();
+
+        assertThat(read.windows()).containsExactly(
+                new BeatTrace.Window(0, 25, 240.5, 0.61, 0.88, 120.25, List.of()));
     }
 
     @Test

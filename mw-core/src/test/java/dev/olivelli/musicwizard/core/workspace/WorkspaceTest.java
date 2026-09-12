@@ -346,7 +346,7 @@ class WorkspaceTest {
         void tracesRoundTripThroughTheWorkspace() {
             Workspace workspace = newWorkspace();
             BeatTrace beats = new BeatTrace(120.25, 120.25, null,
-                    List.of(new BeatTrace.Window(0, 25, true, 120.25, 0.6, 0.9, 120.25,
+                    List.of(new BeatTrace.Window(0, 25, 120.25, 0.6, 0.9, 120.25,
                             List.of(new BeatTrace.Candidate(120.25, 0.47, true)))));
 
             workspace.writeRunTraces(RunTraceJson.of(Map.of(BeatTrace.STAGE, beats)));

@@ -167,11 +167,11 @@ final class ReportFixtures {
                                      ChordTrace chords, KeyTrace key, MelodyTrace melody) {
         BeatTrace beats = new BeatTrace(240.5, 120.25, octave,
                 List.of(
-                        new BeatTrace.Window(0, 25, true, 240.5, 0.61, 0.88, 120.25,
+                        new BeatTrace.Window(0, 25, 240.5, 0.61, 0.88, 120.25,
                                 List.of(new BeatTrace.Candidate(240.5, 0.47, true),
                                         new BeatTrace.Candidate(120.25, 0.31, false),
                                         new BeatTrace.Candidate(80.5, 0.09, false))),
-                        new BeatTrace.Window(12.5, 30, false, 120.25, 0.55, 0.9, 120.25,
+                        new BeatTrace.Window(12.5, 30, 120.25, 0.55, 0.9, 120.25,
                                 List.of(new BeatTrace.Candidate(120.25, 0.44, true),
                                         new BeatTrace.Candidate(60.0, 0.28, false)))));
         Map<String, Object> collected = new LinkedHashMap<>();
