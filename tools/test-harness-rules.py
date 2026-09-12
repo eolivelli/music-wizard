@@ -2718,9 +2718,28 @@ class SoloPageRules(unittest.TestCase):
         self.assertEqual((-3, "minor"), solo.spec_key("C minor"))
         self.assertIsNone(solo.spec_key("C dorian"))
 
-    def test_only_an_accompaniment_free_package_is_scored(self):
+    def test_the_key_column_is_the_page_s_signature_against_the_spec_s(self):
+        self.assertEqual("OK", solo.key_verdict({"key": (1, "major")}, {"key": "G major"}))
+        self.assertEqual("(1, 'major') WRONG",
+                         solo.key_verdict({"key": (1, "major")}, {"key": "E minor"}))
+        self.assertEqual("None WRONG", solo.key_verdict({"key": None}, {"key": "G major"}))
+
+    def test_the_key_source_is_what_the_run_s_trace_records(self):
+        """A line over a pad has its key read from its notes (#833); the row
+        says which source it was, off the record rather than the printout."""
+        with tempfile.TemporaryDirectory() as tmp:
+            ws = Path(tmp)
+            (ws / "run").mkdir()
+            (ws / "run" / "traces.json").write_text(
+                '{"schemaVersion": 1, "traces": {"key": {"source": "melody"}}}')
+            self.assertEqual("melody", solo.key_source(ws))
+            (ws / "run" / "traces.json").write_text('{"schemaVersion": 1, "traces": {}}')
+            self.assertEqual("nothing", solo.key_source(ws))
+
+    def test_a_package_with_a_band_is_not_scored(self):
         """A band under the melody is measured by the other two harnesses; a
-        sheet column on it would fold both into one number."""
+        sheet column on it would fold both into one number. A pad gets its
+        key column alone (#833)."""
         with tempfile.TemporaryDirectory() as tmp:
             spec = Path(tmp) / "pop-x-c-100.spec.txt"
             spec.write_text("tempo: 100\nkey: C major\naccompaniment: full\nbars:\nC\n")

@@ -32,10 +32,12 @@ defects are separate: a page a bar late with every note right is a numbering
 error a player corrects by hand, and a page whose notes are wrong is not a
 page. Each is read off its own column.
 
-A package with anything playing under the melody is not scored here: its
-tracker reads a mix (score-melody's caveat) and its grid reads the band
+A package with anything playing under the melody is not scored on the notes:
+its tracker reads a mix (score-melody's caveat) and its grid reads the band
 (score-synthetic's row), and a sheet column on it would fold both into one
-number. These rows are tier one-and-a-half and never product accuracy — see
+number. A package with `accompaniment: pad` gets its key column alone, through
+the same route, with the source the run's key trace records beside it (#833).
+These rows are tier one-and-a-half and never product accuracy — see
 synthetic_samples/README.md.
 
 Usage:  python3 tools/score-solo.py [--jar mw-cli/target/mw.jar] [--pinned]
@@ -198,9 +200,11 @@ def f1(hits: int, estimated: int, expected: int) -> float:
 # ------------------------------------------------------------------- pipeline
 
 def render_solo(jar: Path, mp3: Path, pinned: dict | None) -> tuple[Path, str, tempfile.TemporaryDirectory]:
-    """The playable MusicXML for a solo recording, and what analyze printed.
+    """The workspace a solo recording was analysed and rendered in, and what
+    analyze printed.
 
-    The temporary directory is returned alive: the file is read by the caller.
+    The temporary directory is returned alive: the workspace is read by the
+    caller.
     """
     tmp = tempfile.TemporaryDirectory()
     ws = Path(tmp.name) / "w.mwz"
@@ -217,7 +221,19 @@ def render_solo(jar: Path, mp3: Path, pinned: dict | None) -> tuple[Path, str, t
             sys.exit(f"mw {args[0]} failed on {mp3.name}:\n{done.stdout}{done.stderr}")
         if args[0] == "analyze":
             printed = done.stdout
-    return ws / "out" / "lead-playable.musicxml", printed, tmp
+    return ws, printed, tmp
+
+
+def key_source(ws: Path) -> str:
+    """Which evidence the run read its key from, as the key trace records it."""
+    traces = json.loads((ws / "run" / "traces.json").read_text())
+    return traces.get("traces", {}).get("key", {}).get("source", "nothing")
+
+
+def key_verdict(page: dict, headers: dict) -> str:
+    want = spec_key(headers.get("key", ""))
+    got = page["key"]
+    return "OK" if got == want else f"{got} WRONG"
 
 
 def score_package(jar: Path, spec_file: Path, pinned: bool = False) -> str:
@@ -228,33 +244,36 @@ def score_package(jar: Path, spec_file: Path, pinned: bool = False) -> str:
         return f"  {name}: missing — regenerate with tools/music-teacher/generate.sh"
     spec = synthetic.parse_spec(spec_file)
     headers = spec["headers"]
-    if headers.get("accompaniment") != "none":
+    accompaniment = headers.get("accompaniment")
+    if accompaniment not in ("none", "pad"):
         return f"  {name}: not a solo package; not scored"
     tempo = float(headers["tempo"])
     reference = reference_notes(midi, tempo)
     if not reference:
         return f"  {name}: no melody track; not scored"
 
-    musicxml, printed, tmp = render_solo(
+    ws, printed, tmp = render_solo(
         jar, mp3, {"tempo": headers["tempo"], "meter": synthetic.spec_meter(spec)} if pinned else None)
     with tmp:
+        musicxml = ws / "out" / "lead-playable.musicxml"
         if not musicxml.exists():
             return f"  {name}: no playable part written"
         page = page_notes(musicxml)
+        source = key_source(ws)
+    if accompaniment == "pad":
+        return (f"  {name}: a line over a pad; notes not scored"
+                f"  key {key_verdict(page, headers)}, read from the {source}")
     estimate = page["notes"]
     shift = best_shift(estimate, reference)
     pairs = placed(estimate, reference, shift)
     held = sum(1 for e, r in pairs if abs(estimate[e][1] - reference[r][1]) < EXACT)
-    want_key = spec_key(headers.get("key", ""))
-    got_key = page["key"]
-    key = "OK" if got_key == want_key else f"{got_key} WRONG"
     return (f"  {name}: bars={page['measures']}/{len(spec['bars'])}"
             f"  {synthetic.tempo_verdict(synthetic.printed_tempo(printed), headers.get('tempo'))}"
             f"  shift {shift:+.2f}"
             f"  notes={len(estimate)}/{len(reference)}"
             f"  placed {100 * f1(len(pairs), len(estimate), len(reference)):.1f}%"
             f"  held {100 * held / len(pairs) if pairs else 0.0:.1f}%"
-            f"  key {key}")
+            f"  key {key_verdict(page, headers)}")
 
 
 def main() -> None:

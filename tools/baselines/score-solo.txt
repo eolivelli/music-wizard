@@ -5,7 +5,7 @@ Solo instrument, the playable part against each package's own MIDI, on the grid
   hiphop-m7vamp-bbm-90: not a solo package; not scored
   melody-level1-c-96: bars=25/24  tempo 96.4/96 (x1.00)  shift +0.00  notes=96/96  placed 100.0%  held 99.0%  key OK
   melody-level2-g-84: bars=17/32  tempo 42.0/84 (x0.50)  shift +2.00  notes=102/113  placed 9.3%  held 70.0%  key OK
-  melody-level2pad-g-84: not a solo package; not scored
+  melody-level2pad-g-84: a line over a pad; notes not scored  key OK, read from the melody
   melody-level3-am-108: bars=34/32  tempo 108.1/108 (x1.00)  shift +0.00  notes=74/74  placed 100.0%  held 79.7%  key OK
   melody-level4-f-126: bars=32/32  tempo 125.8/126 (x1.00)  shift +0.00  notes=94/95  placed 84.7%  held 82.5%  key OK
   pop-68-threebar-am-144: not a solo package; not scored
