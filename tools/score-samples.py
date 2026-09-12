@@ -424,15 +424,13 @@ def bar_shares(spans, start: float, end: float) -> dict:
 
 def grid_bars(lines: list[float], spans) -> list[tuple[float, float]]:
     """The bars a set of bar lines cuts: one from each line to the next, and
-    one opened on the last line wherever a chord reaches past it, closed one
+    one opened on the last line wherever a span reaches past it, closed one
     bar on at the length of the bar before it.
 
-    The last bar is closed on a bar length rather than at the recording's end
-    so that a trailing silence cannot take it, and opened only where harmony
-    reaches into it so that a grid ending on a bar line is not charged an empty
-    bar. Every chord harness cuts its bars here -- this one's chord table and
-    phase block, and the synthetic harness -- so that the same grid cannot count
-    a recording's bars two ways (#834).
+    Closed on a bar length rather than at the recording's end so that a
+    trailing silence cannot take the last bar, and opened only where a span
+    reaches past the line so that a grid ending on one is not charged an empty
+    bar (#834).
     """
     if len(lines) < 2:
         return []
