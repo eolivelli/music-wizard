@@ -98,7 +98,10 @@ cost them is the lead-in bar of #824 where the first tracked beat moved. The syn
 `tools/baselines/score-solo.txt`, diffed by premerge and CI like the others.
 
 A package with a `pad` is scored on chords like any other, and reads far worse
-than the full-band packages do. That is not the pad's harmony being unclear: a
+than the full-band packages do; `tools/score-solo.py` scores its key column too,
+through the solo route, and says which source the key was read from — a line
+over a pad passes the line-alone gate, so it is read from the line's notes
+(#833). That is not the pad's harmony being unclear: a
 package with no drums gives the beat tracker nothing percussive to lock to, so
 the bar count it scores against is wrong before a chord is named (#499). Read
 that row as a measurement of the grid, not of the harmony. Its melody row pays
