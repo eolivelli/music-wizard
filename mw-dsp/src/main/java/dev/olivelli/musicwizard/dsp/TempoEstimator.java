@@ -68,6 +68,11 @@ public final class TempoEstimator {
     /** See {@link #MIN_TEMPO}. */
     static final double MAX_TEMPO = 240;
 
+    /** Whether a reading sits at an end of the sweep's range, where a winner need not be a peak. */
+    static boolean atEdgeOfRange(double beatsPerMinute) {
+        return beatsPerMinute <= MIN_TEMPO || beatsPerMinute >= MAX_TEMPO;
+    }
+
     /**
      * The kurtosis of Gaussian noise, and so the reference point for "no
      * impulsive structure at all".

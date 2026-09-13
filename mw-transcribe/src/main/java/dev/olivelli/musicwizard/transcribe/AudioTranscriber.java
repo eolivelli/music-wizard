@@ -355,7 +355,8 @@ public final class AudioTranscriber {
         }
 
         progress.accept("tracking beats");
-        BeatTracker.Result beats = BeatTracker.track(rhythm, harmonicRhythm, onsets.pulseRegister());
+        BeatTracker.Result beats = BeatTracker.track(rhythm, harmonicRhythm, onsets.pulseRegister(),
+                noteOnsets ? envelope : null);
         if (beats.isEmpty()) {
             progress.accept("no beats found; returning an empty score");
             runLog.stage(BeatTrace.STAGE).trace(beats.trace()).computed("no pulse was found");
