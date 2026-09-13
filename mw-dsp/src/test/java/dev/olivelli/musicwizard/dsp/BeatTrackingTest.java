@@ -48,7 +48,7 @@ class BeatTrackingTest {
     }
 
     /** Both readings of a recording's onsets, by the route the pipeline takes. */
-    private static OnsetEnvelope.Both bothOf(float[] samples) {
+    static OnsetEnvelope.Both bothOf(float[] samples) {
         return OnsetEnvelope.bothFromAudio(new AudioBuffer(samples, RATE));
     }
 
@@ -208,7 +208,7 @@ class BeatTrackingTest {
      * and at a tenth of this bed the hat's leakage alone lifts the register on
      * the offbeats to a tenth of the kick's level.
      */
-    private static float[] kickAndHat(double quartersPerMinute, double seconds, long seed) {
+    static float[] kickAndHat(double quartersPerMinute, double seconds, long seed) {
         double quarter = 60.0 / quartersPerMinute;
         float[] out = new float[(int) Math.round(seconds * RATE)];
         for (double t = 0; t < seconds; t += quarter / 2) {

@@ -36,7 +36,8 @@ import java.util.Objects;
  * a quarter of the pulse, the line is written in sixteenths of it, and the
  * prior decides between the pulse and its double (#851) — that and not a
  * share of short notes, since a sung line's segmented notes are mostly
- * shorter than the beat at any pulse.
+ * shorter than the beat at any pulse. A slow line whose sixteenths are
+ * common reads the same and is doubled too; no solo row measures it (#853).
  *
  * <p><b>The notes may restore a rate the sweep ranked, never invent one</b>:
  * the half or the double is taken only where most windows' sweeps listed
@@ -100,25 +101,27 @@ final class NoteValues {
 
     /**
      * The rate halved or doubled where the line's values call for it, and
-     * unchanged otherwise — including where there is no melody, or both
-     * moves would leave {@link TempoEstimator}'s range. A move that would
-     * leave the range on its own is not taken.
+     * unchanged otherwise, including where there is no melody. A rate the
+     * register halved is not doubled back: its double is the pulse the
+     * seeds agreed on, which their sweeps rank by construction, so the
+     * candidate gate would say nothing there.
      *
-     * @param rate   the pulse the envelope, the prior and the register settled on
-     * @param melody the notes lifted into the envelope, or null where none were
-     * @param seeds  every analysis window's estimate, whose candidates say
-     *               whether the sweep ranked the half or the double at all
+     * @param rate           the pulse the envelope, the prior and the register settled on
+     * @param registerHalved whether the register halved it — see {@link MarkedPulse}
+     * @param melody         the notes lifted into the envelope, or null where none were
+     * @param seeds          every analysis window's estimate, whose candidates say
+     *                       whether the sweep ranked the half or the double at all
      */
-    static Octave resolve(double rate, NoteTrack melody, List<TempoEstimator.Estimate> seeds) {
+    static Octave resolve(double rate, boolean registerHalved, NoteTrack melody,
+                          List<TempoEstimator.Estimate> seeds) {
         Objects.requireNonNull(seeds, "seeds");
-        boolean roomBelow = rate / 2 >= TempoEstimator.MIN_TEMPO;
-        boolean roomAbove = rate * 2 <= TempoEstimator.MAX_TEMPO;
-        if (melody == null || melody.isEmpty() || !(roomBelow || roomAbove)) {
+        if (melody == null || melody.isEmpty()) {
             return new Octave(rate, false, false, null);
         }
         Reading reading = read(rate, melody, seeds);
-        boolean halve = roomBelow && reading.callsForHalving();
-        boolean twice = roomAbove && reading.callsForDoubling();
+        boolean halve = rate / 2 >= TempoEstimator.MIN_TEMPO && reading.callsForHalving();
+        boolean twice = !registerHalved && rate * 2 <= TempoEstimator.MAX_TEMPO
+                && reading.callsForDoubling();
         return new Octave(halve ? rate / 2 : twice ? rate * 2 : rate, halve, twice, reading);
     }
 

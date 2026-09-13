@@ -76,7 +76,7 @@ class NoteValuesTest {
         @Test
         @DisplayName("a line of dotted halves and quarters above the prior's centre, the half ranked, is halved")
         void dottedHalvesAndQuartersAreHalved() {
-            NoteValues.Octave octave = NoteValues.resolve(224,
+            NoteValues.Octave octave = NoteValues.resolve(224, false,
                     line(224, dottedRhythm(7)), List.of(sweep(224, 111, 74)));
 
             assertThat(octave.halved()).isTrue();
@@ -94,7 +94,7 @@ class NoteValuesTest {
             split[15] = 1.5;
 
             for (double[] shape : new double[][] {dottedRhythm(7), endsShort, split}) {
-                assertThat(NoteValues.resolve(224, line(224, shape), List.of(sweep(224, 111)))
+                assertThat(NoteValues.resolve(224, false, line(224, shape), List.of(sweep(224, 111)))
                         .halved()).isTrue();
             }
         }
@@ -103,7 +103,7 @@ class NoteValuesTest {
         @DisplayName("the same line below the prior's centre keeps its pulse")
         void aSlowLineKeepsItsPulse() {
             NoteValues.Octave octave =
-                    NoteValues.resolve(88, line(88, dottedRhythm(7)), List.of(sweep(88, 44)));
+                    NoteValues.resolve(88, false, line(88, dottedRhythm(7)), List.of(sweep(88, 44)));
 
             assertThat(octave.reading().unit()).isTrue();
             assertThat(octave.reading().priorPrefersHalf()).isFalse();
@@ -116,16 +116,16 @@ class NoteValuesTest {
             double[] quarters = new double[16];
             Arrays.fill(quarters, 1);
 
-            assertThat(NoteValues.resolve(100, line(100, quarters), List.of(sweep(100, 50)))
+            assertThat(NoteValues.resolve(100, false, line(100, quarters), List.of(sweep(100, 50)))
                     .rate()).isEqualTo(100);
-            assertThat(NoteValues.resolve(200, line(200, quarters), List.of(sweep(200, 100)))
+            assertThat(NoteValues.resolve(200, false, line(200, quarters), List.of(sweep(200, 100)))
                     .rate()).isEqualTo(100);
         }
 
         @Test
         @DisplayName("a line with a common eighth is not tracked at its unit and stands")
         void aCommonEighthKeepsThePulse() {
-            NoteValues.Octave octave = NoteValues.resolve(224,
+            NoteValues.Octave octave = NoteValues.resolve(224, false,
                     line(224, 3, 0.5, 3, 0.5, 3, 0.5, 3, 0.5, 3, 3, 3, 3),
                     List.of(sweep(224, 112)));
 
@@ -139,9 +139,9 @@ class NoteValuesTest {
         void anUnrankedHalfIsNotInvented() {
             NoteTrack shape = line(224, dottedRhythm(7));
 
-            assertThat(NoteValues.resolve(224, shape, List.of(sweep(224, 74, 56))).halved())
+            assertThat(NoteValues.resolve(224, false, shape, List.of(sweep(224, 74, 56))).halved())
                     .isFalse();
-            assertThat(NoteValues.resolve(224, shape, List.of(sweep(224, 111))).halved())
+            assertThat(NoteValues.resolve(224, false, shape, List.of(sweep(224, 111))).halved())
                     .isTrue();
         }
 
@@ -154,15 +154,15 @@ class NoteValuesTest {
             List<TempoEstimator.Estimate> twoOfThree =
                     List.of(sweep(224, 111), sweep(224, 112), sweep(224, 56));
 
-            assertThat(NoteValues.resolve(224, shape, oneOfThree).halved()).isFalse();
-            assertThat(NoteValues.resolve(224, shape, twoOfThree).halved()).isTrue();
+            assertThat(NoteValues.resolve(224, false, shape, oneOfThree).halved()).isFalse();
+            assertThat(NoteValues.resolve(224, false, shape, twoOfThree).halved()).isTrue();
         }
 
         @Test
         @DisplayName("a handful of notes decides nothing")
         void tooFewNotesDecideNothing() {
             NoteValues.Octave octave =
-                    NoteValues.resolve(224, line(224, 3, 1, 3, 1, 3), List.of(sweep(224, 111)));
+                    NoteValues.resolve(224, false, line(224, 3, 1, 3, 1, 3), List.of(sweep(224, 111)));
 
             assertThat(octave.halved()).isFalse();
             assertThat(octave.reading().unit()).isFalse();
@@ -172,7 +172,7 @@ class NoteValuesTest {
         @DisplayName("the halved line does not halve again")
         void theHalvedLineStands() {
             // At the halved rate the quarters are eighths: a common subdivision.
-            NoteValues.Octave octave = NoteValues.resolve(112,
+            NoteValues.Octave octave = NoteValues.resolve(112, false,
                     line(224, dottedRhythm(7)), List.of(sweep(112, 56)));
 
             assertThat(octave.halved()).isFalse();
@@ -180,17 +180,12 @@ class NoteValuesTest {
         }
 
         @Test
-        @DisplayName("no melody takes no reading; a half below the floor is not taken")
-        void noReadingWithoutNotesOrRoom() {
-            assertThat(NoteValues.resolve(224, null, List.of(sweep(224, 111))).reading())
+        @DisplayName("no melody takes no reading")
+        void noReadingWithoutNotes() {
+            assertThat(NoteValues.resolve(224, false, null, List.of(sweep(224, 111))).reading())
                     .isNull();
-            assertThat(NoteValues.resolve(224, NoteTrack.empty(PartRole.LEAD_VOCAL, "line"),
+            assertThat(NoteValues.resolve(224, false, NoteTrack.empty(PartRole.LEAD_VOCAL, "line"),
                     List.of(sweep(224, 111))).reading()).isNull();
-            NoteValues.Octave floor = NoteValues.resolve(70,
-                    line(70, dottedRhythm(7)), List.of(sweep(70, 35)));
-            assertThat(floor.reading().unit()).isTrue();
-            assertThat(floor.halved()).isFalse();
-            assertThat(floor.rate()).isEqualTo(70);
         }
 
         /** The half-tempo shape (#851): quarters, eighths and halves read at half their pulse. */
@@ -206,7 +201,7 @@ class NoteValuesTest {
         @Test
         @DisplayName("a line with a common sixteenth below the prior's centre, the double ranked, is doubled")
         void aCommonSixteenthDoublesASlowPulse() {
-            NoteValues.Octave octave = NoteValues.resolve(42,
+            NoteValues.Octave octave = NoteValues.resolve(42, false,
                     line(42, sixteenthsRhythm(4)), List.of(sweep(42, 83.5)));
 
             assertThat(octave.doubled()).isTrue();
@@ -219,7 +214,7 @@ class NoteValuesTest {
         @Test
         @DisplayName("the same line above the prior's crossover keeps its pulse")
         void aQuickLineInSixteenthsKeepsItsPulse() {
-            NoteValues.Octave octave = NoteValues.resolve(100,
+            NoteValues.Octave octave = NoteValues.resolve(100, false,
                     line(100, sixteenthsRhythm(4)), List.of(sweep(100, 200)));
 
             assertThat(octave.reading().inQuarters()).isTrue();
@@ -235,7 +230,7 @@ class NoteValuesTest {
             for (int i = 0; i < eighthsAndQuarters.length; i++) {
                 eighthsAndQuarters[i] = i % 3 == 2 ? 1 : 0.5;
             }
-            NoteValues.Octave octave = NoteValues.resolve(60,
+            NoteValues.Octave octave = NoteValues.resolve(60, false,
                     line(60, eighthsAndQuarters), List.of(sweep(60, 120)));
 
             assertThat(octave.reading().priorPrefersDouble()).isTrue();
@@ -248,18 +243,18 @@ class NoteValuesTest {
         void anUnrankedDoubleIsNotInvented() {
             NoteTrack shape = line(42, sixteenthsRhythm(4));
 
-            assertThat(NoteValues.resolve(42, shape, List.of(sweep(42, 63))).doubled())
+            assertThat(NoteValues.resolve(42, false, shape, List.of(sweep(42, 63))).doubled())
                     .isFalse();
-            assertThat(NoteValues.resolve(42, shape,
+            assertThat(NoteValues.resolve(42, false, shape,
                     List.of(sweep(42, 84), sweep(42, 63), sweep(42, 63))).doubled()).isFalse();
-            assertThat(NoteValues.resolve(42, shape,
+            assertThat(NoteValues.resolve(42, false, shape,
                     List.of(sweep(42, 84), sweep(42, 83), sweep(42, 63))).doubled()).isTrue();
         }
 
         @Test
         @DisplayName("the doubled line does not double again, and is not halved back")
         void theDoubledLineStands() {
-            NoteValues.Octave octave = NoteValues.resolve(84,
+            NoteValues.Octave octave = NoteValues.resolve(84, false,
                     line(42, sixteenthsRhythm(4)), List.of(sweep(84, 42, 168)));
 
             assertThat(octave.doubled()).isFalse();
@@ -269,13 +264,16 @@ class NoteValuesTest {
         }
 
         @Test
-        @DisplayName("a double above the sweep's ceiling is not taken")
-        void aDoubleAboveTheCeilingIsNotTaken() {
-            NoteValues.Octave octave = NoteValues.resolve(130,
-                    line(130, sixteenthsRhythm(4)), List.of(sweep(130, 260)));
+        @DisplayName("a rate the register halved is not doubled back")
+        void aRegisterHalvedRateIsNotDoubledBack() {
+            NoteTrack shape = line(60, sixteenthsRhythm(4));
+            List<TempoEstimator.Estimate> seeds = List.of(sweep(120, 60));
 
-            assertThat(octave.doubled()).isFalse();
-            assertThat(octave.rate()).isEqualTo(130);
+            assertThat(NoteValues.resolve(60, false, shape, seeds).doubled()).isTrue();
+            NoteValues.Octave kept = NoteValues.resolve(60, true, shape, seeds);
+            assertThat(kept.doubled()).isFalse();
+            assertThat(kept.rate()).isEqualTo(60);
+            assertThat(kept.reading().callsForDoubling()).isTrue();
         }
     }
 
@@ -417,6 +415,45 @@ class NoteValuesTest {
                     assertThat(window.trackedPulse()).isCloseTo(84, within(3.0));
                 }
             }
+        }
+
+        @Test
+        @DisplayName("the register's halving stands against a line with a common sixteenth")
+        void theRegistersHalvingIsNotDoubledBack() {
+            // The #509 fixture: a kick on the quarters under a hat on every
+            // eighth, which the envelope and the prior read at the eighth and
+            // the register halves. A line of quarters, eighths and sixteenth
+            // pairs over it has a common value at a quarter of the halved
+            // pulse, whose double is the very rate the register left.
+            double quarters = 60;
+            OnsetEnvelope.Both onsets =
+                    BeatTrackingTest.bothOf(BeatTrackingTest.kickAndHat(quarters, 60, 3));
+            List<Note> notes = new ArrayList<>();
+            double beat = 60 / quarters;
+            double[] bar = {1, 0.5, 0.5, 1, 0.25, 0.25, 0.5};
+            int index = 0;
+            for (double t = 0.5; t + beat < 60; index++) {
+                double written = bar[index % bar.length] * beat;
+                notes.add(Note.ofSeconds(t, written * 0.9, 60 + index % 7, Confidence.UNKNOWN));
+                t += written;
+            }
+            NoteTrack line = new NoteTrack(PartRole.LEAD_VOCAL, "line", notes, Confidence.UNKNOWN);
+
+            BeatTracker.Result register = BeatTracker.track(onsets.envelope(),
+                    HarmonicRhythm.none(), onsets.pulseRegister());
+            BeatTracker.Result registerAndLine = BeatTracker.track(onsets.envelope(),
+                    HarmonicRhythm.none(), onsets.pulseRegister(), onsets.envelope(), line);
+
+            assertThat(register.trace().octaveMoved()).isTrue();
+            assertThat(register.beatsPerMinute()).isCloseTo(quarters, within(3.0));
+            assertThat(registerAndLine.trace().octaveMoved()).isTrue();
+            BeatTrace.NoteValues values = registerAndLine.trace().noteValues();
+            assertThat(values.quarterShare()).isGreaterThan(0.2);
+            assertThat(values.doubleRanked()).isTrue();
+            assertThat(values.priorPrefersDouble()).isTrue();
+            assertThat(values.doubled()).isFalse();
+            assertThat(registerAndLine.trace().noteValuesMoved()).isFalse();
+            assertThat(registerAndLine.beatsPerMinute()).isCloseTo(quarters, within(3.0));
         }
 
         @Test

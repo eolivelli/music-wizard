@@ -162,7 +162,8 @@ public final class BeatTracker {
             TempoEstimator.Estimate tempo = seed(envelope, heard, 0, envelope.length(), rhythm);
             MarkedPulse.Octave octave = MarkedPulse.resolve(tempo.beatsPerMinute(), envelope,
                     pulseRegister, votingWindows(envelope));
-            NoteValues.Octave values = NoteValues.resolve(octave.rate(), melody, List.of(tempo));
+            NoteValues.Octave values =
+                    NoteValues.resolve(octave.rate(), octave.halved(), melody, List.of(tempo));
             double rate = values.rate();
             List<Double> beats = trackFixedTempo(envelope, rate, 0, envelope.length());
             return new Result(beats, tempoOf(beats, rate),
@@ -188,7 +189,8 @@ public final class BeatTracker {
         double agreed = pulseReference(seeds);
         MarkedPulse.Octave octave =
                 MarkedPulse.resolve(agreed, envelope, pulseRegister, votingWindows(envelope));
-        NoteValues.Octave values = NoteValues.resolve(octave.rate(), melody, seeds);
+        NoteValues.Octave values =
+                NoteValues.resolve(octave.rate(), octave.halved(), melody, seeds);
         double reference = values.rate();
         List<BeatTrace.Window> traced = new ArrayList<>();
 

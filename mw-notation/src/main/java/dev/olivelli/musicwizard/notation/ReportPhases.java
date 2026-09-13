@@ -284,8 +284,8 @@ final class ReportPhases {
             table.add(fact("Bass register", "read, and no window of it held enough tracked"
                     + " beats to measure" + left));
         } else {
-            // The register halves the agreed pulse; the note values below may
-            // halve the result again, so the rate printed here is its own.
+            // The rate printed here is the register's own, not the reference
+            // the note values below may have moved.
             table.add(fact("Bass register", octave.halved()
                     ? "states only every second beat of that pulse, so it was halved to "
                             + ReportTimeline.bpm(trace.agreedPulse() / 2) + " a minute"

@@ -35,9 +35,7 @@ import java.util.List;
  *                       register to read or the halved rate lay outside the
  *                       tracker's range
  * @param noteValues     how a line alone's note values were read, or null
- *                       where no notes were lifted into the envelope or
- *                       neither the halved nor the doubled rate lay inside
- *                       the tracker's range
+ *                       where no notes were lifted into the envelope
  * @param windows        one entry per analysis window, in time order
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
