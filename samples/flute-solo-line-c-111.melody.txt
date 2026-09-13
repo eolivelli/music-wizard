@@ -1,0 +1,12 @@
+# What was played, confirmed by ear; samples/list.txt has the entry.
+# tools/score-solo.py --source samples compiles this into the reference.
+# Written at the pulse a player taps, half the pulse the page was read at.
+tempo: 111
+meter: 4/4
+key: C major
+melody:
+r2 r4 e''4~
+e''8 f''8 g''4~ g''8 f''8 e''4~
+e''8 f''8 g''4~ g''8 f''8 e''4~
+e''8 f''8 e''4~ e''8 d''8 c''4~
+c''8 d''8 c''4~ c''4. r8
