@@ -261,7 +261,7 @@ one of its F's spelled E sharp by the chord under it. The score now carries
 one no-chord span over the same extent, the run's record says why and keeps
 the spans as read, and the playable part is spelled by the key alone. The
 cost is a line over a pad, whose real chords the gate withholds with the
-rest; nothing in the run yet tells the pad from the room. The spare beat at a tracking-window seam is closed (#827):
+rest; nothing in the run yet tells the pad from the room (#849). The spare beat at a tracking-window seam is closed (#827):
 windows are joined where their beats agree rather than at the later one's
 first frame, which on the real corpus removed the odd gap at half-window
 multiples from nearly every recording that had one, took the shuffle

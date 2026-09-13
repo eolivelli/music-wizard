@@ -561,12 +561,8 @@ public final class AudioTranscriber {
         ChordEstimator.Decoded decoded =
                 ChordEstimator.explain(chroma, treble, bass, ablation, beatTimes);
         ChordProgression named = decoded.chords();
-        // On a line alone the estimator's spans are read from what sounds
-        // under the melody, which is nothing: the decoder settles each root on
-        // the bass register and names room content (#843). The chart says so
-        // instead, and the notes are then spelled by the key alone. Behind the
-        // same gate as the beat and the key. The trace keeps the spans as
-        // read, so the record shows what was withheld.
+        // A line alone has nothing under it to read chords from; the trace
+        // keeps what the estimator read (#843).
         boolean withheld = noteOnsets && !named.isEmpty();
         ChordProgression chords = withheld ? noChordThroughout(named) : named;
         if (withheld) {
@@ -709,10 +705,8 @@ public final class AudioTranscriber {
     }
 
     /**
-     * One no-chord span over the extent the estimator named chords across, so
-     * every page keeps its bars and prints nothing over them. Its confidence
-     * is unknown rather than the estimator's: that figure rated the labels
-     * being withheld.
+     * The confidence is unknown rather than the estimator's: that figure rated
+     * the labels being withheld.
      */
     static ChordProgression noChordThroughout(ChordProgression estimated) {
         List<Chord> spans = estimated.chords();
