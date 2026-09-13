@@ -139,6 +139,20 @@ final class ReportFixtures {
         return weighed(octave, chroma(), chordDecisions(), keyDecisions(), melodyCuts());
     }
 
+    /** A line alone's run: no register reading, and the note values of the caller's choosing. */
+    static RunTraces lineAlone(BeatTrace.NoteValues values) {
+        return weighed(null, values, chroma(), chordDecisions(), keyDecisions(), melodyCuts());
+    }
+
+    /**
+     * A run both the register and the note values halved: the windows fold
+     * onto a quarter of the pulse they agreed on.
+     */
+    static RunTraces halvedTwice(BeatTrace.Octave octave, BeatTrace.NoteValues values) {
+        return weighed(octave, values, AGREED_PULSE / 4, chroma(), chordDecisions(),
+                keyDecisions(), melodyCuts());
+    }
+
     /** The same, with a chroma trace of the caller's choosing. */
     static RunTraces weighed(ChromaTrace chroma) {
         return weighed(defaultOctave(), chroma, chordDecisions(), keyDecisions(), melodyCuts());
@@ -165,7 +179,22 @@ final class ReportFixtures {
 
     private static RunTraces weighed(BeatTrace.Octave octave, ChromaTrace chroma,
                                      ChordTrace chords, KeyTrace key, MelodyTrace melody) {
-        BeatTrace beats = new BeatTrace(240.5, 120.25, octave,
+        return weighed(octave, null, chroma, chords, key, melody);
+    }
+
+    private static RunTraces weighed(BeatTrace.Octave octave, BeatTrace.NoteValues values,
+                                     ChromaTrace chroma, ChordTrace chords, KeyTrace key,
+                                     MelodyTrace melody) {
+        return weighed(octave, values, AGREED_PULSE / 2, chroma, chords, key, melody);
+    }
+
+    /** What the fixture's windows agree on; the register folds them onto half of it. */
+    private static final double AGREED_PULSE = 240.5;
+
+    private static RunTraces weighed(BeatTrace.Octave octave, BeatTrace.NoteValues values,
+                                     double referencePulse, ChromaTrace chroma,
+                                     ChordTrace chords, KeyTrace key, MelodyTrace melody) {
+        BeatTrace beats = new BeatTrace(AGREED_PULSE, referencePulse, octave, values,
                 List.of(
                         new BeatTrace.Window(0, 25, 240.5, 0.61, 0.88, 120.25,
                                 List.of(new BeatTrace.Candidate(240.5, 0.47, true),

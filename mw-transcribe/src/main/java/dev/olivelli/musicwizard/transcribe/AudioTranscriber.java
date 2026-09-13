@@ -357,7 +357,7 @@ public final class AudioTranscriber {
 
         progress.accept("tracking beats");
         BeatTracker.Result beats = BeatTracker.track(rhythm, harmonicRhythm, onsets.pulseRegister(),
-                noteOnsets ? envelope : null);
+                noteOnsets ? envelope : null, noteOnsets ? mixMelody.melody() : null);
         if (beats.isEmpty()) {
             progress.accept("no beats found; returning an empty score");
             runLog.stage(BeatTrace.STAGE).trace(beats.trace()).computed("no pulse was found");
@@ -742,10 +742,10 @@ public final class AudioTranscriber {
      * What the tracker chose between, and what its beats were barred by (#675).
      *
      * <p>The line carries the two decisions a reader would want without opening
-     * the trace: whether the bass register moved the pulse the windows had
-     * agreed on, which is the halving or doubling a user most often corrects by
-     * hand, and what the bars were made of, which is where a run whose bars are
-     * the wrong length says so.
+     * the trace: whether the bass register or a line alone's note values moved
+     * the pulse the windows had agreed on, which is the halving or doubling a
+     * user most often corrects by hand, and what the bars were made of, which
+     * is where a run whose bars are the wrong length says so.
      *
      * @param detected the meter read off the recording, or null where one was
      *                 typed
@@ -770,10 +770,15 @@ public final class AudioTranscriber {
         }
         stage.fact("analysis windows", trace.windows().size())
                 .fact("pulse the windows agreed on", perMinute(trace.agreedPulse()));
-        if (trace.octaveMoved()) {
+        if (trace.octaveMoved() || trace.noteValuesMoved()) {
+            String register = "the bass register states only every second beat of the pulse"
+                    + " the windows agreed on, so it was halved";
+            String values = "a line alone: the pulse is the line's shortest value, so the"
+                    + " tempo prior chose between it and its half, and it was halved";
             stage.fact("pulse tracked", perMinute(trace.referencePulse()))
-                    .computed("the bass register states only every second beat of the pulse"
-                            + " the windows agreed on, so it was halved");
+                    .computed(trace.octaveMoved() && trace.noteValuesMoved()
+                            ? register + "; then " + values
+                            : trace.octaveMoved() ? register : values);
         } else {
             stage.computed();
         }

@@ -50,6 +50,17 @@ corrections earn their place on real music:
   alone the register cannot tell a doubled grid from a correct one whose bass
   plays half as often. Only that direction, too: doubling would have to force
   the tracker to twice the rate, where it lands beats on any energy at all.
+- **A line alone's note values discount the octave its train ranked.** Where
+  the melody's notes are lifted into the envelope (`OnsetEnvelope.withNoteOnsets`),
+  the train correlates most strongly at the line's shortest value, and neither
+  the register nor the harmony is there to overrule it. `NoteValues` reads the
+  segmented notes at the tracked pulse: where no common value is shorter than
+  the beat, the pulse is the line's unit and the envelope's ranking of it over
+  its half is the train's, so the prior decides between the two — halving
+  where it prefers the half and most windows' sweeps ranked it (#844).
+  Halving only, like the register: a sung line's segmented notes are mostly
+  shorter than the beat at any pulse, so the mirror would double singing
+  (#851).
 
 The confidence (`periodicity × peakiness`) is deliberately weak: it is zero
 for silence and comparable between two readings of the same recording, and

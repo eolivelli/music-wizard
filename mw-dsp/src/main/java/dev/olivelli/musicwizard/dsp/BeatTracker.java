@@ -18,6 +18,7 @@ package dev.olivelli.musicwizard.dsp;
 
 import dev.olivelli.musicwizard.core.model.BeatGrid;
 import dev.olivelli.musicwizard.core.model.Confidence;
+import dev.olivelli.musicwizard.core.model.NoteTrack;
 import dev.olivelli.musicwizard.core.workspace.BeatTrace;
 import java.util.ArrayList;
 import java.util.List;
@@ -137,6 +138,18 @@ public final class BeatTracker {
      */
     public static Result track(OnsetEnvelope envelope, HarmonicRhythm rhythm,
                                OnsetEnvelope pulseRegister, OnsetEnvelope heard) {
+        return track(envelope, rhythm, pulseRegister, heard, null);
+    }
+
+    /**
+     * The same, with the notes that were lifted into the envelope, whose
+     * values may halve a pulse tracked at the line's unit rather than its
+     * beat — see {@link NoteValues}. Pass {@code null} where no notes were
+     * lifted in.
+     */
+    public static Result track(OnsetEnvelope envelope, HarmonicRhythm rhythm,
+                               OnsetEnvelope pulseRegister, OnsetEnvelope heard,
+                               NoteTrack melody) {
         Objects.requireNonNull(envelope, "envelope");
         Objects.requireNonNull(rhythm, "rhythm");
         if (envelope.length() < 16 || envelope.isFlat()) {
@@ -148,11 +161,12 @@ public final class BeatTracker {
             TempoEstimator.Estimate tempo = seed(envelope, heard, 0, envelope.length(), rhythm);
             MarkedPulse.Octave octave = MarkedPulse.resolve(tempo.beatsPerMinute(), envelope,
                     pulseRegister, votingWindows(envelope));
-            double rate = octave.rate();
+            NoteValues.Octave values = NoteValues.resolve(octave.rate(), melody, List.of(tempo));
+            double rate = values.rate();
             List<Double> beats = trackFixedTempo(envelope, rate, 0, envelope.length());
             return new Result(beats, tempoOf(beats, rate),
                     Confidence.clamped(tempo.strength()),
-                    new BeatTrace(tempo.beatsPerMinute(), rate, traced(octave),
+                    new BeatTrace(tempo.beatsPerMinute(), rate, traced(octave), traced(values),
                             List.of(traced(envelope, 0, envelope.length(), tempo, rate))));
         }
 
@@ -173,7 +187,8 @@ public final class BeatTracker {
         double agreed = pulseReference(seeds);
         MarkedPulse.Octave octave =
                 MarkedPulse.resolve(agreed, envelope, pulseRegister, votingWindows(envelope));
-        double reference = octave.rate();
+        NoteValues.Octave values = NoteValues.resolve(octave.rate(), melody, seeds);
+        double reference = values.rate();
         List<BeatTrace.Window> traced = new ArrayList<>();
 
         List<Double> beats = new ArrayList<>();
@@ -205,7 +220,7 @@ public final class BeatTracker {
         double meanStrength = windows > 0 ? strengthSum / windows : 0;
         double fallback = windows > 0 ? tempoSum / windows : TempoEstimator.PREFERRED_TEMPO;
         return new Result(beats, tempoOf(beats, fallback), Confidence.clamped(meanStrength),
-                new BeatTrace(agreed, reference, traced(octave), traced));
+                new BeatTrace(agreed, reference, traced(octave), traced(values), traced));
     }
 
     /** One window's seed, bounded as the four-argument {@link #track} says. */
@@ -236,6 +251,14 @@ public final class BeatTracker {
                 : new BeatTrace.Octave(octave.halved(), reading.contrast(), reading.parity(),
                         reading.statedShare(), reading.windowsRead(), reading.windowsRefused(),
                         reading.envelopePrefersHalf());
+    }
+
+    private static BeatTrace.NoteValues traced(NoteValues.Octave values) {
+        NoteValues.Reading reading = values.reading();
+        return reading == null ? null
+                : new BeatTrace.NoteValues(values.halved(), reading.notes(),
+                        reading.subdivisionShare(), reading.halfRanked(),
+                        reading.priorPrefersHalf());
     }
 
     /**

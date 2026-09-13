@@ -26,13 +26,17 @@ import java.util.List;
  * run that writes none tracks the same beats.
  *
  * @param agreedPulse    the rate the windows' seeds agreed on, in pulses a
- *                       minute, before the register was consulted
+ *                       minute, before the register or the note values were
+ *                       consulted
  * @param referencePulse the rate every window was then folded onto, which
  *                       differs from {@code agreedPulse} exactly when the
- *                       register moved the octave
+ *                       register or the note values moved the octave
  * @param octave         how the register was read, or null where there was no
  *                       register to read or the halved rate lay outside the
  *                       tracker's range
+ * @param noteValues     how a line alone's note values were read, or null
+ *                       where no notes were lifted into the envelope or the
+ *                       halved rate lay outside the tracker's range
  * @param windows        one entry per analysis window, in time order
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -40,6 +44,7 @@ public record BeatTrace(
         double agreedPulse,
         double referencePulse,
         Octave octave,
+        NoteValues noteValues,
         List<Window> windows) {
 
     /** The stage this trace belongs to, which is also its report phase. */
@@ -49,9 +54,20 @@ public record BeatTrace(
         windows = windows == null ? List.of() : List.copyOf(windows);
     }
 
+    /** A trace from a tracker that read no note values. */
+    public BeatTrace(double agreedPulse, double referencePulse, Octave octave,
+                     List<Window> windows) {
+        this(agreedPulse, referencePulse, octave, null, windows);
+    }
+
     /** Whether the register moved the pulse the seeds had settled on. */
     public boolean octaveMoved() {
         return octave != null && octave.halved();
+    }
+
+    /** Whether the line's note values moved the pulse the register left. */
+    public boolean noteValuesMoved() {
+        return noteValues != null && noteValues.halved();
     }
 
     /**
@@ -82,6 +98,26 @@ public record BeatTrace(
             int windowsRead,
             int windowsRefused,
             boolean envelopePrefersHalf) {
+    }
+
+    /**
+     * What a line alone's note values said about the pulse the register left,
+     * and what that was taken to mean; {@code NoteValues} in the dsp module
+     * carries which way each has to fall.
+     *
+     * @param halved           whether the pulse was halved on this reading
+     * @param notes            how many notes were read
+     * @param subdivisionShare the share of them shorter than a beat at that pulse
+     * @param halfRanked       whether most windows' sweeps listed the halved rate
+     * @param priorPrefersHalf whether the tempo prior puts the halved rate above it
+     */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record NoteValues(
+            boolean halved,
+            int notes,
+            double subdivisionShare,
+            boolean halfRanked,
+            boolean priorPrefersHalf) {
     }
 
     /**

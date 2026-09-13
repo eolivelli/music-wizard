@@ -271,20 +271,24 @@ final class ReportPhases {
         table.add(fact("Pulse the windows agreed on",
                 ReportTimeline.bpm(trace.agreedPulse()) + " a minute"));
         BeatTrace.Octave octave = trace.octave();
+        // Where the note values below moved the octave, the register's silence
+        // did not leave it with the envelope and the prior.
+        String left = trace.noteValuesMoved() ? ""
+                : ", so the octave is where the envelope and the tempo prior put it";
         if (octave == null) {
-            table.add(fact("Bass register", "not read, so the octave is where the envelope"
-                    + " and the tempo prior put it"));
+            table.add(fact("Bass register", "not read" + left));
         } else if (octave.windowsRead() == 0) {
             // Every figure below is absent together in this one case, and a
             // page that printed them would be printing the absence as a
             // measurement.
             table.add(fact("Bass register", "read, and no window of it held enough tracked"
-                    + " beats to measure, so the octave is where the envelope and the"
-                    + " tempo prior put it"));
+                    + " beats to measure" + left));
         } else {
+            // The register halves the agreed pulse; the note values below may
+            // halve the result again, so the rate printed here is its own.
             table.add(fact("Bass register", octave.halved()
                     ? "states only every second beat of that pulse, so it was halved to "
-                            + ReportTimeline.bpm(trace.referencePulse()) + " a minute"
+                            + ReportTimeline.bpm(trace.agreedPulse() / 2) + " a minute"
                     : "leaves that pulse where it is"));
             table.add(fact("Windows the register was read over",
                     octave.windowsRead() + ", of which " + octave.windowsRefused()
@@ -298,6 +302,23 @@ final class ReportPhases {
                     HtmlWriter.number(100 * octave.statedShare(), 0) + "%"));
             table.add(fact("The envelope's own ranking", octave.envelopePrefersHalf()
                     ? "puts the halved rate above it" : "keeps that pulse above the halved rate"));
+        }
+        BeatTrace.NoteValues values = trace.noteValues();
+        if (values != null) {
+            table.add(fact("Note values", values.halved()
+                    ? "make that pulse the line's shortest value, so the tempo prior chose"
+                            + " between it and its half: halved to "
+                            + ReportTimeline.bpm(trace.referencePulse()) + " a minute"
+                    : "leave that pulse where it is"));
+            table.add(fact("Notes read", String.valueOf(values.notes())));
+            table.add(fact("Share shorter than the beat",
+                    HtmlWriter.number(100 * values.subdivisionShare(), 0) + "%"));
+            table.add(fact("The sweep's own candidates", values.halfRanked()
+                    ? "list the halved rate in most windows"
+                    : "do not list the halved rate in most windows"));
+            table.add(fact("The tempo prior", values.priorPrefersHalf()
+                    ? "puts the halved rate above that pulse"
+                    : "keeps that pulse above the halved rate"));
         }
         facts(table.toArray(new Fact[0]));
         candidateLanes(trace);
