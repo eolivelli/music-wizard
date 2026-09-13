@@ -771,13 +771,14 @@ public final class AudioTranscriber {
         stage.fact("analysis windows", trace.windows().size())
                 .fact("pulse the windows agreed on", perMinute(trace.agreedPulse()));
         if (trace.octaveMoved() || trace.noteValuesMoved()) {
+            String register = "the bass register states only every second beat of the pulse"
+                    + " the windows agreed on, so it was halved";
+            String values = "a line alone: the pulse is the line's shortest value, so the"
+                    + " tempo prior chose between it and its half, and it was halved";
             stage.fact("pulse tracked", perMinute(trace.referencePulse()))
-                    .computed(trace.octaveMoved()
-                            ? "the bass register states only every second beat of the pulse"
-                                    + " the windows agreed on, so it was halved"
-                            : "a line alone: most of its notes are a half or longer at the"
-                                    + " pulse the windows agreed on and none is shorter than"
-                                    + " the beat, so it was halved");
+                    .computed(trace.octaveMoved() && trace.noteValuesMoved()
+                            ? register + "; then " + values
+                            : trace.octaveMoved() ? register : values);
         } else {
             stage.computed();
         }

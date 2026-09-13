@@ -108,16 +108,16 @@ public record BeatTrace(
      * @param halved           whether the pulse was halved on this reading
      * @param notes            how many notes were read
      * @param subdivisionShare the share of them shorter than a beat at that pulse
-     * @param longShare        the share of them a half or longer
      * @param halfRanked       whether most windows' sweeps listed the halved rate
+     * @param priorPrefersHalf whether the tempo prior puts the halved rate above it
      */
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record NoteValues(
             boolean halved,
             int notes,
             double subdivisionShare,
-            double longShare,
-            boolean halfRanked) {
+            boolean halfRanked,
+            boolean priorPrefersHalf) {
     }
 
     /**

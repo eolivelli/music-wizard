@@ -74,7 +74,7 @@ class NoteValuesTest {
     class Decision {
 
         @Test
-        @DisplayName("a line of dotted halves and quarters, the half ranked, is halved")
+        @DisplayName("a line of dotted halves and quarters above the prior's centre, the half ranked, is halved")
         void dottedHalvesAndQuartersAreHalved() {
             NoteValues.Octave octave = NoteValues.resolve(224,
                     line(224, dottedRhythm(7)), List.of(sweep(224, 111, 74)));
@@ -82,32 +82,54 @@ class NoteValuesTest {
             assertThat(octave.halved()).isTrue();
             assertThat(octave.rate()).isEqualTo(112);
             assertThat(octave.reading().subdivisionShare()).isZero();
-            assertThat(octave.reading().longShare()).isGreaterThan(0.5);
+            assertThat(octave.reading().priorPrefersHalf()).isTrue();
         }
 
         @Test
-        @DisplayName("a line of quarters keeps its pulse")
-        void quartersKeepThePulse() {
+        @DisplayName("whether the line ends on the long value or the short one changes nothing")
+        void theClosingNoteDoesNotDecide() {
+            double[] endsShort = Arrays.copyOf(dottedRhythm(7), 14);
+            double[] split = Arrays.copyOf(dottedRhythm(7), 16);
+            split[14] = 1.5;
+            split[15] = 1.5;
+
+            for (double[] shape : new double[][] {dottedRhythm(7), endsShort, split}) {
+                assertThat(NoteValues.resolve(224, line(224, shape), List.of(sweep(224, 111)))
+                        .halved()).isTrue();
+            }
+        }
+
+        @Test
+        @DisplayName("the same line below the prior's centre keeps its pulse")
+        void aSlowLineKeepsItsPulse() {
+            NoteValues.Octave octave =
+                    NoteValues.resolve(88, line(88, dottedRhythm(7)), List.of(sweep(88, 44)));
+
+            assertThat(octave.reading().unit()).isTrue();
+            assertThat(octave.reading().priorPrefersHalf()).isFalse();
+            assertThat(octave.halved()).isFalse();
+        }
+
+        @Test
+        @DisplayName("a line of quarters leaves the octave to the prior")
+        void quartersLeaveTheOctaveToThePrior() {
             double[] quarters = new double[16];
             Arrays.fill(quarters, 1);
 
-            NoteValues.Octave octave =
-                    NoteValues.resolve(100, line(100, quarters), List.of(sweep(100, 50)));
-
-            assertThat(octave.halved()).isFalse();
-            assertThat(octave.rate()).isEqualTo(100);
-            assertThat(octave.reading().longShare()).isZero();
+            assertThat(NoteValues.resolve(100, line(100, quarters), List.of(sweep(100, 50)))
+                    .rate()).isEqualTo(100);
+            assertThat(NoteValues.resolve(200, line(200, quarters), List.of(sweep(200, 100)))
+                    .rate()).isEqualTo(100);
         }
 
         @Test
-        @DisplayName("a line whose halves outnumber its quarters but carries eighths keeps its pulse")
+        @DisplayName("a line with a common eighth is not tracked at its unit and stands")
         void aCommonEighthKeepsThePulse() {
-            // Halved, those eighths would be sixteenths.
-            NoteValues.Octave octave = NoteValues.resolve(120,
-                    line(120, 2, 0.5, 2, 0.5, 2, 0.5, 2, 0.5, 2, 2, 2, 2),
-                    List.of(sweep(120, 60)));
+            NoteValues.Octave octave = NoteValues.resolve(224,
+                    line(224, 3, 0.5, 3, 0.5, 3, 0.5, 3, 0.5, 3, 3, 3, 3),
+                    List.of(sweep(224, 112)));
 
-            assertThat(octave.reading().longShare()).isGreaterThan(0.5);
+            assertThat(octave.reading().priorPrefersHalf()).isTrue();
             assertThat(octave.reading().subdivisionShare()).isGreaterThan(0.2);
             assertThat(octave.halved()).isFalse();
         }
@@ -143,7 +165,7 @@ class NoteValuesTest {
                     NoteValues.resolve(224, line(224, 3, 1, 3, 1, 3), List.of(sweep(224, 111)));
 
             assertThat(octave.halved()).isFalse();
-            assertThat(octave.reading().longShare()).isGreaterThan(0.5);
+            assertThat(octave.reading().unit()).isFalse();
         }
 
         @Test

@@ -257,7 +257,8 @@ public final class BeatTracker {
         NoteValues.Reading reading = values.reading();
         return reading == null ? null
                 : new BeatTrace.NoteValues(values.halved(), reading.notes(),
-                        reading.subdivisionShare(), reading.longShare(), reading.halfRanked());
+                        reading.subdivisionShare(), reading.halfRanked(),
+                        reading.priorPrefersHalf());
     }
 
     /**

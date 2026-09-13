@@ -144,6 +144,11 @@ final class ReportFixtures {
         return weighed(null, values, chroma(), chordDecisions(), keyDecisions(), melodyCuts());
     }
 
+    /** The same, with both octave readings of the caller's choosing. */
+    static RunTraces weighed(BeatTrace.Octave octave, BeatTrace.NoteValues values) {
+        return weighed(octave, values, chroma(), chordDecisions(), keyDecisions(), melodyCuts());
+    }
+
     /** The same, with a chroma trace of the caller's choosing. */
     static RunTraces weighed(ChromaTrace chroma) {
         return weighed(defaultOctave(), chroma, chordDecisions(), keyDecisions(), melodyCuts());

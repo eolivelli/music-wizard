@@ -194,7 +194,8 @@ e''8 f''8 e''4~ e''8 d''8 c''4~ | c''8 d''8 c''4~ c''4. r8
 No chord grid: a line alone carries none, so it is not scored by
 tools/score-samples.py. The phone (app 0.10.0) read the pulse doubled, 222 in
 4/4, the page holding these notes at twice their length: the sweep ranks the
-line's shortest value first, and the notes' values are what halve it (#844).
+line's shortest value first, and the note values are what hand the octave
+back to the prior (#844).
 C major is read from the melody, every note spelled by that key and no chord
 named over them (#843).
 

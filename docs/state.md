@@ -242,12 +242,16 @@ take engraves as played, and so does the flute take once its note values
 have halved the pulse (#844): a train of notes correlates most strongly at
 the line's shortest value, so a line in dotted halves and quarters was
 tracked at the quarter with its beat the sweep's runner-up, and a line
-alone has no register or harmony to say so. Where most of its notes are a
-half or longer at the tracked pulse, none shorter than the beat, and most
-windows' sweeps ranked the half, the half is restored — that direction
-only, since a sung line's segmented notes are mostly shorter than the beat
-at any pulse and the mirror would double singing; no vocadito clip moves,
-and the packages that read half their written rate stay there (#826).
+alone has no register or harmony to say so. Where the tracked pulse is
+the line's shortest common value, that ranking is the train's rather than
+the music's, and the perceptual prior decides between the pulse and its
+half — where most windows' sweeps ranked the half. A share of notes
+longer than the beat does not separate the two: the level-three packages
+are quarters and halves at their written pulse as this take is quarters
+and dotted halves at twice its own. Halving only, since a sung line's
+segmented notes are mostly shorter than the beat at any pulse and the
+mirror would double singing (#851); no vocadito clip moves, and the
+packages that read half their written rate stay there (#826).
 A first tracked
 beat a frame after the origin no longer opens the page on a bar of rests:
 a lead-in shorter than a fraction of a pulse is left out of the tempo map,

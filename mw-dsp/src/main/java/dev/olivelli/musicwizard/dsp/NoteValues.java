@@ -29,9 +29,11 @@ import java.util.Objects;
  * are a train of equal events, and a train correlates most strongly at its
  * own unit, whatever the beat is. On a band the bass register
  * ({@link MarkedPulse}) and the harmonic rhythm can overrule that; a line
- * alone states neither. What it does state is its note values: a pulse at
- * which most of the notes are a half or longer, with nothing shorter than
- * the beat, is the unit rather than the beat (#844).
+ * alone states neither. What it does state is its note values: where the
+ * tracked pulse is the line's shortest common value, the envelope's ranking
+ * of that pulse over its half is the train's and not the music's, and the
+ * perceptual prior decides between the two (#844). A line with a common
+ * value shorter than the pulse is not tracked at its unit and stands.
  *
  * <p><b>The notes may restore a rate the sweep ranked, never invent one</b>:
  * the half is taken only where most windows' sweeps listed it as a
@@ -43,9 +45,6 @@ final class NoteValues {
 
     /** Below this many beats a note is a subdivision of the pulse. */
     private static final double SUBDIVISION_BEATS = 0.75;
-
-    /** From this many beats a note is a half or longer. */
-    private static final double HALF_BEATS = 1.75;
 
     /** A value held by a smaller share of the notes is not one the line has. */
     private static final double COMMON_SHARE = 0.2;
@@ -63,14 +62,19 @@ final class NoteValues {
      *
      * @param notes            how many notes were read
      * @param subdivisionShare the share of them shorter than a beat at that rate
-     * @param longShare        the share a half or longer
      * @param halfRanked       whether most windows' sweeps listed the half
+     * @param priorPrefersHalf whether the perceptual prior puts the half above the rate
      */
-    record Reading(int notes, double subdivisionShare, double longShare, boolean halfRanked) {
+    record Reading(int notes, double subdivisionShare, boolean halfRanked,
+                   boolean priorPrefersHalf) {
+
+        /** Whether the rate is the line's shortest common value. */
+        boolean unit() {
+            return notes >= MIN_NOTES && subdivisionShare < COMMON_SHARE;
+        }
 
         boolean callsForHalving() {
-            return halfRanked && notes >= MIN_NOTES
-                    && subdivisionShare < COMMON_SHARE && longShare > 0.5;
+            return unit() && halfRanked && priorPrefersHalf;
         }
     }
 
@@ -101,14 +105,10 @@ final class NoteValues {
     static Reading read(double rate, NoteTrack melody, List<TempoEstimator.Estimate> seeds) {
         double beatsPerSecond = rate / 60.0;
         int subdivisions = 0;
-        int halves = 0;
         List<Note> notes = melody.notes();
         for (Note note : notes) {
-            double beats = note.durationSeconds() * beatsPerSecond;
-            if (beats < SUBDIVISION_BEATS) {
+            if (note.durationSeconds() * beatsPerSecond < SUBDIVISION_BEATS) {
                 subdivisions++;
-            } else if (beats >= HALF_BEATS) {
-                halves++;
             }
         }
         int ranked = 0;
@@ -118,7 +118,8 @@ final class NoteValues {
             }
         }
         return new Reading(notes.size(), subdivisions / (double) notes.size(),
-                halves / (double) notes.size(), ranked * 2 > seeds.size());
+                ranked * 2 > seeds.size(),
+                TempoEstimator.perceptualWeight(rate / 2) > TempoEstimator.perceptualWeight(rate));
     }
 
     private static boolean ranksAsCandidate(TempoEstimator.Estimate seed, double beatsPerMinute) {

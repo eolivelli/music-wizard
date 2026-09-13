@@ -571,22 +571,39 @@ class AnalysisReportTest {
     void noteValuesAreWorded() {
         String halved = AnalysisReport.toHtml(ReportFixtures.everything(), RECORDING,
                 ReportFixtures.run(), ReportFixtures.lineAlone(
-                        new BeatTrace.NoteValues(true, 15, 0.0, 0.53, true)));
+                        new BeatTrace.NoteValues(true, 15, 0.0, true, true)));
         String left = AnalysisReport.toHtml(ReportFixtures.everything(), RECORDING,
                 ReportFixtures.run(), ReportFixtures.lineAlone(
-                        new BeatTrace.NoteValues(false, 96, 0.0, 0.0, true)));
+                        new BeatTrace.NoteValues(false, 96, 0.0, true, false)));
         String noNotes = AnalysisReport.toHtml(ReportFixtures.everything(), RECORDING,
                 ReportFixtures.run(), ReportFixtures.weighed(new BeatTrace.Octave(
                         false, 2.0, 0.5, 0.6, 2, 0, false)));
 
         assertThat(halved).contains("<dt>Bass register</dt><dd>not read</dd>",
-                "so it was halved to 120.3 a minute",
-                "<dt>Share a half or longer</dt><dd>53%</dd>",
-                "list the halved rate in most windows");
+                "so the tempo prior chose between it and its half: halved to 120.3 a minute",
+                "<dt>Share shorter than the beat</dt><dd>0%</dd>",
+                "list the halved rate in most windows",
+                "<dt>The tempo prior</dt><dd>puts the halved rate above that pulse</dd>");
         assertThat(left).contains("<dt>Note values</dt><dd>leave that pulse where it is</dd>",
                 "<dt>Bass register</dt><dd>not read, so the octave is where the envelope"
-                        + " and the tempo prior put it</dd>");
+                        + " and the tempo prior put it</dd>",
+                "<dt>The tempo prior</dt><dd>keeps that pulse above the halved rate</dd>");
         assertThat(noNotes).doesNotContain("Note values");
+    }
+
+    @Test
+    @DisplayName("where the register and the note values both halved, each names its own rate")
+    void twoHalvingsNameTheirOwnRates() {
+        // The fixture's windows agree on 240.5 and fold onto 120.25; a second
+        // halving by the notes would leave the reference at a quarter of the
+        // agreed pulse, so the register's line must not print the reference.
+        String page = AnalysisReport.toHtml(ReportFixtures.everything(), RECORDING,
+                ReportFixtures.run(), ReportFixtures.weighed(
+                        new BeatTrace.Octave(true, 6.5, 0.04, 0.82, 2, 1, true),
+                        new BeatTrace.NoteValues(true, 40, 0.0, true, true)));
+
+        assertThat(page).contains("so it was halved to 120.3 a minute",
+                "so the tempo prior chose between it and its half: halved to 120.3 a minute");
     }
 
     @Test
