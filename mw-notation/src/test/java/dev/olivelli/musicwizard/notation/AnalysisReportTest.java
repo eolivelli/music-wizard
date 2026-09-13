@@ -594,16 +594,16 @@ class AnalysisReportTest {
     @Test
     @DisplayName("where the register and the note values both halved, each names its own rate")
     void twoHalvingsNameTheirOwnRates() {
-        // The fixture's windows agree on 240.5 and fold onto 120.25; a second
-        // halving by the notes would leave the reference at a quarter of the
-        // agreed pulse, so the register's line must not print the reference.
+        // The reference is a quarter of the agreed pulse here, so a register
+        // line printing the reference would show the notes' rate as its own.
         String page = AnalysisReport.toHtml(ReportFixtures.everything(), RECORDING,
-                ReportFixtures.run(), ReportFixtures.weighed(
+                ReportFixtures.run(), ReportFixtures.halvedTwice(
                         new BeatTrace.Octave(true, 6.5, 0.04, 0.82, 2, 1, true),
                         new BeatTrace.NoteValues(true, 40, 0.0, true, true)));
 
-        assertThat(page).contains("so it was halved to 120.3 a minute",
-                "so the tempo prior chose between it and its half: halved to 120.3 a minute");
+        assertThat(page).contains(
+                "states only every second beat of that pulse, so it was halved to 120.3 a minute",
+                "so the tempo prior chose between it and its half: halved to 60.1 a minute");
     }
 
     @Test
