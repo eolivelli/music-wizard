@@ -21,6 +21,7 @@ import dev.olivelli.musicwizard.audio.AudioDecoder;
 import dev.olivelli.musicwizard.audio.Resampler;
 import dev.olivelli.musicwizard.audio.Spectrogram;
 import dev.olivelli.musicwizard.core.model.BeatGrid;
+import dev.olivelli.musicwizard.core.model.Chord;
 import dev.olivelli.musicwizard.core.model.ChordProgression;
 import dev.olivelli.musicwizard.core.model.Confidence;
 import dev.olivelli.musicwizard.core.model.NoteTrack;
@@ -559,13 +560,22 @@ public final class AudioTranscriber {
         progress.accept("estimating chords");
         ChordEstimator.Decoded decoded =
                 ChordEstimator.explain(chroma, treble, bass, ablation, beatTimes);
-        ChordProgression chords = decoded.chords();
-        progress.accept(String.format(Locale.ROOT, "found %d chord spans", chords.size()));
-        recordChords(decoded.trace());
+        ChordProgression named = decoded.chords();
+        // A line alone has nothing under it to read chords from; the trace
+        // keeps what the estimator read (#843).
+        boolean withheld = noteOnsets && !named.isEmpty();
+        ChordProgression chords = withheld ? noChordThroughout(named) : named;
+        if (withheld) {
+            progress.accept("a line alone: nothing sounds under it to read chords from,"
+                    + " so none is named");
+        } else {
+            progress.accept(String.format(Locale.ROOT, "found %d chord spans", chords.size()));
+        }
+        recordChords(decoded.trace(), withheld);
         // The front end's line again, now that there are spans to summarise it
         // over. The chord spans are the granularity the quality gates decide at
         // and the ones a reader is looking at when a chord is wrong.
-        recordChroma(ChromaTracing.of(tuning, fit, chords, beatTimes,
+        recordChroma(ChromaTracing.of(tuning, fit, named, beatTimes,
                 chroma, treble, bass, ablation));
 
         // Over the whole recording rather than over the chords' own extent: a key
@@ -678,15 +688,31 @@ public final class AudioTranscriber {
      * chart: how many spans were named by a count taken over other spans on the
      * same root rather than by their own evidence.
      */
-    private void recordChords(ChordTrace trace) {
+    private void recordChords(ChordTrace trace, boolean withheld) {
         long settledAcrossTheRoot = trace.spans().stream()
                 .filter(span -> span.settledBy().equals("thirds")
                         || span.settledBy().equals("sevenths"))
                 .count();
-        runLog.stage(ChordTrace.STAGE).trace(trace)
+        RunLog.Stage stage = runLog.stage(ChordTrace.STAGE).trace(trace)
                 .fact("spans settled across the root",
-                        settledAcrossTheRoot == 0 ? null : settledAcrossTheRoot)
-                .computed();
+                        settledAcrossTheRoot == 0 ? null : settledAcrossTheRoot);
+        if (withheld) {
+            stage.computed("a line alone: the spans were read from nothing sounding under"
+                    + " the melody, so the score names no chord");
+        } else {
+            stage.computed();
+        }
+    }
+
+    /**
+     * The confidence is unknown rather than the estimator's: that figure rated
+     * the labels being withheld.
+     */
+    static ChordProgression noChordThroughout(ChordProgression estimated) {
+        List<Chord> spans = estimated.chords();
+        return new ChordProgression(List.of(Chord.noChord(
+                spans.getFirst().startSeconds(), spans.getLast().endSeconds(),
+                Confidence.UNKNOWN)), Confidence.UNKNOWN);
     }
 
     /**

@@ -178,8 +178,7 @@ c'4 d'4 e'4 f'4 | g'2 g'2 | g'4 f'4 e'4 d'4 | c'4 e'4 c'2
 No chord grid: a line alone carries none, so it is not scored by
 tools/score-samples.py. Phone and desktop (analyze --melody
 --skip-separation) both read 124 in 4/4, C major from the melody, and engraved
-exactly the bars above; the chord symbols over them are read from nothing
-(#843).
+exactly the bars above, with no chord named over them (#843).
 
 flute-solo-line-c-111.wav   (CC-BY, Enrico Olivelli, phone take)
 Flute, one line, no accompaniment, C major, 4/4, at about 111 -- the pulse a
@@ -195,8 +194,8 @@ e''8 f''8 e''4~ e''8 d''8 c''4~ | c''8 d''8 c''4~ c''4. r8
 No chord grid: a line alone carries none, so it is not scored by
 tools/score-samples.py. Phone and desktop both read the pulse doubled, 222 in
 4/4 (#844): the page holds these notes at twice their length over ten bars,
-opening on a bar of rest, with C major read from the melody, one F spelled E#
-and chord symbols read from nothing (#843).
+opening on a bar of rest, with C major read from the melody, every note
+spelled by that key and no chord named over them (#843).
 
 
 # ============================================================================
