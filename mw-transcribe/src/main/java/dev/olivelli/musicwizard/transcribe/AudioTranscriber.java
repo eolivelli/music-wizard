@@ -567,14 +567,15 @@ public final class AudioTranscriber {
         // instead, and the notes are then spelled by the key alone. Behind the
         // same gate as the beat and the key. The trace keeps the spans as
         // read, so the record shows what was withheld.
-        ChordProgression chords = noteOnsets ? noChordThroughout(named) : named;
-        if (chords != named) {
+        boolean withheld = noteOnsets && !named.isEmpty();
+        ChordProgression chords = withheld ? noChordThroughout(named) : named;
+        if (withheld) {
             progress.accept("a line alone: nothing sounds under it to read chords from,"
                     + " so none is named");
         } else {
             progress.accept(String.format(Locale.ROOT, "found %d chord spans", chords.size()));
         }
-        recordChords(decoded.trace(), chords != named);
+        recordChords(decoded.trace(), withheld);
         // The front end's line again, now that there are spans to summarise it
         // over. The chord spans are the granularity the quality gates decide at
         // and the ones a reader is looking at when a chord is wrong.
@@ -714,9 +715,6 @@ public final class AudioTranscriber {
      * being withheld.
      */
     static ChordProgression noChordThroughout(ChordProgression estimated) {
-        if (estimated.isEmpty()) {
-            return estimated;
-        }
         List<Chord> spans = estimated.chords();
         return new ChordProgression(List.of(Chord.noChord(
                 spans.getFirst().startSeconds(), spans.getLast().endSeconds(),

@@ -253,7 +253,15 @@ half tempo, and a line whose tonic is its rarest note and reads as its
 relative minor. A line over a sustained pad passes the same gate and reads
 its key the same way; the pad package's row in `score-solo.txt` measures
 that, and the estimator is left as it is because weighing the chords in
-costs solo rows that are right (#833). The spare beat at a tracking-window seam is closed (#827):
+costs solo rows that are right (#833). Behind the same gate the chords are
+withheld too (#843): the estimator's spans on a line alone are read from the
+bass register, which holds no instrument, and the decoder settled each root
+on room content, so a C-major flute take was charted in F sharp minor and
+one of its F's spelled E sharp by the chord under it. The score now carries
+one no-chord span over the same extent, the run's record says why and keeps
+the spans as read, and the playable part is spelled by the key alone. The
+cost is a line over a pad, whose real chords the gate withholds with the
+rest; nothing in the run yet tells the pad from the room. The spare beat at a tracking-window seam is closed (#827):
 windows are joined where their beats agree rather than at the later one's
 first frame, which on the real corpus removed the odd gap at half-window
 multiples from nearly every recording that had one, took the shuffle

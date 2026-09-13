@@ -137,10 +137,4 @@ class LineAloneChordsTest {
         assertThat(score.chords().chords()).anyMatch(chord -> !chord.isNoChord());
         assertThat(chordStage().reason()).isNull();
     }
-
-    @Test
-    @DisplayName("an estimator that named nothing is left as it is")
-    void anEmptyProgressionStaysEmpty() {
-        assertThat(AudioTranscriber.noChordThroughout(ChordProgression.empty()).isEmpty()).isTrue();
-    }
 }
