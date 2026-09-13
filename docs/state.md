@@ -235,7 +235,11 @@ the flux already hears is left alone, so a piano keeps the grid the flux
 gave it — and a mix, whose track is the loudest line's and speaks for
 stretches of it, not for the beat, stays as it was; the run's record names
 which evidence the grid was tracked from.
-`tools/baselines/score-solo.txt` carries the readings. A first tracked
+`tools/baselines/score-solo.txt` carries the readings, and
+`tools/baselines/score-solo-samples.txt` the same route on real takes of
+Enrico's own, the melody confirmed by ear beside each (#845): the piano
+take engraves as played; the flute take is read at twice its pulse (#844).
+A first tracked
 beat a frame after the origin no longer opens the page on a bar of rests:
 a lead-in shorter than a fraction of a pulse is left out of the tempo map,
 whose origin then sits on that beat (#824). Behind the same gate, the key

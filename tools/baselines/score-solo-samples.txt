@@ -1,0 +1,4 @@
+Solo instrument, the playable part against the melody an ear confirmed, on the grid
+(quarter beats at the pulse each .melody.txt is written at; the entries are in list.txt)
+  flute-solo-line-c-111: bars=10/5  tempo 222.2/111 (x2.00)  shift +12.50  notes=15/15  placed 26.7%  held 0.0%  key OK
+  piano-solo-line-c-124: bars=9/9  tempo 124.0/124 (x1.00)  shift +0.00  notes=24/24  placed 100.0%  held 100.0%  key OK

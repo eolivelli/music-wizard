@@ -91,6 +91,12 @@ in samples/list.txt:
   waltz-am-e7-160.mp3        Guitar Improvisation (Martin Gioani)
   pop-c-g-am-f-120.mp3       RainbowMonkey
 
+Two are this project's own: phone takes of Enrico Olivelli's playing, offered
+under the same CC BY, and attributed to him:
+
+  flute-solo-line-c-111.wav  Enrico Olivelli
+  piano-solo-line-c-124.wav  Enrico Olivelli
+
 Recordings under any other terms are not committed. They are gitignored and
 samples/list.txt says how to fetch them, so this list and the tree agree.
 

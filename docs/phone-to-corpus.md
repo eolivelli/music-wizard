@@ -74,7 +74,11 @@ a benchmark's changes, and which corpus its recording is in, from the
 `list.txt` entry does not put it there: `samples/list.txt` says changes are
 confirmed by ear before a file is promoted. A sung recording is registered the
 same way and in one more place — its recording and its `.lrc` go in the
-`LYRICS` table of `tools/score-lyrics.py`.
+`LYRICS` table of `tools/score-lyrics.py`. A take of one instrument playing a
+line alone carries no grid; what it has is its melody, and that goes in
+`<slug>.melody.txt` beside the recording in `samples/` — the format is in
+`tools/score-solo.py`, and `--source samples` scores every one it finds.
+Committed recordings only: that baseline is diffed in CI.
 
 ## 3. Write the `list.txt` entry
 

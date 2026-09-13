@@ -40,15 +40,27 @@ the same route, with the source the run's key trace records beside it (#833).
 These rows are tier one-and-a-half and never product accuracy — see
 synthetic_samples/README.md.
 
-Usage:  python3 tools/score-solo.py [--jar mw-cli/target/mw.jar] [--pinned]
+With `--source samples` the same columns are scored on real recordings: each
+`<name>.melody.txt` beside a recording in `samples/` holds the melody an ear
+confirmed, bar by bar in LilyPond's absolute pitch names, under the tempo it
+is written at, its meter and its key, and this compiles it into the
+reference the MIDI track is for a package. The tempo column is against that
+pulse, so a page read at twice it says so (#844). The entries are in
+`samples/list.txt`, as every other ground truth is. Only committed
+recordings: the baseline is diffed in CI, where nothing local-only exists,
+so a melody file whose audio is absent is an error rather than a skip.
 
-`--pinned` forces the spec's tempo and meter on analyze, so the page is scored
-with the grid taken away from the measurement. A sweep knob: the committed
+Usage:  python3 tools/score-solo.py [--jar mw-cli/target/mw.jar] [--pinned]
+                                    [--source synthetic|samples]
+
+`--pinned` forces the spec's (or the melody file's) tempo and meter on
+analyze, so the page is scored with the grid taken away from the measurement. A sweep knob: the committed
 baseline is the unpinned reading, which is what a recording gets.
 """
 
 import argparse
 import json
+import re
 import subprocess
 import sys
 import tempfile
@@ -75,6 +87,16 @@ MAJOR_FIFTHS = {"C": 0, "G": 1, "D": 2, "A": 3, "E": 4, "B": 5, "F#": 6, "C#": 7
 
 MIDI_STEP = {"C": 0, "D": 2, "E": 4, "F": 5, "G": 7, "A": 9, "B": 11}
 
+#: Where a `.melody.txt` sits, beside the recording it is for.
+SAMPLES = REPO / "samples"
+
+#: One token of a melody file: a rest or a LilyPond absolute pitch, then a
+#: duration with optional dots and an optional tie.
+TOKEN = re.compile(r"^(?:(?P<rest>[rR])|(?P<step>[a-g])(?P<accidental>isis|eses|is|es|ses|s)?"
+                   r"(?P<octave>'+|,+)?)(?P<length>\d+)(?P<dots>\.*)(?P<tie>~?)$")
+ACCIDENTAL = {None: 0, "is": 1, "isis": 2, "es": -1, "eses": -2, "s": -1, "ses": -2}
+LENGTHS = {1, 2, 4, 8, 16, 32, 64}
+
 
 # ------------------------------------------------------------------ reference
 
@@ -85,6 +107,70 @@ def reference_notes(midi: Path, tempo: float) -> list[tuple[float, float, int]]:
     per_second = tempo / 60.0
     return [(round(on * per_second, 6), round((off - on) * per_second, 6), pitch)
             for on, off, pitch in melody.melody_notes(midi)]
+
+
+def parse_melody_text(text: str) -> dict:
+    """The headers of a `.melody.txt`, its bar count, and its notes as
+    (onset, duration, pitch) in quarter beats from bar one with ties joined.
+    A bar that does not fill its meter is an error, since a slip there would
+    move every bar after it."""
+    headers: dict = {}
+    bars: list[list] = []
+    in_melody = False
+    for raw in text.splitlines():
+        line = re.sub(r"(?:^|\s)#.*$", "", raw).strip()
+        if not line:
+            continue
+        if not in_melody:
+            if line == "melody:":
+                in_melody = True
+            else:
+                name, _, value = line.partition(":")
+                headers[name.strip()] = value.strip()
+        else:
+            bars.extend(bar.split() for bar in line.split("|") if bar.strip())
+    for header in ("tempo", "meter", "key"):
+        if header not in headers:
+            raise ValueError(f"no {header} header")
+    if not bars:
+        raise ValueError("no bars under a 'melody:' line")
+    numerator, _, denominator = headers["meter"].partition("/")
+    bar_quarters = 4.0 * int(numerator) / int(denominator)
+    notes: list[list] = []
+    open_tie: list | None = None
+    at = 0.0
+    for index, tokens in enumerate(bars, 1):
+        start = at
+        for token in tokens:
+            found = TOKEN.match(token)
+            if found is None or int(found["length"]) not in LENGTHS:
+                raise ValueError(f"bar {index}: cannot read '{token}'")
+            length = 4.0 / int(found["length"]) * (2 - 0.5 ** len(found["dots"]))
+            if found["rest"]:
+                if open_tie is not None or found["tie"]:
+                    raise ValueError(f"bar {index}: a tie on a rest")
+            else:
+                if found["accidental"] in ("s", "ses") and found["step"] not in ("a", "e"):
+                    raise ValueError(f"bar {index}: cannot read '{token}'")
+                octave = found["octave"] or ""
+                pitch = (48 + MIDI_STEP[found["step"].upper()] + ACCIDENTAL[found["accidental"]]
+                         + 12 * (len(octave) if octave.startswith("'") else -len(octave)))
+                if open_tie is not None:
+                    if open_tie[2] != pitch:
+                        raise ValueError(f"bar {index}: a tie between different pitches")
+                    open_tie[1] += length
+                else:
+                    open_tie = [at, length, pitch]
+                    notes.append(open_tie)
+                if not found["tie"]:
+                    open_tie = None
+            at += length
+        if abs(at - start - bar_quarters) > EXACT:
+            raise ValueError(f"bar {index}: holds {at - start:g} quarters, not {bar_quarters:g}")
+    if open_tie is not None:
+        raise ValueError("a tie out of the last bar")
+    return {"headers": headers, "bars": len(bars),
+            "notes": [(round(on, 6), round(dur, 6), pitch) for on, dur, pitch in notes]}
 
 
 def spec_key(header: str) -> tuple[int, str] | None:
@@ -263,11 +349,16 @@ def score_package(jar: Path, spec_file: Path, pinned: bool = False) -> str:
     if accompaniment == "pad":
         return (f"  {name}: a line over a pad; notes not scored"
                 f"  key {key_verdict(page, headers)}, read from the {source}")
+    return sheet_row(name, page, printed, headers, reference, len(spec["bars"]))
+
+
+def sheet_row(name: str, page: dict, printed: str, headers: dict,
+              reference: list, bars: int) -> str:
     estimate = page["notes"]
     shift = best_shift(estimate, reference)
     pairs = placed(estimate, reference, shift)
     held = sum(1 for e, r in pairs if abs(estimate[e][1] - reference[r][1]) < EXACT)
-    return (f"  {name}: bars={page['measures']}/{len(spec['bars'])}"
+    return (f"  {name}: bars={page['measures']}/{bars}"
             f"  {synthetic.tempo_verdict(synthetic.printed_tempo(printed), headers.get('tempo'))}"
             f"  shift {shift:+.2f}"
             f"  notes={len(estimate)}/{len(reference)}"
@@ -276,16 +367,50 @@ def score_package(jar: Path, spec_file: Path, pinned: bool = False) -> str:
             f"  key {key_verdict(page, headers)}")
 
 
+def melody_files() -> list[Path]:
+    return sorted(SAMPLES.glob("*.melody.txt"))
+
+
+def score_recording(jar: Path, melody_file: Path, pinned: bool = False) -> str:
+    name = melody_file.name.removesuffix(".melody.txt")
+    audio = next((melody_file.with_name(name + ext) for ext in (".wav", ".mp3")
+                  if melody_file.with_name(name + ext).exists()), None)
+    if audio is None:
+        sys.exit(f"{melody_file.name}: no {name}.wav or .mp3 beside it")
+    truth = parse_melody_text(melody_file.read_text(encoding="utf-8"))
+    headers = truth["headers"]
+    ws, printed, tmp = render_solo(
+        jar, audio, {"tempo": headers["tempo"], "meter": headers["meter"]} if pinned else None)
+    with tmp:
+        musicxml = ws / "out" / "lead-playable.musicxml"
+        if not musicxml.exists():
+            return f"  {name}: no playable part written"
+        page = page_notes(musicxml)
+    return sheet_row(name, page, printed, truth["headers"], truth["notes"], truth["bars"])
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--jar", default=str(REPO / "mw-cli/target/mw.jar"))
     parser.add_argument("--pinned", action="store_true",
                         help="force the spec's tempo and meter on analyze; a sweep,"
                              " never the baselined reading")
+    parser.add_argument("--source", choices=("synthetic", "samples"), default="synthetic")
     args = parser.parse_args()
     jar = Path(args.jar)
     if not jar.exists():
         sys.exit(f"jar not found: {jar} (build with: mvn -DskipTests package)")
+    if args.source == "samples":
+        files = melody_files()
+        if not files:
+            sys.exit(f"no .melody.txt in {SAMPLES}")
+        print("Solo instrument, the playable part against the melody an ear confirmed, on the grid")
+        print("(quarter beats at the pulse each .melody.txt is written at; the entries are in list.txt)")
+        if args.pinned:
+            print("(tempo and meter pinned to the melody file: a sweep, not the baselined reading)")
+        for melody_file in files:
+            print(score_recording(jar, melody_file, args.pinned))
+        return
     specs = sorted(CORPUS.glob("*.spec.txt"))
     if not specs:
         sys.exit(f"no specs in {CORPUS}")

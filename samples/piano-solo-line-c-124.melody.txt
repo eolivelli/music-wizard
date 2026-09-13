@@ -1,0 +1,15 @@
+# What was played, confirmed by ear; samples/list.txt has the entry.
+# tools/score-solo.py --source samples compiles this into the reference.
+tempo: 124
+meter: 4/4
+key: C major
+melody:
+R1
+c'4 d'4 e'4 f'4
+g'2 g'2
+g'4 f'4 e'4 d'4
+c'1
+c'4 d'4 e'4 f'4
+g'2 g'2
+g'4 f'4 e'4 d'4
+c'4 e'4 c'2

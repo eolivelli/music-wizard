@@ -155,6 +155,12 @@ jobs:
         run: |
           python3 tools/score-solo.py | tee target/score-solo.txt
           diff -u tools/baselines/score-solo.txt target/score-solo.txt
+      # The same page on the committed solo takes (#845): the melody an ear
+      # confirmed sits beside each recording, so this runs here end to end.
+      - name: Score the solo pages on real recordings and diff the baseline
+        run: |
+          python3 tools/score-solo.py --source samples | tee target/score-solo-samples.txt
+          diff -u tools/baselines/score-solo-samples.txt target/score-solo-samples.txt
 
   # Analyzes every committed sample and publishes the corpus status to the
   # run's summary page: tempo, meter and span count per file, plus the scored
