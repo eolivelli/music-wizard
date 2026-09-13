@@ -57,10 +57,11 @@ corrections earn their place on real music:
   segmented notes at the tracked pulse: where no common value is shorter than
   the beat, the pulse is the line's unit and the envelope's ranking of it over
   its half is the train's, so the prior decides between the two — halving
-  where it prefers the half and most windows' sweeps ranked it (#844).
-  Halving only, like the register: a sung line's segmented notes are mostly
-  shorter than the beat at any pulse, so the mirror would double singing
-  (#851).
+  where it prefers the half and most windows' sweeps ranked it (#844). The
+  mirror doubles a pulse a quarter of which is a common value of the line,
+  on the same terms (#851); it is not a share of short notes, since a sung
+  line's segmented notes are mostly shorter than the beat at any pulse and
+  that would double singing.
 
 The confidence (`periodicity × peakiness`) is deliberately weak: it is zero
 for silence and comparable between two readings of the same recording, and

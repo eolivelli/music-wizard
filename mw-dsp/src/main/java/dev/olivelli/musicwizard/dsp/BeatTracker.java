@@ -144,7 +144,8 @@ public final class BeatTracker {
     /**
      * The same, with the notes that were lifted into the envelope, whose
      * values may halve a pulse tracked at the line's unit rather than its
-     * beat — see {@link NoteValues}. Pass {@code null} where no notes were
+     * beat, or double one tracked at a value the line writes in sixteenths
+     * — see {@link NoteValues}. Pass {@code null} where no notes were
      * lifted in.
      */
     public static Result track(OnsetEnvelope envelope, HarmonicRhythm rhythm,
@@ -161,7 +162,8 @@ public final class BeatTracker {
             TempoEstimator.Estimate tempo = seed(envelope, heard, 0, envelope.length(), rhythm);
             MarkedPulse.Octave octave = MarkedPulse.resolve(tempo.beatsPerMinute(), envelope,
                     pulseRegister, votingWindows(envelope));
-            NoteValues.Octave values = NoteValues.resolve(octave.rate(), melody, List.of(tempo));
+            NoteValues.Octave values =
+                    NoteValues.resolve(octave.rate(), octave.halved(), melody, List.of(tempo));
             double rate = values.rate();
             List<Double> beats = trackFixedTempo(envelope, rate, 0, envelope.length());
             return new Result(beats, tempoOf(beats, rate),
@@ -187,7 +189,8 @@ public final class BeatTracker {
         double agreed = pulseReference(seeds);
         MarkedPulse.Octave octave =
                 MarkedPulse.resolve(agreed, envelope, pulseRegister, votingWindows(envelope));
-        NoteValues.Octave values = NoteValues.resolve(octave.rate(), melody, seeds);
+        NoteValues.Octave values =
+                NoteValues.resolve(octave.rate(), octave.halved(), melody, seeds);
         double reference = values.rate();
         List<BeatTrace.Window> traced = new ArrayList<>();
 
@@ -256,9 +259,10 @@ public final class BeatTracker {
     private static BeatTrace.NoteValues traced(NoteValues.Octave values) {
         NoteValues.Reading reading = values.reading();
         return reading == null ? null
-                : new BeatTrace.NoteValues(values.halved(), reading.notes(),
-                        reading.subdivisionShare(), reading.halfRanked(),
-                        reading.priorPrefersHalf());
+                : new BeatTrace.NoteValues(values.halved(), values.doubled(), reading.notes(),
+                        reading.subdivisionShare(), reading.quarterShare(),
+                        reading.halfRanked(), reading.doubleRanked(),
+                        reading.priorPrefersHalf(), reading.priorPrefersDouble());
     }
 
     /**

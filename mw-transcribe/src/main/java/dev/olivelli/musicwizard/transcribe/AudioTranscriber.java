@@ -773,8 +773,11 @@ public final class AudioTranscriber {
         if (trace.octaveMoved() || trace.noteValuesMoved()) {
             String register = "the bass register states only every second beat of the pulse"
                     + " the windows agreed on, so it was halved";
-            String values = "a line alone: the pulse is the line's shortest value, so the"
-                    + " tempo prior chose between it and its half, and it was halved";
+            String values = trace.noteValues() != null && trace.noteValues().doubled()
+                    ? "a line alone: a quarter of the pulse is a common value of the line, so"
+                            + " the tempo prior chose between it and its double, and it was doubled"
+                    : "a line alone: the pulse is the line's shortest value, so the"
+                            + " tempo prior chose between it and its half, and it was halved";
             stage.fact("pulse tracked", perMinute(trace.referencePulse()))
                     .computed(trace.octaveMoved() && trace.noteValuesMoved()
                             ? register + "; then " + values

@@ -31,7 +31,7 @@ class RunTracesTest {
     private static BeatTrace beats() {
         return new BeatTrace(240.5, 120.25,
                 new BeatTrace.Octave(true, 6.5, 0.04, 0.82, 3, 1, true),
-                new BeatTrace.NoteValues(false, 15, 0.0, true, false),
+                new BeatTrace.NoteValues(false, false, 15, 0.0, 0.0, true, false, false, false),
                 List.of(new BeatTrace.Window(0, 25, 240.5, 0.61, 0.88, 120.25,
                         List.of(new BeatTrace.Candidate(240.5, 0.47, true),
                                 new BeatTrace.Candidate(120.25, 0.31, false)))));

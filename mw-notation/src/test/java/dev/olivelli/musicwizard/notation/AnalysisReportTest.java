@@ -571,10 +571,10 @@ class AnalysisReportTest {
     void noteValuesAreWorded() {
         String halved = AnalysisReport.toHtml(ReportFixtures.everything(), RECORDING,
                 ReportFixtures.run(), ReportFixtures.lineAlone(
-                        new BeatTrace.NoteValues(true, 15, 0.0, true, true)));
+                        new BeatTrace.NoteValues(true, false, 15, 0.0, 0.0, true, false, true, false)));
         String left = AnalysisReport.toHtml(ReportFixtures.everything(), RECORDING,
                 ReportFixtures.run(), ReportFixtures.lineAlone(
-                        new BeatTrace.NoteValues(false, 96, 0.0, true, false)));
+                        new BeatTrace.NoteValues(false, false, 96, 0.0, 0.0, true, false, false, false)));
         String noNotes = AnalysisReport.toHtml(ReportFixtures.everything(), RECORDING,
                 ReportFixtures.run(), ReportFixtures.weighed(new BeatTrace.Octave(
                         false, 2.0, 0.5, 0.6, 2, 0, false)));
@@ -582,13 +582,32 @@ class AnalysisReportTest {
         assertThat(halved).contains("<dt>Bass register</dt><dd>not read</dd>",
                 "so the tempo prior chose between it and its half: halved to 120.3 a minute",
                 "<dt>Share shorter than the beat</dt><dd>0%</dd>",
-                "list the halved rate in most windows",
+                "<dt>Share that subdivides half the beat</dt><dd>0%</dd>",
+                "list the halved rate in most windows, and not the doubled one",
                 "<dt>The tempo prior</dt><dd>puts the halved rate above that pulse</dd>");
         assertThat(left).contains("<dt>Note values</dt><dd>leave that pulse where it is</dd>",
                 "<dt>Bass register</dt><dd>not read, so the octave is where the envelope"
                         + " and the tempo prior put it</dd>",
-                "<dt>The tempo prior</dt><dd>keeps that pulse above the halved rate</dd>");
+                "<dt>The tempo prior</dt><dd>keeps that pulse above its half and its double</dd>");
         assertThat(noNotes).doesNotContain("Note values");
+    }
+
+    @Test
+    @DisplayName("a line alone doubled on its note values says so, at the doubled rate")
+    void aDoubledLineIsWorded() {
+        String doubled = AnalysisReport.toHtml(ReportFixtures.everything(), RECORDING,
+                ReportFixtures.run(), ReportFixtures.doubledLine(
+                        new BeatTrace.NoteValues(false, true, 112, 0.74, 0.28, true, true,
+                                false, true)));
+
+        assertThat(doubled).contains(
+                "<dt>Bass register</dt><dd>not read</dd>",
+                "so the tempo prior chose between it and its double: doubled to 120.3 a minute",
+                "<dt>Share shorter than the beat</dt><dd>74%</dd>",
+                "<dt>Share that subdivides half the beat</dt><dd>28%</dd>",
+                "list both the halved and the doubled rate in most windows",
+                "<dt>The tempo prior</dt><dd>puts the doubled rate above that pulse</dd>");
+        assertThat(doubled).doesNotContain("halved to");
     }
 
     @Test
@@ -599,7 +618,7 @@ class AnalysisReportTest {
         String page = AnalysisReport.toHtml(ReportFixtures.everything(), RECORDING,
                 ReportFixtures.run(), ReportFixtures.halvedTwice(
                         new BeatTrace.Octave(true, 6.5, 0.04, 0.82, 2, 1, true),
-                        new BeatTrace.NoteValues(true, 40, 0.0, true, true)));
+                        new BeatTrace.NoteValues(true, false, 40, 0.0, 0.0, true, false, true, false)));
 
         assertThat(page).contains(
                 "states only every second beat of that pulse, so it was halved to 120.3 a minute",

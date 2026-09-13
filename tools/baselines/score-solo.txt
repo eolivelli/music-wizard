@@ -4,7 +4,7 @@ Solo instrument, the playable part against each package's own MIDI, on the grid
   blues-shuffle-e-84: not a solo package; not scored
   hiphop-m7vamp-bbm-90: not a solo package; not scored
   melody-level1-c-96: bars=25/24  tempo 96.4/96 (x1.00)  shift +0.00  notes=96/96  placed 100.0%  held 99.0%  key OK
-  melody-level2-g-84: bars=17/32  tempo 42.0/84 (x0.50)  shift +2.00  notes=102/113  placed 9.3%  held 70.0%  key OK
+  melody-level2-g-84: bars=33/32  tempo 84.1/84 (x1.00)  shift +0.00  notes=112/113  placed 99.6%  held 93.8%  key OK
   melody-level2pad-g-84: a line over a pad; notes not scored  key OK, read from the melody
   melody-level3-am-108: bars=34/32  tempo 108.1/108 (x1.00)  shift +0.00  notes=74/74  placed 100.0%  held 79.7%  key OK
   melody-level4-f-126: bars=32/32  tempo 125.8/126 (x1.00)  shift +0.00  notes=94/95  placed 84.7%  held 82.5%  key OK
@@ -33,4 +33,4 @@ Solo instrument, the playable part against each package's own MIDI, on the grid
   solo-piano-level2-dm-63: bars=25/24  tempo 63.1/63 (x1.00)  shift +0.00  notes=82/82  placed 100.0%  held 89.0%  key OK
   solo-piano-level2-f-120: bars=33/32  tempo 120.1/120 (x1.00)  shift +0.00  notes=111/116  placed 97.8%  held 90.1%  key OK
   solo-piano-level3-e-88: bars=33/32  tempo 87.9/88 (x1.00)  shift +0.00  notes=78/78  placed 100.0%  held 85.9%  key OK
-  solo-piano-level4-cm-144: bars=16/32  tempo 72.0/144 (x0.50)  shift +0.00  notes=82/97  placed 4.5%  held 0.0%  key OK
+  solo-piano-level4-cm-144: bars=32/32  tempo 143.8/144 (x1.00)  shift -0.50  notes=98/97  placed 60.5%  held 78.0%  key OK
