@@ -248,10 +248,16 @@ the music's, and the perceptual prior decides between the pulse and its
 half — where most windows' sweeps ranked the half. A share of notes
 longer than the beat does not separate the two: the level-three packages
 are quarters and halves at their written pulse as this take is quarters
-and dotted halves at twice its own. Halving only, since a sung line's
-segmented notes are mostly shorter than the beat at any pulse and the
-mirror would double singing (#851); no vocadito clip moves, and the
-packages that read half their written rate stay there (#826).
+and dotted halves at twice its own. The mirror is narrower than a share of
+short notes, since a sung line's segmented notes are mostly shorter than
+the beat at any pulse: where a quarter of the pulse is a common value of
+the line — the line is written in sixteenths of it — the prior decides
+between the pulse and its double, again only where most windows' sweeps
+ranked the double (#851). That restored the written rate on the two
+packages that read half of it, and on the sung corpus moved the clips it
+touched onto the rate the prior-free estimators of
+`.claude/skills/verify-tempo` name; the pull request that added it carries
+the counts.
 A first tracked
 beat a frame after the origin no longer opens the page on a bar of rests:
 a lead-in shorter than a fraction of a pulse is left out of the tempo map,
@@ -261,9 +267,11 @@ which on a single line are a chord per note or two leaning to the dominant
 (#825): the scale names the signature, and the tonic note and the minor's
 raised seventh separate the relative pair; where the line comes to rest is
 not weighed, since these lines close on any tone of the tonic chord. What
-stands is the ramp's syncopation level (#826), a half-note line read at
-half tempo, and a line whose tonic is its rarest note and reads as its
-relative minor. A line over a sustained pad passes the same gate and reads
+stands is the ramp's syncopation level (#826) — a half-beat slip the
+tracker takes where bars enter on the off-beat with a rest on the beat, and
+a dotted-quarter reading of a line whose notes never sit a beat apart,
+which no note-value test separates from singing — and a line whose tonic
+is its rarest note and reads as its relative minor. A line over a sustained pad passes the same gate and reads
 its key the same way; the pad package's row in `score-solo.txt` measures
 that, and the estimator is left as it is because weighing the chords in
 costs solo rows that are right (#833). Behind the same gate the chords are

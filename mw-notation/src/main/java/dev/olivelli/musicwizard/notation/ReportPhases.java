@@ -305,24 +305,42 @@ final class ReportPhases {
         }
         BeatTrace.NoteValues values = trace.noteValues();
         if (values != null) {
+            String moved = ReportTimeline.bpm(trace.referencePulse()) + " a minute";
             table.add(fact("Note values", values.halved()
                     ? "make that pulse the line's shortest value, so the tempo prior chose"
-                            + " between it and its half: halved to "
-                            + ReportTimeline.bpm(trace.referencePulse()) + " a minute"
+                            + " between it and its half: halved to " + moved
+                    : values.doubled()
+                    ? "make a quarter of that pulse a common value of the line, so the tempo"
+                            + " prior chose between it and its double: doubled to " + moved
                     : "leave that pulse where it is"));
             table.add(fact("Notes read", String.valueOf(values.notes())));
             table.add(fact("Share shorter than the beat",
                     HtmlWriter.number(100 * values.subdivisionShare(), 0) + "%"));
-            table.add(fact("The sweep's own candidates", values.halfRanked()
-                    ? "list the halved rate in most windows"
-                    : "do not list the halved rate in most windows"));
+            table.add(fact("Share that subdivides half the beat",
+                    HtmlWriter.number(100 * values.quarterShare(), 0) + "%"));
+            table.add(fact("The sweep's own candidates", ranked(values)));
             table.add(fact("The tempo prior", values.priorPrefersHalf()
                     ? "puts the halved rate above that pulse"
-                    : "keeps that pulse above the halved rate"));
+                    : values.priorPrefersDouble()
+                    ? "puts the doubled rate above that pulse"
+                    : "keeps that pulse above its half and its double"));
         }
         facts(table.toArray(new Fact[0]));
         candidateLanes(trace);
         windowTable(trace);
+    }
+
+    private static String ranked(BeatTrace.NoteValues values) {
+        if (values.halfRanked() && values.doubleRanked()) {
+            return "list both the halved and the doubled rate in most windows";
+        }
+        if (values.halfRanked()) {
+            return "list the halved rate in most windows, and not the doubled one";
+        }
+        if (values.doubleRanked()) {
+            return "list the doubled rate in most windows, and not the halved one";
+        }
+        return "list neither the halved nor the doubled rate in most windows";
     }
 
     /**

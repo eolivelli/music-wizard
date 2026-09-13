@@ -145,6 +145,15 @@ final class ReportFixtures {
     }
 
     /**
+     * A line alone's run the note values doubled: the windows agreed on a
+     * quarter of the usual pulse and fold onto twice that.
+     */
+    static RunTraces doubledLine(BeatTrace.NoteValues values) {
+        return weighed(AGREED_PULSE / 4, null, values, AGREED_PULSE / 2, chroma(),
+                chordDecisions(), keyDecisions(), melodyCuts());
+    }
+
+    /**
      * A run both the register and the note values halved: the windows fold
      * onto a quarter of the pulse they agreed on.
      */
@@ -194,7 +203,14 @@ final class ReportFixtures {
     private static RunTraces weighed(BeatTrace.Octave octave, BeatTrace.NoteValues values,
                                      double referencePulse, ChromaTrace chroma,
                                      ChordTrace chords, KeyTrace key, MelodyTrace melody) {
-        BeatTrace beats = new BeatTrace(AGREED_PULSE, referencePulse, octave, values,
+        return weighed(AGREED_PULSE, octave, values, referencePulse, chroma, chords, key, melody);
+    }
+
+    private static RunTraces weighed(double agreedPulse, BeatTrace.Octave octave,
+                                     BeatTrace.NoteValues values, double referencePulse,
+                                     ChromaTrace chroma, ChordTrace chords, KeyTrace key,
+                                     MelodyTrace melody) {
+        BeatTrace beats = new BeatTrace(agreedPulse, referencePulse, octave, values,
                 List.of(
                         new BeatTrace.Window(0, 25, 240.5, 0.61, 0.88, 120.25,
                                 List.of(new BeatTrace.Candidate(240.5, 0.47, true),

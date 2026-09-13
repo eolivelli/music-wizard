@@ -35,8 +35,9 @@ import java.util.List;
  *                       register to read or the halved rate lay outside the
  *                       tracker's range
  * @param noteValues     how a line alone's note values were read, or null
- *                       where no notes were lifted into the envelope or the
- *                       halved rate lay outside the tracker's range
+ *                       where no notes were lifted into the envelope or
+ *                       neither the halved nor the doubled rate lay inside
+ *                       the tracker's range
  * @param windows        one entry per analysis window, in time order
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -67,7 +68,7 @@ public record BeatTrace(
 
     /** Whether the line's note values moved the pulse the register left. */
     public boolean noteValuesMoved() {
-        return noteValues != null && noteValues.halved();
+        return noteValues != null && (noteValues.halved() || noteValues.doubled());
     }
 
     /**
@@ -105,19 +106,27 @@ public record BeatTrace(
      * and what that was taken to mean; {@code NoteValues} in the dsp module
      * carries which way each has to fall.
      *
-     * @param halved           whether the pulse was halved on this reading
-     * @param notes            how many notes were read
-     * @param subdivisionShare the share of them shorter than a beat at that pulse
-     * @param halfRanked       whether most windows' sweeps listed the halved rate
-     * @param priorPrefersHalf whether the tempo prior puts the halved rate above it
+     * @param halved             whether the pulse was halved on this reading
+     * @param doubled            whether it was doubled instead
+     * @param notes              how many notes were read
+     * @param subdivisionShare   the share of them shorter than a beat at that pulse
+     * @param quarterShare       the share of them that subdivide half a beat
+     * @param halfRanked         whether most windows' sweeps listed the halved rate
+     * @param doubleRanked       whether most windows' sweeps listed the doubled rate
+     * @param priorPrefersHalf   whether the tempo prior puts the halved rate above it
+     * @param priorPrefersDouble whether it puts the doubled rate above it
      */
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record NoteValues(
             boolean halved,
+            boolean doubled,
             int notes,
             double subdivisionShare,
+            double quarterShare,
             boolean halfRanked,
-            boolean priorPrefersHalf) {
+            boolean doubleRanked,
+            boolean priorPrefersHalf,
+            boolean priorPrefersDouble) {
     }
 
     /**

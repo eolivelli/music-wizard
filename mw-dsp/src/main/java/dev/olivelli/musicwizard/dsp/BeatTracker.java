@@ -144,7 +144,8 @@ public final class BeatTracker {
     /**
      * The same, with the notes that were lifted into the envelope, whose
      * values may halve a pulse tracked at the line's unit rather than its
-     * beat — see {@link NoteValues}. Pass {@code null} where no notes were
+     * beat, or double one tracked at a value the line writes in sixteenths
+     * — see {@link NoteValues}. Pass {@code null} where no notes were
      * lifted in.
      */
     public static Result track(OnsetEnvelope envelope, HarmonicRhythm rhythm,
@@ -256,9 +257,10 @@ public final class BeatTracker {
     private static BeatTrace.NoteValues traced(NoteValues.Octave values) {
         NoteValues.Reading reading = values.reading();
         return reading == null ? null
-                : new BeatTrace.NoteValues(values.halved(), reading.notes(),
-                        reading.subdivisionShare(), reading.halfRanked(),
-                        reading.priorPrefersHalf());
+                : new BeatTrace.NoteValues(values.halved(), values.doubled(), reading.notes(),
+                        reading.subdivisionShare(), reading.quarterShare(),
+                        reading.halfRanked(), reading.doubleRanked(),
+                        reading.priorPrefersHalf(), reading.priorPrefersDouble());
     }
 
     /**

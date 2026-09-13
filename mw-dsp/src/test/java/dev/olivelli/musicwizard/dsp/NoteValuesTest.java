@@ -31,7 +31,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
-/** A line alone's note values deciding the octave of its pulse (#844). */
+/** A line alone's note values deciding the octave of its pulse (#844, #851). */
 @DisplayName("note values")
 class NoteValuesTest {
 
@@ -180,7 +180,7 @@ class NoteValuesTest {
         }
 
         @Test
-        @DisplayName("no melody, or a half below the sweep's floor, takes no reading")
+        @DisplayName("no melody takes no reading; a half below the floor is not taken")
         void noReadingWithoutNotesOrRoom() {
             assertThat(NoteValues.resolve(224, null, List.of(sweep(224, 111))).reading())
                     .isNull();
@@ -188,8 +188,94 @@ class NoteValuesTest {
                     List.of(sweep(224, 111))).reading()).isNull();
             NoteValues.Octave floor = NoteValues.resolve(70,
                     line(70, dottedRhythm(7)), List.of(sweep(70, 35)));
-            assertThat(floor.reading()).isNull();
+            assertThat(floor.reading().unit()).isTrue();
+            assertThat(floor.halved()).isFalse();
             assertThat(floor.rate()).isEqualTo(70);
+        }
+
+        /** The half-tempo shape (#851): quarters, eighths and halves read at half their pulse. */
+        private static double[] sixteenthsRhythm(int bars) {
+            double[] values = new double[6 * bars];
+            for (int i = 0; i < bars; i++) {
+                double[] bar = {0.25, 0.25, 0.5, 0.5, 0.25, 0.25};
+                System.arraycopy(bar, 0, values, 6 * i, bar.length);
+            }
+            return values;
+        }
+
+        @Test
+        @DisplayName("a line with a common sixteenth below the prior's centre, the double ranked, is doubled")
+        void aCommonSixteenthDoublesASlowPulse() {
+            NoteValues.Octave octave = NoteValues.resolve(42,
+                    line(42, sixteenthsRhythm(4)), List.of(sweep(42, 83.5)));
+
+            assertThat(octave.doubled()).isTrue();
+            assertThat(octave.halved()).isFalse();
+            assertThat(octave.rate()).isEqualTo(84);
+            assertThat(octave.reading().quarterShare()).isGreaterThan(0.2);
+            assertThat(octave.reading().priorPrefersDouble()).isTrue();
+        }
+
+        @Test
+        @DisplayName("the same line above the prior's crossover keeps its pulse")
+        void aQuickLineInSixteenthsKeepsItsPulse() {
+            NoteValues.Octave octave = NoteValues.resolve(100,
+                    line(100, sixteenthsRhythm(4)), List.of(sweep(100, 200)));
+
+            assertThat(octave.reading().inQuarters()).isTrue();
+            assertThat(octave.reading().doubleRanked()).isTrue();
+            assertThat(octave.reading().priorPrefersDouble()).isFalse();
+            assertThat(octave.doubled()).isFalse();
+        }
+
+        @Test
+        @DisplayName("a line whose shortest common value is an eighth is not doubled")
+        void aCommonEighthDoesNotDouble() {
+            double[] eighthsAndQuarters = new double[24];
+            for (int i = 0; i < eighthsAndQuarters.length; i++) {
+                eighthsAndQuarters[i] = i % 3 == 2 ? 1 : 0.5;
+            }
+            NoteValues.Octave octave = NoteValues.resolve(60,
+                    line(60, eighthsAndQuarters), List.of(sweep(60, 120)));
+
+            assertThat(octave.reading().priorPrefersDouble()).isTrue();
+            assertThat(octave.reading().quarterShare()).isLessThan(0.2);
+            assertThat(octave.doubled()).isFalse();
+        }
+
+        @Test
+        @DisplayName("the double is restored only where most windows ranked it")
+        void anUnrankedDoubleIsNotInvented() {
+            NoteTrack shape = line(42, sixteenthsRhythm(4));
+
+            assertThat(NoteValues.resolve(42, shape, List.of(sweep(42, 63))).doubled())
+                    .isFalse();
+            assertThat(NoteValues.resolve(42, shape,
+                    List.of(sweep(42, 84), sweep(42, 63), sweep(42, 63))).doubled()).isFalse();
+            assertThat(NoteValues.resolve(42, shape,
+                    List.of(sweep(42, 84), sweep(42, 83), sweep(42, 63))).doubled()).isTrue();
+        }
+
+        @Test
+        @DisplayName("the doubled line does not double again, and is not halved back")
+        void theDoubledLineStands() {
+            NoteValues.Octave octave = NoteValues.resolve(84,
+                    line(42, sixteenthsRhythm(4)), List.of(sweep(84, 42, 168)));
+
+            assertThat(octave.doubled()).isFalse();
+            assertThat(octave.halved()).isFalse();
+            assertThat(octave.reading().quarterShare()).isZero();
+            assertThat(octave.reading().subdivisionShare()).isGreaterThan(0.2);
+        }
+
+        @Test
+        @DisplayName("a double above the sweep's ceiling is not taken")
+        void aDoubleAboveTheCeilingIsNotTaken() {
+            NoteValues.Octave octave = NoteValues.resolve(130,
+                    line(130, sixteenthsRhythm(4)), List.of(sweep(130, 260)));
+
+            assertThat(octave.doubled()).isFalse();
+            assertThat(octave.rate()).isEqualTo(130);
         }
     }
 
@@ -242,6 +328,16 @@ class NoteValuesTest {
             }
         }
 
+        /** A broad rise in the flux, several frames either side of a moment. */
+        private void swell(double[] flux, double seconds, double height) {
+            int at = (int) Math.round(seconds * FRAME_RATE);
+            for (int k = -8; k <= 8; k++) {
+                if (at + k >= 0 && at + k < flux.length) {
+                    flux[at + k] += height * (1 - Math.abs(k) / 9.0);
+                }
+            }
+        }
+
         @Test
         @DisplayName("the notes halve a pulse tracked at their unit, in one window and in several")
         void theNotesHalveAPulseTrackedAtTheirUnit() {
@@ -260,6 +356,65 @@ class NoteValuesTest {
                         .isCloseTo(withValues.trace().agreedPulse() / 2, within(1e-9));
                 for (BeatTrace.Window window : withValues.trace().windows()) {
                     assertThat(window.trackedPulse()).isCloseTo(111, within(3.0));
+                }
+            }
+        }
+
+        /**
+         * The half-tempo shape (#851): a line in halves, quarters and eighths
+         * with a note on every half note, over a flux that hears the notes
+         * faintly and swells at each half note, as a sustained instrument's
+         * flux does at a legato change. The sweep puts the half note's rate
+         * first and the beat second.
+         */
+        private Line halfNoteLine(double beatRate, double seconds) {
+            double beat = 60 / beatRate;
+            int frames = (int) (seconds * FRAME_RATE);
+            double[] flux = new double[frames];
+            java.util.Random noise = new java.util.Random(11);
+            for (int i = 0; i < frames; i++) {
+                flux[i] = 0.05 * noise.nextGaussian();
+            }
+            double[] cycle = {2, 2, 2, 0.5, 0.5, 1, 0.5, 0.5, 1, 2, 2, 2, 1, 1, 2, 0.5, 0.5, 1, 2};
+            List<Note> notes = new ArrayList<>();
+            int index = 0;
+            double position = 0;
+            for (double t = 0.5; t + 2 * beat < seconds; index++) {
+                double value = cycle[index % cycle.length];
+                double written = value * beat;
+                double length = written * (1 + 0.05 * noise.nextGaussian());
+                notes.add(Note.ofSeconds(t, length, 72 + index % 5, Confidence.UNKNOWN));
+                attack(flux, t, 0.5);
+                if (position % 2 == 0) {
+                    swell(flux, t, 3.0);
+                }
+                t += length;
+                position += value;
+            }
+            NoteTrack line = new NoteTrack(PartRole.LEAD_VOCAL, "line", notes, Confidence.UNKNOWN);
+            OnsetEnvelope heard = normalised(flux);
+            return new Line(heard, heard.withNoteOnsets(line), line);
+        }
+
+        @Test
+        @DisplayName("the notes double a slow pulse tracked at the line's half note")
+        void theNotesDoubleAPulseTrackedAtTheHalfNote() {
+            for (double seconds : new double[] {12, 40}) {
+                Line line = halfNoteLine(84, seconds);
+
+                BeatTracker.Result withoutValues =
+                        BeatTracker.track(line.lifted(), HarmonicRhythm.none(), null, line.heard());
+                BeatTracker.Result withValues = BeatTracker.track(line.lifted(),
+                        HarmonicRhythm.none(), null, line.heard(), line.notes());
+
+                assertThat(withoutValues.beatsPerMinute()).isCloseTo(42, within(2.0));
+                assertThat(withValues.beatsPerMinute()).isCloseTo(84, within(3.0));
+                assertThat(withValues.trace().noteValuesMoved()).isTrue();
+                assertThat(withValues.trace().noteValues().doubled()).isTrue();
+                assertThat(withValues.trace().referencePulse())
+                        .isCloseTo(withValues.trace().agreedPulse() * 2, within(1e-9));
+                for (BeatTrace.Window window : withValues.trace().windows()) {
+                    assertThat(window.trackedPulse()).isCloseTo(84, within(3.0));
                 }
             }
         }
