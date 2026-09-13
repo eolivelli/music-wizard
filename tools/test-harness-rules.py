@@ -2823,7 +2823,7 @@ class SoloMelodyText(unittest.TestCase):
                           (6.5, 0.5, 77), (7.0, 2.0, 76)], read["notes"])
 
     def test_bars_are_split_on_bar_lines_or_on_lines(self):
-        one_line = self.melody("R1 | c'4 d'4 e'4 f'4 | g'1")
+        one_line = self.melody("R1 | c'4 d'4 e'4 f'4 | g'1 |")
         three_lines = self.melody("R1  # a bar of rest\nc'4 d'4 e'4 f'4\ng'1")
         self.assertEqual(one_line, three_lines)
         self.assertEqual(3, one_line["bars"])
@@ -2835,6 +2835,14 @@ class SoloMelodyText(unittest.TestCase):
         with self.assertRaises(ValueError):
             solo.parse_melody_text("tempo: 111\nmeter: 4/4\nmelody:\nc'1")
 
+    def test_a_file_with_no_bars_is_refused_rather_than_read_as_empty(self):
+        """An empty reference would score every note on the page as wrong."""
+        for text in ("tempo: 100\nmeter: 4/4\nkey: C major\n",
+                     "tempo: 100\nmeter: 4/4\nkey: C major\nmelody: c'1\n",
+                     "tempo: 100\nmeter: 4/4\nkey: C major\nmelody:\n# c'1\n"):
+            with self.assertRaises(ValueError, msg=text):
+                solo.parse_melody_text(text)
+
     def test_a_bar_that_does_not_fill_its_meter_is_refused(self):
         """A slip in one bar would move every bar after it, so the reference
         is refused rather than read."""
@@ -2845,24 +2853,30 @@ class SoloMelodyText(unittest.TestCase):
         self.assertEqual(2, self.melody("c'4. d'4. | e'2.", "6/8")["bars"])
 
     def test_a_tie_must_reach_the_same_pitch_and_a_note(self):
-        for bars in ("c'2~ d'2", "c'2~ r2", "c'2 d'2~"):
+        for bars in ("c'2~ d'2", "c'2~ r2", "c'2 d'2~", "r2~ c'2"):
             with self.assertRaises(ValueError, msg=bars):
                 self.melody(bars)
 
     def test_a_token_that_is_not_a_note_is_refused(self):
-        for bars in ("C'4 d'4 e'4 f'4", "c'4 d' e'4 f'4", "h'1", "cs'1", "c'4 | | d'4"):
+        for bars in ("C'4 d'4 e'4 f'4", "c'4 d' e'4 f'4", "h'1", "cs'1", "cses'1", "c'0", "c'3 c'3 c'3"):
             with self.assertRaises(ValueError, msg=bars):
                 self.melody(bars)
+        self.assertEqual([68, 67, 66, 68], [n[2] for n in self.melody("as'4 ases'4 ges'4 gis'4")["notes"]])
 
     def test_every_committed_melody_is_written_down_in_its_list(self):
         """The melody file is what the harness compiles; list.txt is where an
-        ear confirmed it. The two say the same bars, or one is stale."""
+        ear confirmed it. The two say the same bars, or one is stale. The
+        recording is committed too: the baseline is diffed in CI."""
         found = solo.melody_files()
         self.assertTrue(found)
-        for melody_file, where in found:
-            entry = (solo.REPO / where / "list.txt").read_text(encoding="utf-8")
+        entry = (solo.SAMPLES / "list.txt").read_text(encoding="utf-8")
+        tracked = subprocess.run(["git", "ls-files", "--", "samples"], cwd=solo.REPO,
+                                 capture_output=True, text=True, check=True).stdout
+        for melody_file in found:
             name = melody_file.name.removesuffix(".melody.txt")
             self.assertIn(name + ".", entry, name)
+            self.assertIn(melody_file.name, tracked, name)
+            self.assertTrue(any(f"samples/{name}{ext}" in tracked.split() for ext in (".wav", ".mp3")), name)
             text = melody_file.read_text(encoding="utf-8")
             read = solo.parse_melody_text(text)
             self.assertTrue(read["notes"], name)
@@ -2889,13 +2903,14 @@ class SoloMelodyText(unittest.TestCase):
         self.assertEqual([1.5, 0.5] * 7 + [2.5], [n[1] for n in flute["notes"]])
         self.assertEqual(3.0, flute["notes"][0][0])
 
-    def test_a_recording_this_machine_lacks_is_a_skip_the_gate_can_read(self):
+    def test_a_melody_file_without_its_recording_is_an_error_not_a_skip(self):
+        """CI diffs the baseline over the committed corpus, so a row that
+        skipped here and measured there could satisfy neither gate."""
         with tempfile.TemporaryDirectory() as tmp:
             melody_file = Path(tmp) / "solo-x.melody.txt"
             melody_file.write_text("tempo: 100\nmeter: 4/4\nkey: C major\nmelody:\nc'1\n")
-            row = solo.score_recording(Path("mw.jar"), melody_file, "uncommitted")
-        self.assertIn(Keying.MARKER, row)
-        self.assertEqual("  solo-x: not present (local-only; see uncommitted/list.txt to fetch)", row)
+            with self.assertRaises(SystemExit):
+                solo.score_recording(Path("mw.jar"), melody_file)
 
     def test_the_sheet_row_is_the_same_columns_as_a_package_s(self):
         reference = [(4.0, 1.0, 60), (5.0, 1.0, 64), (6.0, 2.0, 67)]

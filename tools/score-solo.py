@@ -41,12 +41,14 @@ These rows are tier one-and-a-half and never product accuracy — see
 synthetic_samples/README.md.
 
 With `--source samples` the same columns are scored on real recordings: each
-`<name>.melody.txt` beside a recording in `samples/` or `uncommitted/` holds
-the melody an ear confirmed, bar by bar in LilyPond's absolute pitch names,
-under the tempo it is written at, its meter and its key, and this compiles
-it into the reference the MIDI track is for a package. The tempo column is
-against that pulse, so a page read at twice it says so (#844). The entries
-are in the corpus's `list.txt`, as every other ground truth is.
+`<name>.melody.txt` beside a recording in `samples/` holds the melody an ear
+confirmed, bar by bar in LilyPond's absolute pitch names, under the tempo it
+is written at, its meter and its key, and this compiles it into the
+reference the MIDI track is for a package. The tempo column is against that
+pulse, so a page read at twice it says so (#844). The entries are in
+`samples/list.txt`, as every other ground truth is. Only committed
+recordings: the baseline is diffed in CI, where nothing local-only exists,
+so a melody file whose audio is absent is an error rather than a skip.
 
 Usage:  python3 tools/score-solo.py [--jar mw-cli/target/mw.jar] [--pinned]
                                     [--source synthetic|samples]
@@ -85,14 +87,15 @@ MAJOR_FIFTHS = {"C": 0, "G": 1, "D": 2, "A": 3, "E": 4, "B": 5, "F#": 6, "C#": 7
 
 MIDI_STEP = {"C": 0, "D": 2, "E": 4, "F": 5, "G": 7, "A": 9, "B": 11}
 
-#: The two corpora a `.melody.txt` may sit in, beside the recording it is for.
-CORPORA = ("samples", "uncommitted")
+#: Where a `.melody.txt` sits, beside the recording it is for.
+SAMPLES = REPO / "samples"
 
 #: One token of a melody file: a rest or a LilyPond absolute pitch, then a
 #: duration with optional dots and an optional tie.
-TOKEN = re.compile(r"^(?:(?P<rest>[rR])|(?P<step>[a-g])(?P<accidental>isis|eses|is|es|s)?"
+TOKEN = re.compile(r"^(?:(?P<rest>[rR])|(?P<step>[a-g])(?P<accidental>isis|eses|is|es|ses|s)?"
                    r"(?P<octave>'+|,+)?)(?P<length>\d+)(?P<dots>\.*)(?P<tie>~?)$")
-ACCIDENTAL = {None: 0, "is": 1, "isis": 2, "es": -1, "eses": -2, "s": -1}
+ACCIDENTAL = {None: 0, "is": 1, "isis": 2, "es": -1, "eses": -2, "s": -1, "ses": -2}
+LENGTHS = {1, 2, 4, 8, 16, 32, 64}
 
 
 # ------------------------------------------------------------------ reference
@@ -129,6 +132,8 @@ def parse_melody_text(text: str) -> dict:
     for header in ("tempo", "meter", "key"):
         if header not in headers:
             raise ValueError(f"no {header} header")
+    if not bars:
+        raise ValueError("no bars under a 'melody:' line")
     numerator, _, denominator = headers["meter"].partition("/")
     bar_quarters = 4.0 * int(numerator) / int(denominator)
     notes: list[list] = []
@@ -138,14 +143,14 @@ def parse_melody_text(text: str) -> dict:
         start = at
         for token in tokens:
             found = TOKEN.match(token)
-            if found is None:
+            if found is None or int(found["length"]) not in LENGTHS:
                 raise ValueError(f"bar {index}: cannot read '{token}'")
             length = 4.0 / int(found["length"]) * (2 - 0.5 ** len(found["dots"]))
             if found["rest"]:
-                if open_tie is not None:
-                    raise ValueError(f"bar {index}: a tie into a rest")
+                if open_tie is not None or found["tie"]:
+                    raise ValueError(f"bar {index}: a tie on a rest")
             else:
-                if found["accidental"] == "s" and found["step"] not in ("a", "e"):
+                if found["accidental"] in ("s", "ses") and found["step"] not in ("a", "e"):
                     raise ValueError(f"bar {index}: cannot read '{token}'")
                 octave = found["octave"] or ""
                 pitch = (48 + MIDI_STEP[found["step"].upper()] + ACCIDENTAL[found["accidental"]]
@@ -362,24 +367,16 @@ def sheet_row(name: str, page: dict, printed: str, headers: dict,
             f"  key {key_verdict(page, headers)}")
 
 
-def missing_line(name: str, where: str) -> str:
-    """The row for a recording this machine does not hold; its wording is
-    what the gate turns into a SKIP rather than a failure."""
-    return f"  {name}: not present (local-only; see {where}/list.txt to fetch)"
+def melody_files() -> list[Path]:
+    return sorted(SAMPLES.glob("*.melody.txt"))
 
 
-def melody_files() -> list[tuple[Path, str]]:
-    """Every `.melody.txt` in the corpora, with the corpus it sits in."""
-    return sorted(((f, where) for where in CORPORA
-                   for f in (REPO / where).glob("*.melody.txt")), key=lambda p: p[0].name)
-
-
-def score_recording(jar: Path, melody_file: Path, where: str, pinned: bool = False) -> str:
+def score_recording(jar: Path, melody_file: Path, pinned: bool = False) -> str:
     name = melody_file.name.removesuffix(".melody.txt")
     audio = next((melody_file.with_name(name + ext) for ext in (".wav", ".mp3")
                   if melody_file.with_name(name + ext).exists()), None)
     if audio is None:
-        return missing_line(name, where)
+        sys.exit(f"{melody_file.name}: no {name}.wav or .mp3 beside it")
     truth = parse_melody_text(melody_file.read_text(encoding="utf-8"))
     headers = truth["headers"]
     ws, printed, tmp = render_solo(
@@ -406,13 +403,13 @@ def main() -> None:
     if args.source == "samples":
         files = melody_files()
         if not files:
-            sys.exit(f"no .melody.txt in {' or '.join(CORPORA)}")
+            sys.exit(f"no .melody.txt in {SAMPLES}")
         print("Solo instrument, the playable part against the melody an ear confirmed, on the grid")
         print("(quarter beats at the pulse each .melody.txt is written at; the entries are in list.txt)")
         if args.pinned:
             print("(tempo and meter pinned to the melody file: a sweep, not the baselined reading)")
-        for melody_file, where in files:
-            print(score_recording(jar, melody_file, where, args.pinned))
+        for melody_file in files:
+            print(score_recording(jar, melody_file, args.pinned))
         return
     specs = sorted(CORPUS.glob("*.spec.txt"))
     if not specs:

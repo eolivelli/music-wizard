@@ -216,7 +216,7 @@ compare score-solo.py tools/baselines/score-solo.txt || { echo "FAIL: score-solo
 
 # The same page on real recordings (#845): a solo take with the melody an ear
 # confirmed written beside it, scored at the pulse a player taps. Committed
-# where the licence allows, so CI runs this diff too.
+# recordings only, so CI runs this diff too.
 step "9/12 solo harness vs baseline, on real recordings"
 compare score-solo.py tools/baselines/score-solo-samples.txt --source samples || { echo "FAIL: score-solo --source samples moved — if intended, regenerate the baseline and commit it"; fail=1; }
 
