@@ -139,6 +139,11 @@ final class ReportFixtures {
         return weighed(octave, chroma(), chordDecisions(), keyDecisions(), melodyCuts());
     }
 
+    /** A line alone's run: no register reading, and the note values of the caller's choosing. */
+    static RunTraces lineAlone(BeatTrace.NoteValues values) {
+        return weighed(null, values, chroma(), chordDecisions(), keyDecisions(), melodyCuts());
+    }
+
     /** The same, with a chroma trace of the caller's choosing. */
     static RunTraces weighed(ChromaTrace chroma) {
         return weighed(defaultOctave(), chroma, chordDecisions(), keyDecisions(), melodyCuts());
@@ -165,7 +170,13 @@ final class ReportFixtures {
 
     private static RunTraces weighed(BeatTrace.Octave octave, ChromaTrace chroma,
                                      ChordTrace chords, KeyTrace key, MelodyTrace melody) {
-        BeatTrace beats = new BeatTrace(240.5, 120.25, octave,
+        return weighed(octave, null, chroma, chords, key, melody);
+    }
+
+    private static RunTraces weighed(BeatTrace.Octave octave, BeatTrace.NoteValues values,
+                                     ChromaTrace chroma, ChordTrace chords, KeyTrace key,
+                                     MelodyTrace melody) {
+        BeatTrace beats = new BeatTrace(240.5, 120.25, octave, values,
                 List.of(
                         new BeatTrace.Window(0, 25, 240.5, 0.61, 0.88, 120.25,
                                 List.of(new BeatTrace.Candidate(240.5, 0.47, true),

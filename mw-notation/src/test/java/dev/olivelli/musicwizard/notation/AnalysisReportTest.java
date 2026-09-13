@@ -567,6 +567,29 @@ class AnalysisReportTest {
     }
 
     @Test
+    @DisplayName("a line alone says what its note values did to the octave")
+    void noteValuesAreWorded() {
+        String halved = AnalysisReport.toHtml(ReportFixtures.everything(), RECORDING,
+                ReportFixtures.run(), ReportFixtures.lineAlone(
+                        new BeatTrace.NoteValues(true, 15, 0.0, 0.53, true)));
+        String left = AnalysisReport.toHtml(ReportFixtures.everything(), RECORDING,
+                ReportFixtures.run(), ReportFixtures.lineAlone(
+                        new BeatTrace.NoteValues(false, 96, 0.0, 0.0, true)));
+        String noNotes = AnalysisReport.toHtml(ReportFixtures.everything(), RECORDING,
+                ReportFixtures.run(), ReportFixtures.weighed(new BeatTrace.Octave(
+                        false, 2.0, 0.5, 0.6, 2, 0, false)));
+
+        assertThat(halved).contains("<dt>Bass register</dt><dd>not read</dd>",
+                "so it was halved to 120.3 a minute",
+                "<dt>Share a half or longer</dt><dd>53%</dd>",
+                "list the halved rate in most windows");
+        assertThat(left).contains("<dt>Note values</dt><dd>leave that pulse where it is</dd>",
+                "<dt>Bass register</dt><dd>not read, so the octave is where the envelope"
+                        + " and the tempo prior put it</dd>");
+        assertThat(noNotes).doesNotContain("Note values");
+    }
+
+    @Test
     @DisplayName("a grid that marks no bar is not said to have agreed on a phase")
     void anAxisWithNoDownbeatNamesWhatItWasHungOn() {
         // BarLines anchors on the first chord here and never asks for a phase,

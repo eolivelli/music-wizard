@@ -1,6 +1,6 @@
 # What was played, confirmed by ear; samples/list.txt has the entry.
 # tools/score-solo.py --source samples compiles this into the reference.
-# Written at the pulse a player taps, half the pulse the page was read at.
+# Written at the pulse a player taps; the line's shortest value is half of it (#844).
 tempo: 111
 meter: 4/4
 key: C major
