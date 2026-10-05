@@ -25,8 +25,8 @@ package dev.olivelli.musicwizard.android.yt;
  * neither a WebView running Google's BotGuard nor the assets and threading that
  * come with it.
  *
- * <p>That will not hold forever: yt-dlp already records selective enforcement
- * observed on this client. This interface exists so that when it arrives, the
+ * <p>That will not hold forever: it already stopped holding once, for the
+ * client before this one, and the cure was a client change. This interface exists so that when it arrives, the
  * change is one implementation and two call sites rather than a refactor of
  * everything that touches a URL — and so that whoever meets
  * {@link ExtractionException.Reason#SABR_ONLY} for the first time finds this

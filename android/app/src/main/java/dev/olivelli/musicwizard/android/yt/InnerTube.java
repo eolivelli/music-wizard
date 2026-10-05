@@ -31,31 +31,33 @@ import java.util.Map;
  *
  * <p>Two things make this work, and both are easy to lose in a tidy-up.
  *
- * <p><strong>The client is a headset.</strong> {@code ANDROID_VR} is one of the
+ * <p><strong>The client is a headset.</strong> {@code VISIONOS} is one of the
  * few clients that still answers with a plain {@code url} on each adaptive
- * format instead of a SABR streaming endpoint, and — measured, not assumed —
+ * format instead of a SABR streaming endpoint, and -- measured, not assumed --
  * those URLs carry neither a {@code pot} proof-of-origin token nor an {@code n}
  * throttling parameter. That is what spares this app a WebView running Google's
  * BotGuard and an embedded JavaScript interpreter to descramble {@code n},
- * either of which would dwarf everything else here. yt-dlp reaches the same
- * conclusion; its no-JavaScript client list is {@code ('visionos',
- * 'android_vr')}. Do not raise {@link #CLIENT_VERSION} past 1.65 to look
- * current: newer versions have been observed answering SABR-only.
+ * either of which would dwarf everything else here. The constants below are
+ * yt-dlp's {@code INNERTUBE_CLIENTS} entry for it, which is also its default
+ * when no JavaScript runtime is available. The previous client here,
+ * {@code ANDROID_VR}, is the one yt-dlp now marks as needing a proof-of-origin
+ * token on its media URLs; the media host enforces that selectively by network,
+ * so a desktop check can pass while a phone is refused.
  *
  * <p><strong>The session is bootstrapped from its own rejection.</strong> A
- * call carrying no {@code visitorData} is usually — but unpredictably, varying
- * by session — refused with {@code LOGIN_REQUIRED} and "Sign in to confirm
+ * call carrying no {@code visitorData} is usually -- but unpredictably, varying
+ * by session -- refused with {@code LOGIN_REQUIRED} and "Sign in to confirm
  * you're not a bot". The refusal still carries a
  * {@code responseContext.visitorData}, and replaying that on the retry passes;
  * one bootstrapped value then serves many consecutive videos, which is why it
  * is cached for the life of the instance.
  *
- * <p>Neither fact is durable. yt-dlp already records selective proof-of-origin
- * enforcement on this client, so the day will come when the reply is
- * {@link ExtractionException.Reason#SABR_ONLY} for everything; that reason
- * exists so the app can say the build is out of date rather than blame the
- * network. When it does, the fix starts by diffing this constants block against
- * yt-dlp's {@code INNERTUBE_CLIENTS}.
+ * <p>Neither fact is durable. The day will come when the reply is
+ * {@link ExtractionException.Reason#SABR_ONLY} for everything, or the media
+ * host refuses every URL; those reasons exist so the app can say the build is
+ * out of date rather than blame the network. When it does, the fix starts by
+ * diffing this constants block against yt-dlp's {@code INNERTUBE_CLIENTS} and
+ * picking the client whose token policy is not required.
  */
 public final class InnerTube {
 
@@ -63,20 +65,20 @@ public final class InnerTube {
     private static final String ENDPOINT =
             "https://www.youtube.com/youtubei/v1/player?prettyPrint=false";
 
-    private static final String CLIENT_NAME = "ANDROID_VR";
+    private static final String CLIENT_NAME = "VISIONOS";
 
-    /** Pinned deliberately. Newer has been seen returning SABR-only streams. */
-    private static final String CLIENT_VERSION = "1.65.10";
+    /** Pinned deliberately, to what yt-dlp ships; a newer one is untested. */
+    private static final String CLIENT_VERSION = "1.02";
 
     /** The numeric client id that goes in the header beside the name. */
-    private static final String CLIENT_ID = "28";
+    private static final String CLIENT_ID = "101";
 
     /** The session held, a bare bootstrap, and the value that bootstrap offered. */
     private static final int MAX_CALLS = 3;
 
     private static final String USER_AGENT =
-            "com.google.android.apps.youtube.vr.oculus/" + CLIENT_VERSION
-                    + " (Linux; U; Android 12L; eureka-user Build/SQ3A.220605.009.A1) gzip";
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 15_7_3) AppleWebKit/605.1.15"
+                    + " (KHTML, like Gecko) Version/26.0 Safari/605.1.15";
 
     private final Http http;
     private final Trace trace;
@@ -318,11 +320,10 @@ public final class InnerTube {
         ObjectNode client = mapper.createObjectNode();
         client.put("clientName", CLIENT_NAME);
         client.put("clientVersion", CLIENT_VERSION);
-        client.put("deviceMake", "Oculus");
-        client.put("deviceModel", "Quest 3");
-        client.put("androidSdkVersion", 32);
-        client.put("osName", "Android");
-        client.put("osVersion", "12L");
+        client.put("deviceMake", "Apple");
+        client.put("deviceModel", "RealityDevice17,1");
+        client.put("osName", "visionOS");
+        client.put("osVersion", "26.5.23O471");
         client.put("userAgent", USER_AGENT);
         client.put("hl", "en");
         client.put("timeZone", "UTC");

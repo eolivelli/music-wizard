@@ -56,17 +56,17 @@ public class InnerTubeTest {
         assertEquals("POST", request.method());
         assertEquals("https://www.youtube.com/youtubei/v1/player?prettyPrint=false",
                 request.url());
-        assertEquals("28", request.headers().get("X-YouTube-Client-Name"));
-        assertEquals("1.65.10", request.headers().get("X-YouTube-Client-Version"));
+        assertEquals("101", request.headers().get("X-YouTube-Client-Name"));
+        assertEquals("1.02", request.headers().get("X-YouTube-Client-Version"));
         assertEquals("https://www.youtube.com", request.headers().get("Origin"));
-        assertTrue(request.headers().get("User-Agent")
-                .startsWith("com.google.android.apps.youtube.vr.oculus/1.65.10"));
+        assertTrue(request.headers().get("User-Agent").startsWith("Mozilla/5.0 (Macintosh;"));
 
         JsonNode body = new ObjectMapper().readTree(http.bodyOf(0));
         assertEquals(VIDEO, body.path("videoId").asText());
-        assertEquals("ANDROID_VR", body.path("context").path("client").path("clientName").asText());
-        assertEquals("1.65.10",
-                body.path("context").path("client").path("clientVersion").asText());
+        assertEquals("VISIONOS", body.path("context").path("client").path("clientName").asText());
+        assertEquals("1.02", body.path("context").path("client").path("clientVersion").asText());
+        assertEquals("visionOS", body.path("context").path("client").path("osName").asText());
+        assertTrue(body.path("context").path("client").path("androidSdkVersion").isMissingNode());
         // Both of these are why an age-restricted video resolves at all.
         assertTrue(body.path("contentCheckOk").asBoolean());
         assertTrue(body.path("racyCheckOk").asBoolean());
