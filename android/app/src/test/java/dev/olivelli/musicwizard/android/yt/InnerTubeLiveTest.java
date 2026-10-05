@@ -88,7 +88,8 @@ public class InnerTubeLiveTest {
         java.io.File target = java.nio.file.Files.createTempFile("mw-live", ".aac").toFile();
         try {
             long started = System.nanoTime();
-            new HlsAudio(http).to(target, info.hlsManifestUrl(), (done, total) -> { }, () -> false);
+            new HlsAudio(new StreamDownload(http)).to(target, info.hlsManifestUrl(),
+                    (done, total) -> { }, () -> false);
             double seconds = (System.nanoTime() - started) / 1e9;
             assertTrue("the HLS fetch wrote nothing", target.length() > 0);
             System.out.printf("live hls: %.2f MB in %.2fs%n", target.length() / 1e6, seconds);

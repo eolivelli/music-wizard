@@ -116,8 +116,17 @@ public class HlsAudioTest {
         return out.toByteArray();
     }
 
+    private static byte[] utf8(String text) {
+        return text.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+    }
+
     private static FakeHttp playlists() {
-        return new FakeHttp().reply(200, MASTER).reply(200, PLAYLIST);
+        return new FakeHttp().content(200, Map.of(), utf8(MASTER)).content(200, Map.of(), utf8(PLAYLIST));
+    }
+
+    /** No waits between retries, which prove nothing here. */
+    private static HlsAudio hls(FakeHttp http) {
+        return new HlsAudio(new StreamDownload(http, 0, 0));
     }
 
     @Test
@@ -130,7 +139,7 @@ public class HlsAudioTest {
         List<long[]> progress = new ArrayList<>();
         File target = new File(folder.getRoot(), "take.aac");
 
-        new HlsAudio(http).to(target, MASTER_URL, (done, total) -> progress.add(new long[] {done, total}),
+        hls(http).to(target, MASTER_URL, (done, total) -> progress.add(new long[] {done, total}),
                 NEVER_CANCELLED);
 
         assertArrayEquals(concat(FRAMES_A, FRAMES_B, FRAMES_C), Files.readAllBytes(target.toPath()));
@@ -159,7 +168,7 @@ public class HlsAudioTest {
         File target = new File(folder.getRoot(), "take.aac");
 
         IOException refused = assertThrows(IOException.class,
-                () -> new HlsAudio(http).to(target, MASTER_URL, (done, total) -> { }, NEVER_CANCELLED));
+                () -> hls(http).to(target, MASTER_URL, (done, total) -> { }, NEVER_CANCELLED));
 
         assertTrue(refused.getMessage(), refused.getMessage().contains("not AAC"));
         assertFalse(target.exists());
@@ -169,11 +178,13 @@ public class HlsAudioTest {
     public void aRefusedSegmentIsItsOwnFailure() throws Exception {
         FakeHttp http = playlists()
                 .content(200, Map.of(), segment(63, FRAMES_A))
+                .content(403, Map.of(), new byte[0])
+                .content(403, Map.of(), new byte[0])
                 .content(403, Map.of(), new byte[0]);
         File target = new File(folder.getRoot(), "take.aac");
 
         assertThrows(HlsAudio.RefusedException.class,
-                () -> new HlsAudio(http).to(target, MASTER_URL, (done, total) -> { }, NEVER_CANCELLED));
+                () -> hls(http).to(target, MASTER_URL, (done, total) -> { }, NEVER_CANCELLED));
 
         assertFalse(target.exists());
         assertEquals(0, http.unclosedContents());
@@ -181,12 +192,12 @@ public class HlsAudioTest {
 
     @Test
     public void aManifestWithNoAudioRenditionIsRefused() {
-        FakeHttp http = new FakeHttp().reply(200, "#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1\n"
-                + "https://manifest.example.invalid/v/index.m3u8\n");
+        FakeHttp http = new FakeHttp().content(200, Map.of(), utf8("#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1\n"
+                + "https://manifest.example.invalid/v/index.m3u8\n"));
         File target = new File(folder.getRoot(), "take.aac");
 
         IOException refused = assertThrows(IOException.class,
-                () -> new HlsAudio(http).to(target, MASTER_URL, (done, total) -> { }, NEVER_CANCELLED));
+                () -> hls(http).to(target, MASTER_URL, (done, total) -> { }, NEVER_CANCELLED));
 
         assertTrue(refused.getMessage(), refused.getMessage().contains("no audio"));
         assertFalse(target.exists());
@@ -194,10 +205,13 @@ public class HlsAudioTest {
 
     @Test
     public void aMasterThatFailsToLoadIsReportedByStatus() {
-        FakeHttp http = new FakeHttp().reply(503, "");
+        FakeHttp http = new FakeHttp()
+                .content(503, Map.of(), new byte[0])
+                .content(503, Map.of(), new byte[0])
+                .content(503, Map.of(), new byte[0]);
 
         IOException failed = assertThrows(IOException.class,
-                () -> new HlsAudio(http).to(new File(folder.getRoot(), "take.aac"), MASTER_URL,
+                () -> hls(http).to(new File(folder.getRoot(), "take.aac"), MASTER_URL,
                         (done, total) -> { }, NEVER_CANCELLED));
 
         assertTrue(failed.getMessage(), failed.getMessage().contains("503"));
@@ -212,12 +226,75 @@ public class HlsAudioTest {
                 .content(200, Map.of(), segment(63, FRAMES_C));
         File target = new File(folder.getRoot(), "take.aac");
 
-        assertThrows(InterruptedIOException.class, () -> new HlsAudio(http).to(target, MASTER_URL,
+        assertThrows(InterruptedIOException.class, () -> hls(http).to(target, MASTER_URL,
                 (done, total) -> cancelled.set(true), cancelled::get));
 
         assertFalse(target.exists());
         // The master, the playlist, and the one segment fetched before the flag.
         assertEquals(3, http.requests.size());
+    }
+
+    /** The segments come from the hosts the ranges do, and fail the same ways. */
+    @Test
+    public void aSegmentThatFailsOnceIsFetchedAgain() throws Exception {
+        FakeHttp http = playlists()
+                .content(500, Map.of(), new byte[0])
+                .content(200, Map.of(), segment(63, FRAMES_A))
+                .content(200, Map.of(), segment(63, FRAMES_B))
+                .content(200, Map.of(), segment(63, FRAMES_C));
+        File target = new File(folder.getRoot(), "take.aac");
+
+        hls(http).to(target, MASTER_URL, (done, total) -> { }, NEVER_CANCELLED);
+
+        assertArrayEquals(concat(FRAMES_A, FRAMES_B, FRAMES_C), Files.readAllBytes(target.toPath()));
+    }
+
+    @Test
+    public void aRedirectedSegmentIsFollowed() throws Exception {
+        FakeHttp http = playlists()
+                .content(302, Map.of("Location", "https://other.example.invalid/seg/1"), new byte[0])
+                .content(200, Map.of(), segment(63, FRAMES_A))
+                .content(200, Map.of(), segment(63, FRAMES_B))
+                .content(200, Map.of(), segment(63, FRAMES_C));
+        File target = new File(folder.getRoot(), "take.aac");
+
+        hls(http).to(target, MASTER_URL, (done, total) -> { }, NEVER_CANCELLED);
+
+        assertEquals("https://other.example.invalid/seg/1", http.requests.get(3).url());
+        assertArrayEquals(concat(FRAMES_A, FRAMES_B, FRAMES_C), Files.readAllBytes(target.toPath()));
+    }
+
+    /** A refused manifest closes the road the same way a refused segment does. */
+    @Test
+    public void aRefusedManifestIsItsOwnFailureToo() {
+        FakeHttp http = new FakeHttp()
+                .content(403, Map.of(), new byte[0])
+                .content(403, Map.of(), new byte[0])
+                .content(403, Map.of(), new byte[0]);
+
+        assertThrows(HlsAudio.RefusedException.class,
+                () -> hls(http).to(new File(folder.getRoot(), "take.aac"), MASTER_URL,
+                        (done, total) -> { }, NEVER_CANCELLED));
+    }
+
+    /** A group listing several tracks, as a dubbed video does, yields the one marked default. */
+    @Test
+    public void theDefaultTrackOfAGroupIsChosen() throws Exception {
+        String dubbed = "#EXTM3U\n"
+                + "#EXT-X-MEDIA:URI=\"https://manifest.example.invalid/it/index.m3u8\",TYPE=AUDIO,"
+                + "GROUP-ID=\"234\",NAME=\"Italian\",LANGUAGE=\"it\",DEFAULT=YES\n"
+                + "#EXT-X-MEDIA:URI=\"https://manifest.example.invalid/en/index.m3u8\",TYPE=AUDIO,"
+                + "GROUP-ID=\"234\",NAME=\"English\",LANGUAGE=\"en\",DEFAULT=NO\n"
+                + "#EXT-X-STREAM-INF:BANDWIDTH=1,CODECS=\"avc1.4D4015,mp4a.40.2\",AUDIO=\"234\"\n"
+                + "https://manifest.example.invalid/v/index.m3u8\n";
+        FakeHttp http = new FakeHttp().content(200, Map.of(), utf8(dubbed))
+                .content(200, Map.of(), utf8("#EXTM3U\n#EXTINF:1.0,\nhttps://media.example.invalid/s\n"))
+                .content(200, Map.of(), segment(0, FRAMES_A));
+
+        hls(http).to(new File(folder.getRoot(), "take.aac"), MASTER_URL, (done, total) -> { },
+                NEVER_CANCELLED);
+
+        assertEquals("https://manifest.example.invalid/it/index.m3u8", http.requests.get(1).url());
     }
 
     @Test

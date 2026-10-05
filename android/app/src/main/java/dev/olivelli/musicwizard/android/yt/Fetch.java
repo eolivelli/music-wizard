@@ -51,8 +51,11 @@ public final class Fetch {
     }
 
     public Fetch(Http http, Trace trace) {
-        this(new InnerTube(http, trace), new StreamDownload(http, trace), new HlsAudio(http, trace),
-                trace);
+        this(new InnerTube(http, trace), new StreamDownload(http, trace), trace);
+    }
+
+    Fetch(InnerTube tube, StreamDownload download, Trace trace) {
+        this(tube, download, new HlsAudio(download, trace), trace);
     }
 
     Fetch(InnerTube tube, StreamDownload download, HlsAudio hls) {
@@ -144,9 +147,9 @@ public final class Fetch {
             download.to(part, stream, progress, cancelled);
         } catch (StreamDownload.ExpiredException expired) {
             if (expired.bytesServed() > 0 && info.hlsManifestUrl() != null) {
-                // The opening served and the rest refused is not a stale link: it
-                // is the host wanting a proof-of-origin token this app has not
-                // got, and fresh URLs would be refused the same way.
+                // A stale link is refused from the first byte. One that served
+                // its opening and then refused every attempt has not been seen
+                // cured by fresh URLs, so the second resolve is not spent.
                 mimeType = hlsInstead(part, info, progress, cancelled);
             } else {
                 trace.line("the link was refused; resolving again");

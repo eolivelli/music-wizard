@@ -16,15 +16,14 @@
 
 package dev.olivelli.musicwizard.android.yt;
 
-import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.InterruptedIOException;
 import java.io.OutputStream;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -54,25 +53,26 @@ public final class HlsAudio {
     /** What the written file is, for naming and for the decoder. */
     public static final String MIME_TYPE = "audio/aac";
 
-    /** The media host refused a segment, so the whole road is closed. */
+    /** The media host refused a playlist or a segment after every attempt, so the road is closed. */
     public static final class RefusedException extends IOException {
 
         private static final long serialVersionUID = 1L;
 
-        RefusedException(String message) {
-            super(message);
+        RefusedException(String message, Throwable cause) {
+            super(message, cause);
         }
     }
 
-    private final Http http;
+    private final StreamDownload download;
     private final Trace trace;
 
-    public HlsAudio(Http http) {
-        this(http, Trace.NONE);
+    /** Every request goes through {@code download}, which retries and follows redirects. */
+    public HlsAudio(StreamDownload download) {
+        this(download, Trace.NONE);
     }
 
-    public HlsAudio(Http http, Trace trace) {
-        this.http = http;
+    public HlsAudio(StreamDownload download, Trace trace) {
+        this.download = download;
         this.trace = trace;
     }
 
@@ -86,10 +86,10 @@ public final class HlsAudio {
      */
     public void to(File target, String manifestUrl, StreamDownload.Progress progress,
             BooleanSupplier cancelled) throws IOException {
-        Rendition rendition = chooseAudio(text(manifestUrl, "the HLS manifest"), manifestUrl);
+        Rendition rendition = chooseAudio(text(manifestUrl, "manifest", cancelled), manifestUrl);
         trace.line("hls audio group " + rendition.group + " " + rendition.codec);
         List<String> segments = segmentUrls(
-                text(rendition.url, "the HLS audio playlist"), rendition.url);
+                text(rendition.url, "audio playlist", cancelled), rendition.url);
         if (segments.isEmpty()) {
             throw new IOException("the HLS audio playlist lists no segments");
         }
@@ -102,7 +102,8 @@ public final class HlsAudio {
                     if (cancelled.getAsBoolean()) {
                         throw new InterruptedIOException("the download was cancelled");
                     }
-                    out.write(adtsFrames(segment(segments.get(i), i + 1, cancelled), i + 1));
+                    out.write(adtsFrames(whole(segments.get(i), "segment " + (i + 1), cancelled),
+                            i + 1));
                     progress.onProgress(i + 1, segments.size());
                 }
             }
@@ -114,41 +115,16 @@ public final class HlsAudio {
         }
     }
 
-    private String text(String url, String what) throws IOException {
-        Http.Response reply = http.send(new Http.Request("GET", url, new LinkedHashMap<>(), null));
-        trace.line("hls " + what + " -> HTTP " + reply.status() + " from " + hostOf(url));
-        if (!reply.isSuccess()) {
-            throw new IOException(what + " answered HTTP " + reply.status());
-        }
-        return reply.body();
+    private String text(String url, String what, BooleanSupplier cancelled) throws IOException {
+        return new String(whole(url, what, cancelled), StandardCharsets.UTF_8);
     }
 
-    private byte[] segment(String url, int number, BooleanSupplier cancelled) throws IOException {
-        try (Http.Content content =
-                http.open(new Http.Request("GET", url, new LinkedHashMap<>(), null))) {
-            int status = content.status();
-            if (status != 200) {
-                trace.line("hls segment " + number + " -> HTTP " + status + " from " + hostOf(url));
-                if (status == 403 || status == 410) {
-                    throw new RefusedException(
-                            "the media host refused HLS segment " + number + " (HTTP " + status + ")");
-                }
-                throw new IOException("HLS segment " + number + " answered HTTP " + status);
-            }
-            return readAll(content.stream(), cancelled);
+    private byte[] whole(String url, String what, BooleanSupplier cancelled) throws IOException {
+        try {
+            return download.whole(url, cancelled);
+        } catch (StreamDownload.ExpiredException refused) {
+            throw new RefusedException("the media host refused the HLS " + what, refused);
         }
-    }
-
-    private static byte[] readAll(InputStream in, BooleanSupplier cancelled) throws IOException {
-        ByteArrayOutputStream out = new ByteArrayOutputStream();
-        byte[] buffer = new byte[1 << 14];
-        for (int read = in.read(buffer); read >= 0; read = in.read(buffer)) {
-            if (cancelled.getAsBoolean()) {
-                throw new InterruptedIOException("the download was cancelled");
-            }
-            out.write(buffer, 0, read);
-        }
-        return out.toByteArray();
     }
 
     /** The frames of one segment, with the ID3 tag that opens it cut off. */
@@ -182,11 +158,11 @@ public final class HlsAudio {
     }
 
     /**
-     * The audio-only rendition to fetch: AAC-LC when the manifest offers it.
+     * The audio-only rendition to fetch: AAC-LC when the manifest offers it, as
+     * the direct road chooses, and within a group the entry marked default.
      *
      * <p>The rendition lines name no codec; the variant lines that reference
-     * them do. HE-AAC is passed over because its decoders report their output
-     * format twice, which the decode path handles least well.
+     * them do.
      */
     static Rendition chooseAudio(String master, String masterUrl) throws IOException {
         Map<String, String> uris = new LinkedHashMap<>();
@@ -194,8 +170,10 @@ public final class HlsAudio {
         for (String line : master.split("\r?\n")) {
             if (line.startsWith("#EXT-X-MEDIA:")) {
                 Map<String, String> attributes = attributes(line.substring("#EXT-X-MEDIA:".length()));
-                if ("AUDIO".equals(attributes.get("TYPE")) && attributes.containsKey("URI")) {
-                    uris.put(attributes.getOrDefault("GROUP-ID", ""), attributes.get("URI"));
+                String group = attributes.getOrDefault("GROUP-ID", "");
+                if ("AUDIO".equals(attributes.get("TYPE")) && attributes.containsKey("URI")
+                        && (!uris.containsKey(group) || "YES".equals(attributes.get("DEFAULT")))) {
+                    uris.put(group, attributes.get("URI"));
                 }
             } else if (line.startsWith("#EXT-X-STREAM-INF:")) {
                 Map<String, String> attributes =
@@ -266,24 +244,16 @@ public final class HlsAudio {
         return out;
     }
 
+    /** Never names the address in a failure: a playlist entry carries the same secrets a media URL does. */
     private static String resolve(String base, String reference) throws IOException {
         try {
             URI resolved = new URI(base).resolve(reference);
             if (!"https".equalsIgnoreCase(resolved.getScheme())) {
-                throw new IOException("refusing an HLS address that is not https: " + resolved);
+                throw new IOException("the HLS playlist holds an address that is not https");
             }
             return resolved.toString();
         } catch (URISyntaxException | IllegalArgumentException unreadable) {
-            throw new IOException("the HLS playlist holds an unreadable address", unreadable);
-        }
-    }
-
-    private static String hostOf(String url) {
-        try {
-            String host = new URI(url).getHost();
-            return host == null ? "?" : host;
-        } catch (URISyntaxException unreadable) {
-            return "?";
+            throw new IOException("the HLS playlist holds an unreadable address");
         }
     }
 }

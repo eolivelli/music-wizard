@@ -117,7 +117,7 @@ InnerTube client that still serves plain media URLs; YouTube is progressively
 enforcing proof-of-origin tokens on those, by network, and the shape of it is
 the first range served and every later one refused. The app then fetches the
 HLS audio rendition of the same video instead, which is served without a
-token, and the take is an `.aac` stream at the rendition's own rate. When both
+token, and the take is an `.aac` stream. When both
 roads close, `InnerTubeLiveTest` — `./gradlew testDebugUnitTest --rerun
 --tests '*InnerTubeLiveTest*' -Dmw.yt.live=true -Dmw.yt.video=<id>` — is the
 one check that notices, because every other test answers a canned reply; it
@@ -164,8 +164,7 @@ it on a device after any change to the import:
 4. A playlist URL, a channel URL, and a plain text message → three different
    refusals, **Download** disabled.
    - On mobile data, where the direct URLs are refused after the first range →
-     the log says `fetching the HLS audio instead`, the take appears, and its
-     WAV header reads the rendition's rate.
+     the log says `fetching the HLS audio instead` and the take appears.
 5. Cancel mid-download → back to the confirm screen, nothing in the library,
    nothing left in the cache.
 6. Airplane mode → a failure that names the network, and **Try again**.

@@ -131,9 +131,9 @@ public final class StreamDownload {
         }
 
         /**
-         * What the host served before refusing. Zero is a link that was never
-         * good; anything else is a host that stopped serving part-way, which is
-         * the shape of proof-of-origin enforcement rather than expiry.
+         * What the host served before refusing every attempt. Zero is a link that
+         * was never good; anything else is a host that served the opening and
+         * then refused, which fresh URLs have not been seen to cure.
          */
         public long bytesServed() {
             return bytesServed;
@@ -242,6 +242,17 @@ public final class StreamDownload {
         return total;
     }
 
+    /**
+     * One whole resource, retried and redirected exactly as a range is.
+     *
+     * <p>For the HLS road, whose playlists and segments come from the same hosts
+     * as the ranges and fail the same ways. A refusal that survives every attempt
+     * is an {@link ExpiredException} here too.
+     */
+    byte[] whole(String url, BooleanSupplier cancelled) throws IOException {
+        return fetch(url, -1, -1, cancelled).data;
+    }
+
     /** One range's bytes, and the URL they finally came from. */
     private static final class Chunk {
 
@@ -301,18 +312,22 @@ public final class StreamDownload {
         throw last;
     }
 
+    /** A negative {@code from} asks for the whole resource rather than a range. */
     private Chunk readRange(String url, long from, long to, BooleanSupplier cancelled)
             throws IOException {
+        boolean ranged = from >= 0;
         String target = url;
         for (int hop = 0; hop <= MAX_HOPS; hop++) {
             Map<String, String> headers = new LinkedHashMap<>();
-            headers.put("Range", "bytes=" + from + "-" + to);
+            if (ranged) {
+                headers.put("Range", "bytes=" + from + "-" + to);
+            }
 
             try (Http.Content content =
                     http.open(new Http.Request("GET", target, headers, null))) {
                 int status = content.status();
                 // Host and status, never the URL: see Trace.
-                trace.line("range " + from + "-" + to + " -> HTTP " + status
+                trace.line((ranged ? "range " + from + "-" + to : "get") + " -> HTTP " + status
                         + " from " + hostOf(target)
                         + (hop > 0 ? " (hop " + hop + ")" : ""));
 
@@ -325,6 +340,12 @@ public final class StreamDownload {
                 if (status == 403 || status == 410) {
                     throw new ExpiredException(
                             "the media link is no longer valid (HTTP " + status + ")");
+                }
+                if (!ranged) {
+                    if (status != 200) {
+                        throw new IOException("the server answered HTTP " + status);
+                    }
+                    return new Chunk(readAll(content.stream(), cancelled), target);
                 }
                 if (status == 200) {
                     // The range was ignored, so this is the file from byte zero.
@@ -421,6 +442,18 @@ public final class StreamDownload {
         byte[] exact = new byte[filled];
         System.arraycopy(chunk, 0, exact, 0, filled);
         return exact;
+    }
+
+    private static byte[] readAll(InputStream in, BooleanSupplier cancelled) throws IOException {
+        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+        byte[] buffer = new byte[1 << 14];
+        for (int read = in.read(buffer); read >= 0; read = in.read(buffer)) {
+            if (cancelled.getAsBoolean()) {
+                throw new InterruptedIOException("the download was cancelled");
+            }
+            out.write(buffer, 0, read);
+        }
+        return out.toByteArray();
     }
 
     /**
