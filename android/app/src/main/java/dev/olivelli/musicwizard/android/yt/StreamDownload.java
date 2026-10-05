@@ -404,15 +404,17 @@ public final class StreamDownload {
         if (location == null || location.isEmpty()) {
             throw new FatalIOException("the server redirected without saying where");
         }
+        // The host at most, never the address: a redirect target carries the
+        // same signatures a media URL does, and these messages reach the log.
         try {
             URI resolved = new URI(from).resolve(location);
             if (!"https".equalsIgnoreCase(resolved.getScheme())) {
-                throw new FatalIOException("refusing a redirect that is not https: " + resolved);
+                throw new FatalIOException("refusing a redirect that is not https, to "
+                        + hostOf(resolved.toString()));
             }
             return resolved.toString();
         } catch (URISyntaxException malformed) {
-            throw new FatalIOException("the server redirected somewhere unreadable: " + location,
-                    malformed);
+            throw new FatalIOException("the server redirected somewhere unreadable", malformed);
         }
     }
 

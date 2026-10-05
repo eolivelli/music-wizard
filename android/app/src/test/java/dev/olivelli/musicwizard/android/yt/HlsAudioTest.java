@@ -264,6 +264,22 @@ public class HlsAudioTest {
         assertArrayEquals(concat(FRAMES_A, FRAMES_B, FRAMES_C), Files.readAllBytes(target.toPath()));
     }
 
+    /** A redirect off https is refused, and the refusal names no address: it would carry the signatures. */
+    @Test
+    public void aRedirectOffHttpsIsRefusedWithoutNamingTheAddress() {
+        FakeHttp http = playlists().content(302,
+                Map.of("Location", "http://rr1---sn-x.googlevideo.invalid/videoplayback/sig/SECRET/lsig/SECRET2"),
+                new byte[0]);
+        File target = new File(folder.getRoot(), "take.aac");
+
+        IOException refused = assertThrows(IOException.class,
+                () -> hls(http).to(target, MASTER_URL, (done, total) -> { }, NEVER_CANCELLED));
+
+        assertTrue(refused.getMessage(), refused.getMessage().contains("not https"));
+        assertFalse(refused.getMessage(), refused.getMessage().contains("SECRET"));
+        assertFalse(target.exists());
+    }
+
     /** A refused manifest closes the road the same way a refused segment does. */
     @Test
     public void aRefusedManifestIsItsOwnFailureToo() {
@@ -280,11 +296,14 @@ public class HlsAudioTest {
     /** A group listing several tracks, as a dubbed video does, yields the one marked default. */
     @Test
     public void theDefaultTrackOfAGroupIsChosen() throws Exception {
+        // Neither first nor last, so neither of the simpler rules passes.
         String dubbed = "#EXTM3U\n"
-                + "#EXT-X-MEDIA:URI=\"https://manifest.example.invalid/it/index.m3u8\",TYPE=AUDIO,"
-                + "GROUP-ID=\"234\",NAME=\"Italian\",LANGUAGE=\"it\",DEFAULT=YES\n"
                 + "#EXT-X-MEDIA:URI=\"https://manifest.example.invalid/en/index.m3u8\",TYPE=AUDIO,"
                 + "GROUP-ID=\"234\",NAME=\"English\",LANGUAGE=\"en\",DEFAULT=NO\n"
+                + "#EXT-X-MEDIA:URI=\"https://manifest.example.invalid/it/index.m3u8\",TYPE=AUDIO,"
+                + "GROUP-ID=\"234\",NAME=\"Italian\",LANGUAGE=\"it\",DEFAULT=YES\n"
+                + "#EXT-X-MEDIA:URI=\"https://manifest.example.invalid/de/index.m3u8\",TYPE=AUDIO,"
+                + "GROUP-ID=\"234\",NAME=\"German\",LANGUAGE=\"de\",DEFAULT=NO\n"
                 + "#EXT-X-STREAM-INF:BANDWIDTH=1,CODECS=\"avc1.4D4015,mp4a.40.2\",AUDIO=\"234\"\n"
                 + "https://manifest.example.invalid/v/index.m3u8\n";
         FakeHttp http = new FakeHttp().content(200, Map.of(), utf8(dubbed))

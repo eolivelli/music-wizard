@@ -58,10 +58,6 @@ public final class Fetch {
         this(tube, download, new HlsAudio(download, trace), trace);
     }
 
-    Fetch(InnerTube tube, StreamDownload download, HlsAudio hls) {
-        this(tube, download, hls, Trace.NONE);
-    }
-
     Fetch(InnerTube tube, StreamDownload download, HlsAudio hls, Trace trace) {
         this.tube = tube;
         this.download = download;
