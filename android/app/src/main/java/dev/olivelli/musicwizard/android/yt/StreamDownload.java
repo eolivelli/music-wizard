@@ -119,8 +119,24 @@ public final class StreamDownload {
 
         private static final long serialVersionUID = 1L;
 
+        private final long bytesServed;
+
         public ExpiredException(String message) {
+            this(message, 0);
+        }
+
+        public ExpiredException(String message, long bytesServed) {
             super(message);
+            this.bytesServed = bytesServed;
+        }
+
+        /**
+         * What the host served before refusing. Zero is a link that was never
+         * good; anything else is a host that stopped serving part-way, which is
+         * the shape of proof-of-origin enforcement rather than expiry.
+         */
+        public long bytesServed() {
+            return bytesServed;
         }
     }
 
@@ -198,7 +214,12 @@ public final class StreamDownload {
                 throw new InterruptedIOException("the download was cancelled");
             }
             long last = Math.min(done + CHUNK_BYTES, total) - 1;
-            Chunk chunk = fetch(url, done, last, cancelled);
+            Chunk chunk;
+            try {
+                chunk = fetch(url, done, last, cancelled);
+            } catch (ExpiredException expired) {
+                throw new ExpiredException(expired.getMessage(), done);
+            }
             url = chunk.url;
 
             // Outside the retry, deliberately: see fetch's javadoc.

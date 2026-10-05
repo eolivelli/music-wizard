@@ -43,6 +43,7 @@ public final class Fetch {
 
     private final InnerTube tube;
     private final StreamDownload download;
+    private final HlsAudio hls;
     private final Trace trace;
 
     public Fetch(Http http) {
@@ -50,16 +51,18 @@ public final class Fetch {
     }
 
     public Fetch(Http http, Trace trace) {
-        this(new InnerTube(http, trace), new StreamDownload(http, trace), trace);
+        this(new InnerTube(http, trace), new StreamDownload(http, trace), new HlsAudio(http, trace),
+                trace);
     }
 
-    Fetch(InnerTube tube, StreamDownload download) {
-        this(tube, download, Trace.NONE);
+    Fetch(InnerTube tube, StreamDownload download, HlsAudio hls) {
+        this(tube, download, hls, Trace.NONE);
     }
 
-    Fetch(InnerTube tube, StreamDownload download, Trace trace) {
+    Fetch(InnerTube tube, StreamDownload download, HlsAudio hls, Trace trace) {
         this.tube = tube;
         this.download = download;
+        this.hls = hls;
         this.trace = trace;
     }
 
@@ -136,36 +139,47 @@ public final class Fetch {
         AudioStream stream = AudioStream.choose(info.audio());
         trace.line("chose " + stream);
         File part = new File(directory, videoId + ".part");
+        String mimeType = stream.mimeType();
         try {
             download.to(part, stream, progress, cancelled);
         } catch (StreamDownload.ExpiredException expired) {
-            trace.line("the link was refused; resolving again");
-            // URLs last about six hours, so this is a confirmation screen that was
-            // left open. Resolving again is the cure, and it is worth exactly one
-            // try: fresh URLs that are refused too are not stale ones.
-            // No null check on the re-chosen stream: InnerTube.resolve throws
-            // SABR_ONLY when nothing is fetchable, so it cannot return a
-            // PlayerInfo whose formats have no URL. One place owns that.
-            info = tube.resolve(videoId);
-            stream = AudioStream.choose(info.audio());
-            trace.line("chose " + stream + " on the second resolve");
-            try {
-                download.to(part, stream, progress, cancelled);
-            } catch (StreamDownload.ExpiredException again) {
-                // Freshly resolved URLs, refused anyway, after the download had
-                // already retried each chunk. That is the media host rate-limiting
-                // this address, not a link that went stale, and it clears by
-                // itself — so say so rather than blaming the link.
-                throw new ExtractionException(ExtractionException.Reason.RATE_LIMITED,
-                        "YouTube is refusing downloads just now."
-                                + " Wait a minute and try again.", again);
+            if (expired.bytesServed() > 0 && info.hlsManifestUrl() != null) {
+                // The opening served and the rest refused is not a stale link: it
+                // is the host wanting a proof-of-origin token this app has not
+                // got, and fresh URLs would be refused the same way.
+                mimeType = hlsInstead(part, info, progress, cancelled);
+            } else {
+                trace.line("the link was refused; resolving again");
+                // URLs last about six hours, so this is a confirmation screen that
+                // was left open. Resolving again is the cure, and it is worth
+                // exactly one try: fresh URLs that are refused too are not stale.
+                // No null check on the re-chosen stream: InnerTube.resolve throws
+                // SABR_ONLY when nothing is fetchable, so it cannot return a
+                // PlayerInfo whose formats have no URL. One place owns that.
+                info = tube.resolve(videoId);
+                stream = AudioStream.choose(info.audio());
+                trace.line("chose " + stream + " on the second resolve");
+                try {
+                    download.to(part, stream, progress, cancelled);
+                } catch (StreamDownload.ExpiredException again) {
+                    if (info.hlsManifestUrl() == null) {
+                        // Freshly resolved URLs, refused anyway, after the download
+                        // had already retried each chunk, and no other road offered.
+                        // That is the media host rate-limiting this address, and
+                        // it clears by itself.
+                        throw new ExtractionException(ExtractionException.Reason.RATE_LIMITED,
+                                "YouTube is refusing downloads just now."
+                                        + " Wait a minute and try again.", again);
+                    }
+                    mimeType = hlsInstead(part, info, progress, cancelled);
+                }
             }
         }
 
         // Naming the finished file can fail too, and the megabytes are already
         // on disk by then: without this the .part outlives every such failure,
         // one orphan per attempt, in a cache directory nobody looks at.
-        File media = new File(directory, videoId + extensionFor(stream.mimeType()));
+        File media = new File(directory, videoId + extensionFor(mimeType));
         boolean named = false;
         try {
             if (media.exists() && !media.delete()) {
@@ -185,6 +199,20 @@ public final class Fetch {
         trace.line("fetched " + media.length() + " bytes as " + media.getName());
         String title = info.title() == null || info.title().isBlank() ? videoId : info.title();
         return new Fetched(media, videoId, title, info.author(), info.lengthSeconds());
+    }
+
+    /** The HLS rendition, written over the refused direct download's part file. */
+    private String hlsInstead(File part, PlayerInfo info, StreamDownload.Progress progress,
+            BooleanSupplier cancelled) throws ExtractionException, IOException {
+        trace.line("the direct audio was refused; fetching the HLS audio instead");
+        try {
+            hls.to(part, info.hlsManifestUrl(), progress, cancelled);
+        } catch (HlsAudio.RefusedException refused) {
+            throw new ExtractionException(ExtractionException.Reason.BLOCKED,
+                    "YouTube is refusing to serve this audio to this app on this network.",
+                    refused);
+        }
+        return HlsAudio.MIME_TYPE;
     }
 
     /** What to tell the user when the share held no video. */
@@ -210,6 +238,9 @@ public final class Fetch {
      * the two must not be confusable in a cache directory that is swept.
      */
     private static String extensionFor(String mimeType) {
-        return mimeType.startsWith("audio/webm") ? ".webm" : ".m4a";
+        if (mimeType.startsWith("audio/webm")) {
+            return ".webm";
+        }
+        return mimeType.equals(HlsAudio.MIME_TYPE) ? ".aac" : ".m4a";
     }
 }

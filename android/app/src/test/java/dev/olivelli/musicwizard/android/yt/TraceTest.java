@@ -96,9 +96,15 @@ public class TraceTest {
         for (int i = 0; i < 3; i++) {
             http.content(403, Map.of(), new byte[0]);
         }
+        // The HLS road, refused at its first segment.
+        http.reply(200, "#EXTM3U\n#EXT-X-MEDIA:URI=\"https://manifest.example.invalid/a.m3u8\","
+                + "TYPE=AUDIO,GROUP-ID=\"234\"\n");
+        http.reply(200, "#EXTM3U\n#EXTINF:3.0,\nhttps://media.example.invalid/seg/1\n");
+        http.content(403, Map.of(), new byte[0]);
 
         assertThrows(ExtractionException.class, () -> new Fetch(
-                new InnerTube(http, trace), new StreamDownload(http, trace, 0, 0), trace)
+                new InnerTube(http, trace), new StreamDownload(http, trace, 0, 0),
+                new HlsAudio(http, trace), trace)
                 .run(SHARE, folder.newFolder("refused"), (d, t) -> { }, () -> false));
 
         assertTrue(log(), log().contains("range 0-1048575 -> HTTP 403"));
@@ -107,6 +113,9 @@ public class TraceTest {
         assertTrue("and that a second resolve was tried",
                 log().contains("resolving again"));
         assertTrue(log(), log().contains("player call 1 for dQw4w9WgXcQ"));
+        assertTrue("and that the HLS road was tried and refused too",
+                log().contains("fetching the HLS audio instead")
+                        && log().contains("hls segment 1 -> HTTP 403"));
     }
 
     /** A refusal at the player stage reads differently from one at the media stage. */

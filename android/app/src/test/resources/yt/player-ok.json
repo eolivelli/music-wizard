@@ -14,6 +14,7 @@
   },
   "streamingData": {
     "expiresInSeconds": "21540",
+    "hlsManifestUrl": "https://manifest.example.invalid/api/manifest/hls_variant/expire/1786637357/ei/SCRUBBED/ip/0.0.0.0/id/SCRUBBED/source/youtube/playlist_type/DVR/file/index.m3u8",
     "adaptiveFormats": [
       {
         "itag": 313,
