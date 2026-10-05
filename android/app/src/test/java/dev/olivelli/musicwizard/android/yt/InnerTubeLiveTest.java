@@ -71,6 +71,34 @@ public class InnerTubeLiveTest {
     }
 
     /**
+     * The HLS road on its own, since the direct download succeeding here says
+     * nothing about it: a network that enforces proof-of-origin tokens refuses
+     * the direct URLs after the opening and this is what the app falls back to.
+     */
+    @Test
+    public void theHlsAudioStillWorks() throws Exception {
+        assumeTrue("set -Dmw.yt.live=true to run the live check",
+                Boolean.getBoolean("mw.yt.live"));
+
+        UrlConnectionHttp http = new UrlConnectionHttp();
+        PlayerInfo info = new InnerTube(http).resolve(STABLE_VIDEO);
+        assertNotNull("no HLS manifest offered, so there is no fallback road",
+                info.hlsManifestUrl());
+
+        java.io.File target = java.nio.file.Files.createTempFile("mw-live", ".aac").toFile();
+        try {
+            long started = System.nanoTime();
+            new HlsAudio(new StreamDownload(http)).to(target, info.hlsManifestUrl(),
+                    (done, total) -> { }, () -> false);
+            double seconds = (System.nanoTime() - started) / 1e9;
+            assertTrue("the HLS fetch wrote nothing", target.length() > 0);
+            System.out.printf("live hls: %.2f MB in %.2fs%n", target.length() / 1e6, seconds);
+        } finally {
+            target.delete();
+        }
+    }
+
+    /**
      * The whole fetch, because resolving is the half that is least likely to break
      * quietly.
      *

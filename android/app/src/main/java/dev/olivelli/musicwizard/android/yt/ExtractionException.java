@@ -90,6 +90,9 @@ public class ExtractionException extends Exception {
          */
         RATE_LIMITED,
 
+        /** The media host refused every road to this audio, direct and HLS alike. */
+        BLOCKED,
+
         /** Longer than the app will fetch and analyse. */
         TOO_LONG,
 

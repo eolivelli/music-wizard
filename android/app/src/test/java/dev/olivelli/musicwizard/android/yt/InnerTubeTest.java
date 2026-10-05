@@ -72,6 +72,18 @@ public class InnerTubeTest {
         assertTrue(body.path("racyCheckOk").asBoolean());
     }
 
+    /** The HLS manifest rides along when offered, and is null rather than blank when not. */
+    @Test
+    public void theHlsManifestIsCarriedWhenOffered() throws Exception {
+        PlayerInfo offered = new InnerTube(new FakeHttp()
+                .reply(200, FakeHttp.fixture("player-ok.json"))).resolve(VIDEO);
+        assertTrue(offered.hlsManifestUrl().startsWith("https://manifest.example.invalid/"));
+
+        PlayerInfo without = new InnerTube(new FakeHttp().reply(200, FakeHttp.fixture("player-ok.json")
+                .replace("\"hlsManifestUrl\"", "\"noHlsManifestUrl\""))).resolve(VIDEO);
+        assertNull(without.hlsManifestUrl());
+    }
+
     /** No session yet, so nothing claims one. */
     @Test
     public void theFirstCallCarriesNoVisitorId() throws Exception {

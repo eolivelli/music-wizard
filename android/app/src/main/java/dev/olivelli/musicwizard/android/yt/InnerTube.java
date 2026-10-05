@@ -243,12 +243,15 @@ public final class InnerTube {
                             + " This version of the app cannot fetch it.");
         }
 
+        String hls = reply.path("streamingData").path("hlsManifestUrl").asText(null);
+        trace.line(hls == null || hls.isEmpty() ? "  no HLS offered" : "  HLS offered");
         return new PlayerInfo(
                 videoId,
                 details.path("title").asText(videoId),
                 details.path("author").asText(""),
                 details.path("lengthSeconds").asLong(0),
-                audio);
+                audio,
+                hls);
     }
 
     /**

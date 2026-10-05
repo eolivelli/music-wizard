@@ -22,6 +22,7 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.assertThrows;
 
 import java.io.File;
+import java.io.IOException;
 import java.util.Map;
 import org.junit.Rule;
 import org.junit.Test;
@@ -47,7 +48,7 @@ public class FetchTest {
 
     /** The real retry waits are seconds long and prove nothing here. */
     private static Fetch fetch(FakeHttp http) {
-        return new Fetch(new InnerTube(http), new StreamDownload(http, 0, 0));
+        return new Fetch(new InnerTube(http), new StreamDownload(http, 0, 0), Trace.NONE);
     }
 
     /** Queues {@code count} rate-limit refusals, which the download retries through. */
@@ -162,16 +163,45 @@ public class FetchTest {
         assertEquals(9, http.requests.size());
     }
 
+    /** The fixture with its HLS manifest taken away. */
+    private static String withoutHls() throws IOException {
+        return FakeHttp.fixture("player-ok.json").replace("\"hlsManifestUrl\"", "\"noHlsManifestUrl\"");
+    }
+
+    private static final String HLS_MASTER = "#EXTM3U\n"
+            + "#EXT-X-MEDIA:URI=\"https://manifest.example.invalid/a/index.m3u8\",TYPE=AUDIO,"
+            + "GROUP-ID=\"234\",NAME=\"Default\"\n"
+            + "#EXT-X-STREAM-INF:BANDWIDTH=1,CODECS=\"avc1.4D4015,mp4a.40.2\",AUDIO=\"234\"\n"
+            + "https://manifest.example.invalid/v/index.m3u8\n";
+
+    private static final String HLS_PLAYLIST = "#EXTM3U\n#EXTINF:3.0,\n"
+            + "https://media.example.invalid/seg/1\n#EXTINF:3.0,\n"
+            + "https://media.example.invalid/seg/2\n#EXT-X-ENDLIST\n";
+
+    /** One ADTS frame's worth of sync and filler, as a segment with no tag. */
+    private static final byte[] HLS_SEGMENT = {(byte) 0xFF, (byte) 0xF1, 7, 7, 7, 7};
+
+    /** Queues the three playlists-and-segments replies one HLS fetch takes. */
+    private static void queueHls(FakeHttp http) {
+        queueHlsPlaylists(http);
+        http.content(200, Map.of(), HLS_SEGMENT).content(200, Map.of(), HLS_SEGMENT);
+    }
+
+    private static void queueHlsPlaylists(FakeHttp http) {
+        http.content(200, Map.of(), HLS_MASTER.getBytes(java.nio.charset.StandardCharsets.UTF_8))
+                .content(200, Map.of(), HLS_PLAYLIST.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+    }
+
     /**
-     * Fresh URLs refused too is the media host rate-limiting, not a stale link,
-     * and the user is told the difference because only one of them clears by
-     * waiting.
+     * Fresh URLs refused too, with no other road offered, is the media host
+     * rate-limiting, not a stale link, and the user is told the difference
+     * because only one of them clears by waiting.
      */
     @Test
     public void refusalsThatSurviveAFreshResolveAreReportedAsRateLimiting() throws Exception {
-        FakeHttp http = new FakeHttp().reply(200, FakeHttp.fixture("player-ok.json"));
+        FakeHttp http = new FakeHttp().reply(200, withoutHls());
         queueRefusals(http, 3);
-        http.reply(200, FakeHttp.fixture("player-ok.json"));
+        http.reply(200, withoutHls());
         queueRefusals(http, 3);
 
         File directory = folder.newFolder("twice");
@@ -181,6 +211,82 @@ public class FetchTest {
 
         assertEquals(ExtractionException.Reason.RATE_LIMITED, limited.reason());
         assertTrue(limited.getMessage(), limited.getMessage().contains("try again"));
+        assertEquals(0, directory.listFiles().length);
+    }
+
+    /**
+     * The opening served and the rest refused is proof-of-origin enforcement,
+     * which fresh URLs would not cure, so the HLS road is taken at once and the
+     * take is the AAC stream it yields.
+     */
+    @Test
+    public void theOpeningServedAndTheRestRefusedIsFetchedAsHlsAudio() throws Exception {
+        FakeHttp http = new FakeHttp().reply(200, FakeHttp.fixture("player-ok.json"))
+                .content(206, Map.of(), new byte[StreamDownload.CHUNK_BYTES]);
+        queueRefusals(http, 3);
+        queueHls(http);
+
+        File directory = folder.newFolder("enforced");
+        Fetch.Fetched fetched = fetch(http).run(SHARE, directory, ignoringProgress(),
+                NEVER_CANCELLED);
+
+        assertEquals(VIDEO + ".aac", fetched.file().getName());
+        assertEquals(2L * HLS_SEGMENT.length, fetched.file().length());
+        // One resolve, the first chunk, three refusals, then the HLS road: no
+        // second resolve, because fresh URLs would be refused the same way.
+        assertEquals(9, http.requests.size());
+        assertEquals(1, directory.listFiles().length);
+    }
+
+    /** Served then refused, with no HLS offered, is still worth the one fresh resolve. */
+    @Test
+    public void theOpeningServedAndTheRestRefusedIsResolvedAgainWhenNoHlsIsOffered()
+            throws Exception {
+        FakeHttp http = new FakeHttp().reply(200, withoutHls())
+                .content(206, Map.of(), new byte[StreamDownload.CHUNK_BYTES]);
+        queueRefusals(http, 3);
+        http.reply(200, withoutHls());
+        queueDownload(http, FIXTURE_BYTES);
+
+        Fetch.Fetched fetched = fetch(http).run(SHARE, folder.newFolder("served-no-hls"),
+                ignoringProgress(), NEVER_CANCELLED);
+
+        assertEquals(VIDEO + ".m4a", fetched.file().getName());
+        assertEquals(FIXTURE_BYTES, fetched.file().length());
+        // Resolve, the first chunk, three refusals, resolve again, four chunks.
+        assertEquals(10, http.requests.size());
+    }
+
+    /** Refused from the first byte, and refused again fresh: the HLS road is still there. */
+    @Test
+    public void refusalsThatSurviveAFreshResolveTakeTheHlsRoadWhenOffered() throws Exception {
+        FakeHttp http = new FakeHttp().reply(200, FakeHttp.fixture("player-ok.json"));
+        queueRefusals(http, 3);
+        http.reply(200, FakeHttp.fixture("player-ok.json"));
+        queueRefusals(http, 3);
+        queueHls(http);
+
+        Fetch.Fetched fetched = fetch(http).run(SHARE, folder.newFolder("fresh-then-hls"),
+                ignoringProgress(), NEVER_CANCELLED);
+
+        assertEquals(VIDEO + ".aac", fetched.file().getName());
+    }
+
+    /** Every road refused is said plainly, not as something waiting would mend. */
+    @Test
+    public void aRefusedHlsRoadIsReportedAsBlocked() throws Exception {
+        FakeHttp http = new FakeHttp().reply(200, FakeHttp.fixture("player-ok.json"))
+                .content(206, Map.of(), new byte[StreamDownload.CHUNK_BYTES]);
+        queueRefusals(http, 3);
+        queueHlsPlaylists(http);
+        queueRefusals(http, 3);
+
+        File directory = folder.newFolder("blocked");
+        ExtractionException blocked = assertThrows(ExtractionException.class,
+                () -> fetch(http).run(SHARE, directory, ignoringProgress(), NEVER_CANCELLED));
+
+        assertEquals(ExtractionException.Reason.BLOCKED, blocked.reason());
+        assertFalse(blocked.getMessage(), blocked.getMessage().contains("try again"));
         assertEquals(0, directory.listFiles().length);
     }
 

@@ -32,14 +32,22 @@ public final class PlayerInfo {
     private final String author;
     private final long lengthSeconds;
     private final List<AudioStream> audio;
+    private final String hlsManifestUrl;
 
     public PlayerInfo(String videoId, String title, String author, long lengthSeconds,
             List<AudioStream> audio) {
+        this(videoId, title, author, lengthSeconds, audio, null);
+    }
+
+    public PlayerInfo(String videoId, String title, String author, long lengthSeconds,
+            List<AudioStream> audio, String hlsManifestUrl) {
         this.videoId = videoId;
         this.title = title;
         this.author = author;
         this.lengthSeconds = lengthSeconds;
         this.audio = audio == null ? List.of() : Collections.unmodifiableList(audio);
+        this.hlsManifestUrl = hlsManifestUrl == null || hlsManifestUrl.isEmpty()
+                ? null : hlsManifestUrl;
     }
 
     public String videoId() {
@@ -68,5 +76,10 @@ public final class PlayerInfo {
     /** Every audio-only format offered, fetchable or not. */
     public List<AudioStream> audio() {
         return audio;
+    }
+
+    /** The HLS manifest, the road taken when the direct URLs are refused; null when none was offered. */
+    public String hlsManifestUrl() {
+        return hlsManifestUrl;
     }
 }

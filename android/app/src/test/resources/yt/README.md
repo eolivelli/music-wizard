@@ -24,7 +24,7 @@ wants: `StreamDownloadTest` drives a fake transport and never opens a socket.
 
 | File | Captured from |
 |---|---|
-| `player-ok.json` | An ordinary music video. Four audio formats, all with URLs, plus one video format. |
+| `player-ok.json` | An ordinary music video. Four audio formats, all with URLs, plus one video format, and an HLS manifest URL in the scrubbed shape `VISIONOS` serves. |
 | `player-login-required.json` | A call carrying no session. Note it still carries a `visitorData` — that is the whole bootstrap. |
 | `player-sabr-only.json` | `player-ok.json` with every audio `url` removed, which is what an enforced client is served. Note `serverAbrStreamingUrl` is present in the OK reply too, so its presence is not the signal; the missing `url` is. |
 | `player-made-for-kids.json` | A video marked as made for children. `UNPLAYABLE`, and YouTube's own wording is the unhelpfully generic "This video is not available". |

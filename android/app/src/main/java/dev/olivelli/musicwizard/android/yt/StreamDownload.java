@@ -22,8 +22,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InterruptedIOException;
 import java.io.OutputStream;
-import java.net.URI;
-import java.net.URISyntaxException;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.function.BooleanSupplier;
@@ -119,8 +117,24 @@ public final class StreamDownload {
 
         private static final long serialVersionUID = 1L;
 
+        private final long bytesServed;
+
         public ExpiredException(String message) {
+            this(message, 0);
+        }
+
+        public ExpiredException(String message, long bytesServed) {
             super(message);
+            this.bytesServed = bytesServed;
+        }
+
+        /**
+         * What the host served before refusing every attempt. Zero is a link that
+         * was never good; anything else is a host that served the opening and
+         * then refused, which fresh URLs have not been seen to cure.
+         */
+        public long bytesServed() {
+            return bytesServed;
         }
     }
 
@@ -198,7 +212,12 @@ public final class StreamDownload {
                 throw new InterruptedIOException("the download was cancelled");
             }
             long last = Math.min(done + CHUNK_BYTES, total) - 1;
-            Chunk chunk = fetch(url, done, last, cancelled);
+            Chunk chunk;
+            try {
+                chunk = fetch(url, done, last, cancelled);
+            } catch (ExpiredException expired) {
+                throw new ExpiredException(expired.getMessage(), done);
+            }
             url = chunk.url;
 
             // Outside the retry, deliberately: see fetch's javadoc.
@@ -219,6 +238,17 @@ public final class StreamDownload {
             throw new IOException("YouTube declared no length for this audio format.");
         }
         return total;
+    }
+
+    /**
+     * One whole resource, retried and redirected exactly as a range is.
+     *
+     * <p>For the HLS road, whose playlists and segments come from the same hosts
+     * as the ranges and fail the same ways. A refusal that survives every attempt
+     * is an {@link ExpiredException} here too.
+     */
+    byte[] whole(String url, BooleanSupplier cancelled) throws IOException {
+        return fetch(url, -1, -1, cancelled).data;
     }
 
     /** One range's bytes, and the URL they finally came from. */
@@ -280,30 +310,40 @@ public final class StreamDownload {
         throw last;
     }
 
+    /** A negative {@code from} asks for the whole resource rather than a range. */
     private Chunk readRange(String url, long from, long to, BooleanSupplier cancelled)
             throws IOException {
+        boolean ranged = from >= 0;
         String target = url;
         for (int hop = 0; hop <= MAX_HOPS; hop++) {
             Map<String, String> headers = new LinkedHashMap<>();
-            headers.put("Range", "bytes=" + from + "-" + to);
+            if (ranged) {
+                headers.put("Range", "bytes=" + from + "-" + to);
+            }
 
             try (Http.Content content =
                     http.open(new Http.Request("GET", target, headers, null))) {
                 int status = content.status();
                 // Host and status, never the URL: see Trace.
-                trace.line("range " + from + "-" + to + " -> HTTP " + status
-                        + " from " + hostOf(target)
+                trace.line((ranged ? "range " + from + "-" + to : "get") + " -> HTTP " + status
+                        + " from " + Addresses.hostOf(target)
                         + (hop > 0 ? " (hop " + hop + ")" : ""));
 
                 if (status == 301 || status == 302 || status == 303
                         || status == 307 || status == 308) {
                     target = redirect(target, content.header("Location"));
-                    trace.line("  redirected to " + hostOf(target));
+                    trace.line("  redirected to " + Addresses.hostOf(target));
                     continue;
                 }
                 if (status == 403 || status == 410) {
                     throw new ExpiredException(
                             "the media link is no longer valid (HTTP " + status + ")");
+                }
+                if (!ranged) {
+                    if (status != 200) {
+                        throw new IOException("the server answered HTTP " + status);
+                    }
+                    return new Chunk(readAll(content.stream(), cancelled), target);
                 }
                 if (status == 200) {
                     // The range was ignored, so this is the file from byte zero.
@@ -363,14 +403,9 @@ public final class StreamDownload {
             throw new FatalIOException("the server redirected without saying where");
         }
         try {
-            URI resolved = new URI(from).resolve(location);
-            if (!"https".equalsIgnoreCase(resolved.getScheme())) {
-                throw new FatalIOException("refusing a redirect that is not https: " + resolved);
-            }
-            return resolved.toString();
-        } catch (URISyntaxException malformed) {
-            throw new FatalIOException("the server redirected somewhere unreadable: " + location,
-                    malformed);
+            return Addresses.resolveHttps(from, location);
+        } catch (IOException refused) {
+            throw new FatalIOException(refused.getMessage());
         }
     }
 
@@ -402,6 +437,18 @@ public final class StreamDownload {
         return exact;
     }
 
+    private static byte[] readAll(InputStream in, BooleanSupplier cancelled) throws IOException {
+        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+        byte[] buffer = new byte[1 << 14];
+        for (int read = in.read(buffer); read >= 0; read = in.read(buffer)) {
+            if (cancelled.getAsBoolean()) {
+                throw new InterruptedIOException("the download was cancelled");
+            }
+            out.write(buffer, 0, read);
+        }
+        return out.toByteArray();
+    }
+
     /**
      * Waits before trying a chunk again.
      *
@@ -418,16 +465,6 @@ public final class StreamDownload {
         } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();
             throw new InterruptedIOException("the download was interrupted");
-        }
-    }
-
-    /** Just the host, which is the part worth reporting and the part that is safe. */
-    private static String hostOf(String url) {
-        try {
-            String host = new URI(url).getHost();
-            return host == null ? "?" : host;
-        } catch (URISyntaxException unreadable) {
-            return "?";
         }
     }
 
