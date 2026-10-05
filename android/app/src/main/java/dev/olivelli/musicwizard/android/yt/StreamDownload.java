@@ -22,8 +22,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InterruptedIOException;
 import java.io.OutputStream;
-import java.net.URI;
-import java.net.URISyntaxException;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.function.BooleanSupplier;
@@ -328,13 +326,13 @@ public final class StreamDownload {
                 int status = content.status();
                 // Host and status, never the URL: see Trace.
                 trace.line((ranged ? "range " + from + "-" + to : "get") + " -> HTTP " + status
-                        + " from " + hostOf(target)
+                        + " from " + Addresses.hostOf(target)
                         + (hop > 0 ? " (hop " + hop + ")" : ""));
 
                 if (status == 301 || status == 302 || status == 303
                         || status == 307 || status == 308) {
                     target = redirect(target, content.header("Location"));
-                    trace.line("  redirected to " + hostOf(target));
+                    trace.line("  redirected to " + Addresses.hostOf(target));
                     continue;
                 }
                 if (status == 403 || status == 410) {
@@ -404,17 +402,10 @@ public final class StreamDownload {
         if (location == null || location.isEmpty()) {
             throw new FatalIOException("the server redirected without saying where");
         }
-        // The host at most, never the address: a redirect target carries the
-        // same signatures a media URL does, and these messages reach the log.
         try {
-            URI resolved = new URI(from).resolve(location);
-            if (!"https".equalsIgnoreCase(resolved.getScheme())) {
-                throw new FatalIOException("refusing a redirect that is not https, to "
-                        + hostOf(resolved.toString()));
-            }
-            return resolved.toString();
-        } catch (URISyntaxException malformed) {
-            throw new FatalIOException("the server redirected somewhere unreadable", malformed);
+            return Addresses.resolveHttps(from, location);
+        } catch (IOException refused) {
+            throw new FatalIOException(refused.getMessage());
         }
     }
 
@@ -474,16 +465,6 @@ public final class StreamDownload {
         } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();
             throw new InterruptedIOException("the download was interrupted");
-        }
-    }
-
-    /** Just the host, which is the part worth reporting and the part that is safe. */
-    private static String hostOf(String url) {
-        try {
-            String host = new URI(url).getHost();
-            return host == null ? "?" : host;
-        } catch (URISyntaxException unreadable) {
-            return "?";
         }
     }
 

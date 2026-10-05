@@ -86,7 +86,9 @@ public final class UrlConnectionHttp implements Http {
     private static HttpURLConnection connect(Request request) throws IOException {
         URL url = new URL(request.url());
         if (!"https".equalsIgnoreCase(url.getProtocol())) {
-            throw new IOException("refusing a request that is not https: " + request.url());
+            // The host at most: the address carries the signatures (#857).
+            throw new IOException("refusing a request that is not https, at "
+                    + Addresses.hostOf(request.url()));
         }
         HttpURLConnection connection = (HttpURLConnection) url.openConnection();
         connection.setInstanceFollowRedirects(false);

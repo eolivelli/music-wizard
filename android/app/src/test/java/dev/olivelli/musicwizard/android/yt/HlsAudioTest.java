@@ -280,6 +280,21 @@ public class HlsAudioTest {
         assertFalse(target.exists());
     }
 
+    /** A malformed redirect is an unchecked failure inside the resolver, and still names no address. */
+    @Test
+    public void aMalformedRedirectIsRefusedWithoutNamingTheAddress() {
+        FakeHttp http = playlists().content(302,
+                Map.of("Location", "http://rr1 bad/videoplayback/sig/SECRET"), new byte[0]);
+        File target = new File(folder.getRoot(), "take.aac");
+
+        IOException refused = assertThrows(IOException.class,
+                () -> hls(http).to(target, MASTER_URL, (done, total) -> { }, NEVER_CANCELLED));
+
+        assertTrue(refused.getMessage(), refused.getMessage().contains("unreadable"));
+        assertFalse(refused.getMessage(), refused.getMessage().contains("SECRET"));
+        assertFalse(target.exists());
+    }
+
     /** A refused manifest closes the road the same way a refused segment does. */
     @Test
     public void aRefusedManifestIsItsOwnFailureToo() {

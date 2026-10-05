@@ -21,8 +21,6 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InterruptedIOException;
 import java.io.OutputStream;
-import java.net.URI;
-import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -244,16 +242,7 @@ public final class HlsAudio {
         return out;
     }
 
-    /** Never names the address in a failure: a playlist entry carries the same secrets a media URL does. */
     private static String resolve(String base, String reference) throws IOException {
-        try {
-            URI resolved = new URI(base).resolve(reference);
-            if (!"https".equalsIgnoreCase(resolved.getScheme())) {
-                throw new IOException("the HLS playlist holds an address that is not https");
-            }
-            return resolved.toString();
-        } catch (URISyntaxException | IllegalArgumentException unreadable) {
-            throw new IOException("the HLS playlist holds an unreadable address");
-        }
+        return Addresses.resolveHttps(base, reference);
     }
 }
