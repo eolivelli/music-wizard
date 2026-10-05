@@ -53,11 +53,11 @@ import java.util.Map;
  * is cached for the life of the instance.
  *
  * <p>Neither fact is durable. The day will come when the reply is
- * {@link ExtractionException.Reason#SABR_ONLY} for everything, or the media
- * host refuses every URL; those reasons exist so the app can say the build is
- * out of date rather than blame the network. When it does, the fix starts by
- * diffing this constants block against yt-dlp's {@code INNERTUBE_CLIENTS} and
- * picking the client whose token policy is not required.
+ * {@link ExtractionException.Reason#SABR_ONLY} for everything; that reason
+ * exists so the app can say the build is out of date rather than blame the
+ * network. When it does, the fix starts by diffing this constants block
+ * against yt-dlp's {@code INNERTUBE_CLIENTS} and picking the client whose
+ * token policy is not required.
  */
 public final class InnerTube {
 
