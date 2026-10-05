@@ -114,10 +114,9 @@ than a field recording.
 
 **It will stop working.** The fetch uses an InnerTube client that still serves
 plain media URLs; YouTube is progressively enforcing proof-of-origin tokens on
-those. When it goes, the app says the build is out of date rather than blaming
-the network, and `InnerTubeLiveTest` — `./gradlew testDebugUnitTest --rerun
---tests '*InnerTubeLiveTest*' -Dmw.yt.live=true` — is the one check that
-notices, because every other test answers a canned reply.
+those. When it goes, `InnerTubeLiveTest` — `./gradlew testDebugUnitTest --rerun
+--tests '*InnerTubeLiveTest*' -Dmw.yt.live=true -Dmw.yt.video=<id>` — is the
+one check that notices, because every other test answers a canned reply.
 
 ### When an import fails
 

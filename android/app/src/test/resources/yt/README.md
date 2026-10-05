@@ -1,8 +1,10 @@
 # Player-response fixtures
 
 Real replies from YouTube's `youtubei/v1/player` endpoint, captured with the
-`ANDROID_VR` client that `InnerTube` uses, then **trimmed and scrubbed**. Both
-words matter.
+`ANDROID_VR` client `InnerTube` used before `VISIONOS`, then **trimmed and
+scrubbed**. Both words matter. The `VISIONOS` reply has the same shape, field
+for field, which is why these were kept rather than re-captured; the `c=` in
+each URL names the old client and nothing reads it.
 
 **Trimmed** to the fields the parser reads, plus one video format in
 `player-ok.json` so the audio-only filter is tested against something to reject.

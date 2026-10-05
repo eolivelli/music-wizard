@@ -45,8 +45,8 @@ import org.junit.Test;
  */
 public class InnerTubeLiveTest {
 
-    /** Old, popular, and not going anywhere. */
-    private static final String STABLE_VIDEO = "dQw4w9WgXcQ";
+    /** Old, popular, and not going anywhere; {@code -Dmw.yt.video=<id>} checks another. */
+    private static final String STABLE_VIDEO = System.getProperty("mw.yt.video", "dQw4w9WgXcQ");
 
     @Test
     public void youTubeStillServesAudioToThisClient() throws Exception {
