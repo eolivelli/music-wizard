@@ -838,7 +838,7 @@ class MelodyEstimationTest {
         }
 
         @Test
-        @DisplayName("but not on a separated stem, where the note is the one read high")
+        @DisplayName("but not on a separated stem")
         void aStemIsLeftAlone() {
             MelodyEstimator.Segmented segmented = MelodyEstimator.explain(attack(69.0, 12, 2),
                     new OnsetEnvelope(new double[400], 172.0), 0, true);
