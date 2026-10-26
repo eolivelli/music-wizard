@@ -15,6 +15,7 @@ beat grid, its lead-in, the key, the tracker, the quantizer and the export.
 Columns, per package:
 
   bars      measures on the page, against bars in the spec
+  meter     the time signature the page opens with, against the spec's (#869)
   tempo     what analyze printed, against the spec's, as score-synthetic reads it
   shift     the offset, in quarter beats, at which the most notes land on
             their reference. Zero is a page whose bar one is the spec's bar
@@ -77,9 +78,6 @@ CORPUS = REPO / "synthetic_samples"
 
 #: Two printed positions or lengths closer than this are the same rational.
 EXACT = 1e-3
-
-#: The 4/4 the arranger insists on for a package with a melody (#715).
-BAR_QUARTERS = 4.0
 
 #: Fifths on the key signature of each major tonic, as a spec spells it.
 MAJOR_FIFTHS = {"C": 0, "G": 1, "D": 2, "A": 3, "E": 4, "B": 5, "F#": 6, "C#": 7,
@@ -196,13 +194,14 @@ def relative_major(minor_tonic: str) -> str:
 def page_notes(musicxml: Path) -> dict:
     """What the playable part's first staff holds: its notes as (onset,
     duration, pitch) in quarter beats from the page's own origin, with ties
-    joined into the note a player holds; its measure count; and its opening
-    key as (fifths, mode)."""
+    joined into the note a player holds; its measure count; its opening key
+    as (fifths, mode); and its opening time signature as 'n/d'."""
     part = ET.parse(musicxml).getroot().find("part")
     if part is None:
         sys.exit(f"{musicxml}: no part")
     divisions = 1
     key = None
+    meter = None
     notes: list[list] = []
     origin = 0.0
     measures = part.findall("measure")
@@ -218,6 +217,9 @@ def page_notes(musicxml: Path) -> dict:
                 if signature is not None and key is None:
                     key = (int(signature.findtext("fifths", "0")),
                            signature.findtext("mode", "major"))
+                time = element.find("time")
+                if time is not None and meter is None:
+                    meter = f"{time.findtext('beats')}/{time.findtext('beat-type')}"
             elif element.tag == "backup":
                 at -= int(element.findtext("duration")) / divisions
             elif element.tag == "forward":
@@ -244,7 +246,8 @@ def page_notes(musicxml: Path) -> dict:
                     at += length
             longest = max(longest, at - origin)
         origin += longest
-    return {"notes": [tuple(n) for n in notes], "measures": len(measures), "key": key}
+    return {"notes": [tuple(n) for n in notes], "measures": len(measures), "key": key,
+            "meter": meter}
 
 
 # -------------------------------------------------------------------- scoring
@@ -316,6 +319,11 @@ def key_source(ws: Path) -> str:
     return traces.get("traces", {}).get("key", {}).get("source", "nothing")
 
 
+def meter_verdict(page: dict, want: str) -> str:
+    got = page["meter"]
+    return f"{got} OK" if got == want else f"{got} WRONG"
+
+
 def key_verdict(page: dict, headers: dict) -> str:
     want = spec_key(headers.get("key", ""))
     got = page["key"]
@@ -349,16 +357,18 @@ def score_package(jar: Path, spec_file: Path, pinned: bool = False) -> str:
     if accompaniment == "pad":
         return (f"  {name}: a line over a pad; notes not scored"
                 f"  key {key_verdict(page, headers)}, read from the {source}")
-    return sheet_row(name, page, printed, headers, reference, len(spec["bars"]))
+    return sheet_row(name, page, printed, headers, reference, len(spec["bars"]),
+                     synthetic.spec_meter(spec))
 
 
 def sheet_row(name: str, page: dict, printed: str, headers: dict,
-              reference: list, bars: int) -> str:
+              reference: list, bars: int, meter: str) -> str:
     estimate = page["notes"]
     shift = best_shift(estimate, reference)
     pairs = placed(estimate, reference, shift)
     held = sum(1 for e, r in pairs if abs(estimate[e][1] - reference[r][1]) < EXACT)
     return (f"  {name}: bars={page['measures']}/{bars}"
+            f"  meter {meter_verdict(page, meter)}"
             f"  {synthetic.tempo_verdict(synthetic.printed_tempo(printed), headers.get('tempo'))}"
             f"  shift {shift:+.2f}"
             f"  notes={len(estimate)}/{len(reference)}"
@@ -386,7 +396,8 @@ def score_recording(jar: Path, melody_file: Path, pinned: bool = False) -> str:
         if not musicxml.exists():
             return f"  {name}: no playable part written"
         page = page_notes(musicxml)
-    return sheet_row(name, page, printed, truth["headers"], truth["notes"], truth["bars"])
+    return sheet_row(name, page, printed, headers, truth["notes"], truth["bars"],
+                     headers["meter"])
 
 
 def main() -> None:

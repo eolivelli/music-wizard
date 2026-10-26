@@ -188,6 +188,66 @@ class ArrangerTest {
                 .hasMessageContaining("melody");
     }
 
+    private static final String GRADED_WALTZ = """
+            title: t
+            style: pop-ballad
+            tempo: 120
+            key: C major
+            meter: 3/4
+            seed: 1
+            melody: flute
+            melody-level: %d
+            accompaniment: none
+            bars:
+            C F G C
+            C F G C
+            """;
+
+    /** Every note of a track as its start and end tick, in order of start. */
+    private static List<long[]> spans(Track track) {
+        List<long[]> spans = new ArrayList<>();
+        for (int i = 0; i < track.size(); i++) {
+            if (track.get(i).getMessage() instanceof ShortMessage on
+                    && on.getCommand() == ShortMessage.NOTE_ON && on.getData2() > 0) {
+                for (int j = i + 1; j < track.size(); j++) {
+                    if (track.get(j).getMessage() instanceof ShortMessage off
+                            && off.getData1() == on.getData1()
+                            && (off.getCommand() == ShortMessage.NOTE_OFF
+                                    || off.getCommand() == ShortMessage.NOTE_ON
+                                            && off.getData2() == 0)) {
+                        spans.add(new long[] {track.get(i).getTick(), track.get(j).getTick()});
+                        break;
+                    }
+                }
+            }
+        }
+        return spans;
+    }
+
+    @Test
+    void aGradedMelodyInThreeKeepsToItsBars() {
+        // #715 for the graded melody: the 3/4 templates are bars of three, and
+        // only level three holds a note across the bar line.
+        List<long[]> level2 = spans(Arranger.arrange(SpecParser.parse(
+                GRADED_WALTZ.formatted(2))).getTracks()[1]);
+        assertThat(level2).isNotEmpty().allSatisfy(span ->
+                assertThat((span[1] - 1) / THREE_QUARTER_BAR).isEqualTo(span[0] / THREE_QUARTER_BAR));
+        assertThat(level2.getLast()[1]).isLessThanOrEqualTo(8 * THREE_QUARTER_BAR);
+
+        List<long[]> level3 = spans(Arranger.arrange(SpecParser.parse(
+                GRADED_WALTZ.formatted(3))).getTracks()[1]);
+        assertThat(level3).anySatisfy(span ->
+                assertThat((span[1] - 1) / THREE_QUARTER_BAR).isGreaterThan(span[0] / THREE_QUARTER_BAR));
+    }
+
+    @Test
+    void aGradedMelodyInSixEightIsRefused() {
+        assertThatThrownBy(() -> Arranger.arrange(SpecParser.parse(
+                METER_GRID.formatted("pop-ballad", "6/8", "melody: flute\nmelody-level: 2"))))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("melody");
+    }
+
     @Test
     void theWaltzLeavesBeatOneToTheBass() {
         Sequence sequence = Arranger.arrange(SpecParser.parse(

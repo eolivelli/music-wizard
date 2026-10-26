@@ -21,6 +21,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.within;
 
 import dev.olivelli.musicwizard.core.model.BeatGrid;
+import dev.olivelli.musicwizard.core.model.Confidence;
+import dev.olivelli.musicwizard.core.model.Note;
+import dev.olivelli.musicwizard.core.model.NoteTrack;
+import dev.olivelli.musicwizard.core.model.PartRole;
 import dev.olivelli.musicwizard.core.model.TimeSignature;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -147,6 +151,146 @@ class MeterEstimationTest {
         double[] strength = new double[(int) Math.round(frameRate * PULSE_SECONDS * BEATS)];
         Arrays.fill(strength, 1);
         return new OnsetEnvelope(strength, frameRate);
+    }
+
+    /**
+     * A line on {@link #beats}, one bar after another, each bar the same note
+     * lengths in pulses; the pitch moves at every note, so only the lengths
+     * carry the bar.
+     */
+    private static NoteTrack line(double... lengthsInABar) {
+        List<Note> notes = new ArrayList<>();
+        double bar = Arrays.stream(lengthsInABar).sum();
+        int pitch = 0;
+        for (double at = 0; at + bar <= BEATS - 1; at += bar) {
+            double from = at;
+            for (double length : lengthsInABar) {
+                notes.add(Note.ofSeconds(from * PULSE_SECONDS, length * PULSE_SECONDS,
+                        72 + pitch++ % 5, Confidence.of(0.9)));
+                from += length;
+            }
+        }
+        return new NoteTrack(PartRole.LEAD_VOCAL, "line", notes, Confidence.of(0.9));
+    }
+
+    @Nested
+    @DisplayName("what a line alone is barred in (#869)")
+    class LineAlone {
+
+        @Test
+        @DisplayName("a half note and a quarter to a bar is 3/4")
+        void aWaltzLine() {
+            MeterEstimator.Estimate estimate =
+                    MeterEstimator.estimate(beats(BEATS), line(2, 1), clicks(1));
+
+            assertThat(estimate.meter()).isEqualTo(TimeSignature.THREE_FOUR);
+            assertThat(estimate.pulsesPerBar()).isEqualTo(3);
+        }
+
+        @Test
+        @DisplayName("two half notes to a bar stay in four")
+        void aLineInFour() {
+            MeterEstimator.Reading reading =
+                    MeterEstimator.read(beats(BEATS), line(2, 2), clicks(1));
+
+            assertThat(reading.at(2)).isGreaterThan(5.0);
+            assertThat(MeterEstimator.decideLine(reading).meter())
+                    .isEqualTo(TimeSignature.FOUR_FOUR);
+        }
+
+        @Test
+        @DisplayName("a line of equal notes says nothing and is the assumption")
+        void equalNotes() {
+            MeterEstimator.Estimate estimate =
+                    MeterEstimator.estimate(beats(BEATS), line(1), clicks(1));
+
+            assertThat(estimate.meter()).isEqualTo(TimeSignature.FOUR_FOUR);
+            assertThat(estimate.confidence().value()).isEqualTo(0.5);
+        }
+
+        @Test
+        @DisplayName("a held note is measured to the next onset, not to its own end")
+        void heldToTheNextOnset() {
+            NoteTrack legato = line(2, 1);
+            List<Note> detached = legato.notes().stream()
+                    .map(note -> Note.ofSeconds(note.onsetSeconds(), PULSE_SECONDS / 4,
+                            note.midiPitch(), note.confidence()))
+                    .toList();
+            NoteTrack staccato = new NoteTrack(PartRole.LEAD_VOCAL, "line", detached,
+                    Confidence.of(0.9));
+
+            assertThat(MeterEstimator.read(beats(BEATS), staccato, clicks(1)).at(3))
+                    .isEqualTo(MeterEstimator.read(beats(BEATS), legato, clicks(1)).at(3));
+        }
+
+        @Test
+        @DisplayName("a held note that starts between two beats is on neither")
+        void offTheBeat() {
+            List<Double> times = beats(BEATS);
+            List<Note> late = line(2, 1).notes().stream()
+                    .map(note -> Note.ofSeconds(note.onsetSeconds() + PULSE_SECONDS / 2,
+                            note.durationSeconds(), note.midiPitch(), note.confidence()))
+                    .toList();
+            NoteTrack offbeat = new NoteTrack(PartRole.LEAD_VOCAL, "line", late,
+                    Confidence.of(0.9));
+
+            assertThat(MeterEstimator.heldNoteStarts(times, offbeat)).containsOnly(0.0);
+        }
+
+        @Test
+        @DisplayName("three is believed over rivals at the null, which the harmony's margin is not")
+        void notTheHarmonysMargin() {
+            MeterEstimator.Reading reading = reading(1.5, 6, 2, 0.4);
+
+            assertThat(MeterEstimator.decide(reading).meter()).isEqualTo(TimeSignature.FOUR_FOUR);
+            assertThat(MeterEstimator.decideLine(reading).meter())
+                    .isEqualTo(TimeSignature.THREE_FOUR);
+        }
+
+        @Test
+        @DisplayName("a supported two or four keeps a supported three out")
+        void aFourPulseBarsOwnEvidence() {
+            assertThat(MeterEstimator.decideLine(reading(6, 8, 1, 1)).pulsesPerBar())
+                    .isEqualTo(4);
+            assertThat(MeterEstimator.decideLine(reading(1, 8, 6, 1)).pulsesPerBar())
+                    .isEqualTo(4);
+            assertThat(MeterEstimator.decideLine(reading(1, 4.9, 1, 1)).pulsesPerBar())
+                    .isEqualTo(4);
+        }
+
+        @Test
+        @DisplayName("a two that six accounts for is a waltz held every other bar, not a rival")
+        void heldEveryOtherBar() {
+            assertThat(MeterEstimator.decideLine(reading(8, 8, 1, 8)).pulsesPerBar())
+                    .isEqualTo(3);
+            MeterEstimator.Reading reading =
+                    MeterEstimator.read(beats(BEATS), line(2, 1, 1, 1, 1), clicks(1));
+            assertThat(reading.at(2)).isGreaterThan(5.0);
+            assertThat(MeterEstimator.decideLine(reading).meter())
+                    .isEqualTo(TimeSignature.THREE_FOUR);
+        }
+
+        @Test
+        @DisplayName("a line is never barred in two or in six")
+        void neitherTwoNorSix() {
+            // What decide would take for a six, and for a two-pulse bar.
+            assertThat(MeterEstimator.decide(reading(1, 8, 1, 8)).pulsesPerBar()).isEqualTo(6);
+            assertThat(MeterEstimator.decideLine(reading(1, 8, 1, 8)).pulsesPerBar())
+                    .isEqualTo(3);
+            MeterEstimator.Reading compound = reading(2, 0.5, 1, 1, 0.9, 0.1);
+            assertThat(MeterEstimator.decide(compound).pulsesPerBar()).isEqualTo(2);
+            assertThat(MeterEstimator.decideLine(compound).pulsesPerBar()).isEqualTo(4);
+        }
+
+        @Test
+        @DisplayName("an empty line or too few beats is no reading")
+        void nothingToRead() {
+            NoteTrack empty = NoteTrack.empty(PartRole.LEAD_VOCAL, "line");
+            assertThat(MeterEstimator.read(beats(BEATS), empty, clicks(1)).at(3)).isZero();
+            MeterEstimator.Reading tooShort = MeterEstimator.read(beats(20), line(2, 1), clicks(1));
+            assertThat(tooShort.at(3)).isZero();
+            assertThat(tooShort.usableBeats()).isEqualTo(18);
+        }
     }
 
     @Nested

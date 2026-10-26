@@ -20,9 +20,12 @@ import dev.olivelli.musicwizard.audio.Spectrogram;
 import dev.olivelli.musicwizard.dsp.BeatTracker;
 import dev.olivelli.musicwizard.dsp.Chroma;
 import dev.olivelli.musicwizard.dsp.HarmonicRhythm;
+import dev.olivelli.musicwizard.core.model.NoteTrack;
+import dev.olivelli.musicwizard.dsp.MelodyEstimator;
 import dev.olivelli.musicwizard.dsp.MeterEstimator;
 import dev.olivelli.musicwizard.dsp.NnlsChroma;
 import dev.olivelli.musicwizard.dsp.OnsetEnvelope;
+import dev.olivelli.musicwizard.dsp.PitchTracker;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
@@ -144,6 +147,25 @@ public final class MeterSweep {
             new Job("synthetic_samples", "blues-compound-e-126.mp3", "12/8"));
 
     /**
+     * Lines played alone, read as {@code AudioTranscriber} reads one: from the
+     * melody's notes, on the beat those notes helped track, and decided by
+     * {@link MeterEstimator#decideLine} (#869). {@code p2 p3 p4 p6} on these
+     * rows are the held-note series' periodicities, not the harmony's. Each
+     * want is held to its spec or its {@code .melody.txt} by
+     * {@code tools/test-harness-rules.py}.
+     */
+    private static final List<Job> LINE_JOBS = List.of(
+            new Job("flute-solo-line-c-111.wav", "4/4"),
+            new Job("piano-solo-line-c-124.wav", "4/4"),
+            new Job("synthetic_samples", "solo-flute-level2-bb-112.mp3", "4/4"),
+            new Job("synthetic_samples", "solo-flute-level3-em-92.mp3", "4/4"),
+            new Job("synthetic_samples", "solo-piano-level3-e-88.mp3", "4/4"),
+            new Job("synthetic_samples", "melody-level4-f-126.mp3", "4/4"),
+            new Job("synthetic_samples", "solo-flute-waltz-level2-g-120.mp3", "3/4"),
+            new Job("synthetic_samples", "solo-flute-waltz-level3-em-132.mp3", "3/4"),
+            new Job("synthetic_samples", "solo-piano-waltz-level2-f-100.mp3", "3/4"));
+
+    /**
      * The meters a musician has confirmed by ear for local-only recordings,
      * {@code uncommitted/list.txt} carrying the confirmation per file.
      *
@@ -206,31 +228,48 @@ public final class MeterSweep {
         List<Job> jobs = new ArrayList<>(JOBS);
         jobs.addAll(localJobs());
         for (Job job : jobs) {
-            Path file = Path.of(job.corpus()).resolve(job.file());
-            if (!Files.isRegularFile(file)) {
-                System.out.printf("%-38s SKIPPED (not present)%n", job.file());
-                continue;
-            }
-            report(job, file);
+            sweep(job, false);
+        }
+        System.out.println("a line alone, read from its notes:");
+        for (Job job : LINE_JOBS) {
+            sweep(job, true);
         }
     }
 
-    private static void report(Job job, Path file) {
+    private static void sweep(Job job, boolean line) {
+        Path file = Path.of(job.corpus()).resolve(job.file());
+        if (!Files.isRegularFile(file)) {
+            System.out.printf("%-38s SKIPPED (not present)%n", job.file());
+            return;
+        }
+        report(job, file, line);
+    }
+
+    private static void report(Job job, Path file, boolean line) {
         AudioBuffer audio = AudioDecoder.decode(file, AudioDecoder.ANALYSIS_SAMPLE_RATE);
         OnsetEnvelope.Both onsets = OnsetEnvelope.bothFromAudio(audio);
         OnsetEnvelope envelope = onsets.envelope();
         Spectrogram transform = NnlsChroma.transform(audio);
-        Chroma frames = NnlsChroma.extract(transform, Chroma.estimateTuning(transform)).combined();
-        BeatTracker.Result beats =
-                BeatTracker.track(envelope, HarmonicRhythm.of(frames), onsets.pulseRegister());
+        double tuning = Chroma.estimateTuning(transform);
+        Chroma frames = NnlsChroma.extract(transform, tuning).combined();
+        NoteTrack melody = line
+                ? MelodyEstimator.explain(PitchTracker.track(audio), envelope, tuning).melody()
+                : null;
+        OnsetEnvelope rhythm = line ? envelope.withNoteOnsets(melody) : envelope;
+        BeatTracker.Result beats = line
+                ? BeatTracker.track(rhythm, HarmonicRhythm.of(frames), onsets.pulseRegister(),
+                        envelope, melody)
+                : BeatTracker.track(envelope, HarmonicRhythm.of(frames), onsets.pulseRegister());
         if (beats.isEmpty()) {
             System.out.printf("%-38s no beats%n", job.file());
             return;
         }
         List<Double> beatTimes = beats.beatTimes();
-        MeterEstimator.Reading reading =
-                MeterEstimator.read(beatTimes, frames.beatSynchronous(beatTimes), envelope);
-        MeterEstimator.Estimate estimate = MeterEstimator.decide(reading);
+        MeterEstimator.Reading reading = line
+                ? MeterEstimator.read(beatTimes, melody, rhythm)
+                : MeterEstimator.read(beatTimes, frames.beatSynchronous(beatTimes), envelope);
+        MeterEstimator.Estimate estimate =
+                line ? MeterEstimator.decideLine(reading) : MeterEstimator.decide(reading);
         String meter = estimate.meter().toString();
         System.out.printf(
                 "%-38s %8.2f %8.2f %8.2f %8.2f %7s %7.2f %7.2f %7.2f %7s"
@@ -238,7 +277,7 @@ public final class MeterSweep {
                 job.file(), reading.at(2), reading.at(3), reading.at(4),
                 reading.at(6), measured(trackedPulseRate(beatTimes), "%.1f"),
                 reading.onThePulse(), reading.inThree(), reading.inTwo(),
-                measured(middleOfThePulse(envelope, beatTimes), "%.2f"), meter,
+                measured(middleOfThePulse(rhythm, beatTimes), "%.2f"), meter,
                 job.want().isEmpty() ? "-" : job.want(),
                 estimate.pulsesPerBar(), estimate.confidence().value(),
                 job.want().isEmpty() || job.want().equals(meter) ? "" : "MISMATCH");

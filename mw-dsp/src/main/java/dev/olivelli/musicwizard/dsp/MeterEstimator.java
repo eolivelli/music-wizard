@@ -434,18 +434,21 @@ public final class MeterEstimator {
     /**
      * The meter a line's reading names: three pulses or the assumed four.
      *
-     * <p>A line in four states its half bar as readily as its bar, so a
-     * supported two or four is the prior's own evidence, and three is believed
-     * where it is supported and neither of them is. Not {@link #MARGIN}: a
-     * line in three leaves both at the null, and a ratio over the null is a
-     * ratio of noise. Nothing else is read from a line — the two-pulse bar
-     * rests on harmony it does not have, and six on a tracker below the beat.
+     * <p>A line in four states its half bar or its bar, and three divides
+     * neither, so either supported is the prior's own evidence and keeps a
+     * supported three out — the half bar unless six accounts for it, as it
+     * does for a line in three that holds a note every other bar. Not
+     * {@link #MARGIN}: a line in three leaves its rivals at the null, and a
+     * ratio over the null is a ratio of noise. Nothing else is read from a
+     * line — the two-pulse bar rests on harmony it does not have, and six on
+     * a tracker below the beat.
      */
     public static Estimate decideLine(Reading reading) {
         Objects.requireNonNull(reading, "reading");
         boolean inThree = reading.at(IN_THREE) >= SUPPORTED
-                && reading.at(IN_TWO) < SUPPORTED
-                && reading.at(ASSUMED) < SUPPORTED;
+                && reading.at(ASSUMED) < SUPPORTED
+                && (reading.at(IN_TWO) < SUPPORTED
+                        || accountsFor(reading, 2 * IN_THREE, IN_TWO));
         int pulses = inThree ? IN_THREE : ASSUMED;
         return new Estimate(meterAt(reading, pulses), pulses, confidenceIn(reading, pulses));
     }

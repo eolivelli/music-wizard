@@ -781,8 +781,9 @@ public final class AudioTranscriber {
                 : "the spectral flux");
         stage.fact("meter", detected == null
                 ? meter + ", supplied"
-                : String.format(Locale.ROOT, "%s, read at %.0f%% confidence",
-                        meter, 100 * detected.confidence().value()));
+                : String.format(Locale.ROOT, "%s, read%s at %.0f%% confidence",
+                        meter, noteOnsets ? " from the melody's notes" : "",
+                        100 * detected.confidence().value()));
         if (pulsesPerBar != meter.beatsPerBar()) {
             stage.fact("tracked pulses in a bar", pulsesPerBar);
         }

@@ -74,8 +74,11 @@ ordinary two-bar chord loop, built by construction (#702). What stays typed:
 12/8, because a shuffle divides its pulse as a compound bar does and every
 shuffle in the corpus is barred in four by its confirmed cycle — measured
 against a constructed pair and closed on the measurement (#701) — and 3/8.
-The meter column of `tools/baselines/score-samples.txt` and
-`score-synthetic.txt` carries the readings; `tools/MeterSweep.java` the
+A line playing alone has no harmony to read, so its bar is read from where
+its held notes start instead, and it may leave the 4/4 prior for three and
+nothing else (#869, #871). The meter column of
+`tools/baselines/score-samples.txt`, `score-synthetic.txt` and
+`score-solo.txt` carries the readings; `tools/MeterSweep.java` the
 statistics behind them.
 
 Then: the residual gate of #543 admitted the minor sixth and the
