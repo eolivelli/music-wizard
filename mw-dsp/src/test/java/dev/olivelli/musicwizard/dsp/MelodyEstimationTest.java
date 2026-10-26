@@ -25,6 +25,7 @@ import dev.olivelli.musicwizard.core.model.NoteTrack;
 import dev.olivelli.musicwizard.core.model.PartRole;
 import dev.olivelli.musicwizard.core.workspace.MelodyTrace;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;
@@ -181,6 +182,95 @@ class MelodyEstimationTest {
         void twoPeaksCloserThanTheShortestNoteCutOnce() {
             NoteTrack melody = MelodyEstimator.estimate(
                     heldNote(100, 42, 58), peaksAt(1.3, 0.6, 5.0, 0.64, 5.0));
+
+            assertThat(melody.notes()).hasSize(2);
+            assertThat(melody.notes().get(1).onsetSeconds()).isCloseTo(0.6, within(0.01));
+        }
+
+        private static final double LEVEL_RATE = (double) RATE / OnsetEnvelope.ONSET_HOP;
+
+        /**
+         * A level steady over the note except for a fall of {@code depth}
+         * decibels to its lowest at {@code at}, and a recovery as quick, or
+         * none where {@code recovers} is false.
+         */
+        private LevelContour levelFalling(double totalSeconds, double at, double depth,
+                                          boolean recovers) {
+            double[] decibels = new double[(int) Math.ceil(totalSeconds * LEVEL_RATE)];
+            int lowest = (int) Math.round(at * LEVEL_RATE);
+            int edge = 5;
+            for (int i = 0; i < decibels.length; i++) {
+                int away = Math.abs(i - lowest);
+                decibels[i] = !recovers && i > lowest ? -10 - depth
+                        : away >= edge ? -10 : -10 - depth * (edge - away) / edge;
+            }
+            return new LevelContour(decibels, LEVEL_RATE, 0);
+        }
+
+        private NoteTrack withLevel(PitchTrack pitches, OnsetEnvelope envelope,
+                                    LevelContour level) {
+            return MelodyEstimator.explain(pitches, envelope, level, 0, false).melody();
+        }
+
+        @Test
+        @DisplayName("a stroke the voice never stops for cuts the note at the stroke")
+        void aStrokeUnderAnUnbrokenVoiceCuts() {
+            // The tongued repeat of #882: no voicedness dip and no envelope
+            // peak to speak of, only the level falling and coming back.
+            NoteTrack melody = withLevel(heldNote(100, -1, -1), peakAt(0.6, 1.0, 1.3),
+                    levelFalling(1.3, 0.6, 14, true));
+
+            assertThat(pitches(melody)).containsExactly(69, 69);
+            assertThat(melody.notes().get(1).onsetSeconds()).isCloseTo(0.6, within(0.01));
+        }
+
+        @Test
+        @DisplayName("a shallow swell of the level, as vibrato makes, does not cut")
+        void aShallowDipDoesNotCut() {
+            NoteTrack melody = withLevel(heldNote(100, -1, -1), peakAt(0.6, 1.0, 1.3),
+                    levelFalling(1.3, 0.6, 3, true));
+
+            assertThat(melody.notes()).hasSize(1);
+        }
+
+        @Test
+        @DisplayName("a level that dips as deep elsewhere in the note is a tremolo, not a stroke")
+        void aTremoloDoesNotCut() {
+            LevelContour one = levelFalling(1.3, 0.4, 14, true);
+            LevelContour other = levelFalling(1.3, 0.8, 14, true);
+            double[] both = one.decibels().clone();
+            for (int i = 0; i < both.length; i++) {
+                both[i] = Math.min(both[i], other.decibels()[i]);
+            }
+            NoteTrack melody = withLevel(heldNote(100, -1, -1), peakAt(0.6, 1.0, 1.3),
+                    new LevelContour(both, LEVEL_RATE, 0));
+
+            assertThat(melody.notes()).hasSize(1);
+        }
+
+        @Test
+        @DisplayName("a level that falls and stays down is a note fading, not a stroke")
+        void aFallWithoutRecoveryDoesNotCut() {
+            NoteTrack melody = withLevel(heldNote(100, -1, -1), peakAt(0.6, 1.0, 1.3),
+                    levelFalling(1.3, 0.6, 14, false));
+
+            assertThat(melody.notes()).hasSize(1);
+        }
+
+        @Test
+        @DisplayName("a stroke at the note's own attack does not cut")
+        void aStrokeAtTheAttackDoesNotCut() {
+            NoteTrack melody = withLevel(heldNote(100, -1, -1), peakAt(0.6, 1.0, 1.3),
+                    levelFalling(1.3, 0.09, 14, true));
+
+            assertThat(melody.notes()).hasSize(1);
+        }
+
+        @Test
+        @DisplayName("a peak and the stroke under it cut the note once")
+        void aPeakAndItsStrokeCutOnce() {
+            NoteTrack melody = withLevel(heldNote(100, 44, 52), peakAt(0.6, 5.0, 1.3),
+                    levelFalling(1.3, 0.62, 14, true));
 
             assertThat(melody.notes()).hasSize(2);
             assertThat(melody.notes().get(1).onsetSeconds()).isCloseTo(0.6, within(0.01));
@@ -1084,6 +1174,44 @@ class MelodyEstimationTest {
             assertThat(trace.runs().get(0).rearticulations()).isEqualTo(1);
             assertThat(trace.notes()).extracting(MelodyTrace.Note::startedBy)
                     .containsExactly(MelodyTrace.Note.RUN, MelodyTrace.Note.REARTICULATION);
+        }
+
+        @Test
+        @DisplayName("records what each test read where a note may have been struck again")
+        void recordsEveryStrikeConsidered() {
+            double[] strength = new double[(int) Math.ceil(1.3 * ENVELOPE_RATE)];
+            strength[(int) Math.round(0.3 * ENVELOPE_RATE)] = 5.0;
+            double[] hz = new double[100];
+            boolean[] voiced = new boolean[100];
+            double[] voicedness = new double[100];
+            Arrays.fill(hz, 440);
+            Arrays.fill(voiced, true);
+            Arrays.fill(voicedness, 0.9);
+            double rate = (double) RATE / OnsetEnvelope.ONSET_HOP;
+            double[] decibels = new double[(int) Math.ceil(1.3 * rate)];
+            Arrays.fill(decibels, -10);
+            int lowest = (int) Math.round(0.8 * rate);
+            for (int k = -4; k <= 4; k++) {
+                decibels[lowest + k] = -24 + 14 * Math.abs(k) / 5.0;
+            }
+            MelodyTrace trace = MelodyEstimator.explain(
+                    new PitchTrack(hz, voiced, voicedness, RATE,
+                            PitchTracker.WINDOW, PitchTracker.HOP),
+                    new OnsetEnvelope(strength, ENVELOPE_RATE),
+                    new LevelContour(decibels, rate, 0), 0, false).trace();
+
+            // The peak the voice held through, then the stroke that cut.
+            assertThat(trace.strikes()).extracting(MelodyTrace.Strike::read)
+                    .containsExactly(MelodyTrace.Strike.HELD, MelodyTrace.Strike.LEVEL);
+            MelodyTrace.Strike peak = trace.strikes().get(0);
+            assertThat(peak.seconds()).isCloseTo(0.3, within(0.01));
+            assertThat(peak.strength()).isEqualTo(5.0);
+            assertThat(peak.voicedness()).isEqualTo(1.0);
+            assertThat(peak.dipDecibels()).isZero();
+            MelodyTrace.Strike stroke = trace.strikes().get(1);
+            assertThat(stroke.seconds()).isCloseTo(0.8, within(0.01));
+            assertThat(stroke.dipDecibels()).isCloseTo(14, within(1e-9));
+            assertThat(trace.runs().get(0).rearticulations()).isEqualTo(1);
         }
 
         @Test

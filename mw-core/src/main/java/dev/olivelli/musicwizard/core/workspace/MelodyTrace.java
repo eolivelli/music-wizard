@@ -40,6 +40,8 @@ import java.util.Objects;
  * @param gestures one entry per gesture the fold decided over, in time order,
  *                 and empty where the fold decided nothing
  * @param notes    one entry per note the stage printed, in time order
+ * @param strikes  one entry per point inside a note where it may have been
+ *                 struck again, in time order
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record MelodyTrace(
@@ -49,7 +51,8 @@ public record MelodyTrace(
         Fold fold,
         List<Run> runs,
         List<Gesture> gestures,
-        List<Note> notes) {
+        List<Note> notes,
+        List<Strike> strikes) {
 
     /** The stage this trace belongs to, which is also its report phase. */
     public static final String STAGE = "melody";
@@ -64,6 +67,7 @@ public record MelodyTrace(
         runs = runs == null ? List.of() : List.copyOf(runs);
         gestures = gestures == null ? List.of() : List.copyOf(gestures);
         notes = notes == null ? List.of() : List.copyOf(notes);
+        strikes = strikes == null ? List.of() : List.copyOf(strikes);
     }
 
     /**
@@ -73,7 +77,7 @@ public record MelodyTrace(
      * there is no separation in the module that cuts the notes.
      */
     public MelodyTrace readFrom(String signal) {
-        return new MelodyTrace(signal, track, tuning, fold, runs, gestures, notes);
+        return new MelodyTrace(signal, track, tuning, fold, runs, gestures, notes, strikes);
     }
 
     /**
@@ -304,6 +308,47 @@ public record MelodyTrace(
             // The page prints this, so a note without one is a note this build
             // cannot draw.
             Objects.requireNonNull(startedBy, "startedBy");
+        }
+    }
+
+    /**
+     * A point inside a note where the stage asked whether it was struck again,
+     * and what each test read there (#882). Every reading is the one nearest
+     * to passing within the stage's reach of the point.
+     *
+     * @param seconds     where
+     * @param strength    the strongest onset-envelope frame, in its
+     *                    standard-deviation units
+     * @param voicedness  the least voicedness, as a share of the note's median
+     * @param dipDecibels how far the level fell under the lower of its peaks
+     *                    either side, or zero where it did not fall
+     * @param read        what was decided, as one of the constants below
+     */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record Strike(
+            double seconds,
+            double strength,
+            double voicedness,
+            double dipDecibels,
+            String read) {
+
+        /** An envelope peak where the voice restarted: cut. */
+        public static final String ENVELOPE = "envelope";
+
+        /** The level fell and came back: cut. */
+        public static final String LEVEL = "level";
+
+        /** An envelope peak where the voice did not restart: kept whole. */
+        public static final String HELD = "held";
+
+        /** The level fell and came back, but as far elsewhere in the note: kept whole. */
+        public static final String SWELL = "swell";
+
+        /** Struck, but too near the cut before it to leave a note between: kept whole. */
+        public static final String CROWDED = "crowded";
+
+        public Strike {
+            Objects.requireNonNull(read, "read");
         }
     }
 }

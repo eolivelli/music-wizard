@@ -945,7 +945,7 @@ class AnalysisReportTest {
         MelodyTrace nothing = new MelodyTrace(MelodyTrace.SEPARATED_VOCAL,
                 new MelodyTrace.Track(22050, 2048, 256, 86.1328125, 689, 0, 8),
                 new MelodyTrace.Tuning(0.0375, null, 0.2, 0, MelodyTrace.Tuning.NOT_WEIGHED),
-                null, List.of(), List.of(), List.of());
+                null, List.of(), List.of(), List.of(), List.of());
 
         String page = AnalysisReport.toHtml(ReportFixtures.chordsOnly(), RECORDING,
                 ReportFixtures.run(), ReportFixtures.weighed(nothing));

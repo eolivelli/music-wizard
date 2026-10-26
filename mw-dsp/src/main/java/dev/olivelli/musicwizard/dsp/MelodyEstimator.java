@@ -23,6 +23,7 @@ import dev.olivelli.musicwizard.core.model.PartRole;
 import dev.olivelli.musicwizard.core.workspace.MelodyTrace;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
 
@@ -48,7 +49,9 @@ import java.util.Objects;
  * decides everything else.</strong> Two notes of the same pitch with no gap
  * are indistinguishable in a pitch track outright — a re-articulation is an
  * amplitude event — so a strong envelope peak inside a note cuts it in two,
- * but only where the voice itself restarts (#495). The constants carry what
+ * but only where the voice itself restarts (#495), and so does the level
+ * falling and coming back where it does nowhere else in the note, which is a
+ * tongued repeat whose voice never stops (#882). The constants carry what
  * both melody corpora said about the floors.
  *
  * <p>What the envelope deliberately does <em>not</em> do here is move the
@@ -140,11 +143,27 @@ public final class MelodyEstimator {
     private static final double REARTICULATION_DIP_SHARE = 0.9;
 
     /**
-     * How far from a peak the voicedness dip may sit. Numerically the shortest
-     * note, but a search radius rather than a length -- see {@link
-     * #voiceRestartsAt} for why it is deliberately coarse.
+     * How far from a peak the voicedness dip may sit, and how far either side
+     * of a level dip the level must come back. Numerically the shortest note,
+     * but a search radius rather than a length -- see {@link #leastVoicedness}
+     * for why it is deliberately coarse.
      */
     private static final double DIP_REACH_SECONDS = 0.06;
+
+    /**
+     * How far the level must fall inside a note, and come back, for the note
+     * to count as struck again with the voice never stopping (#882). Swept on
+     * {@code tools/score-melody.py} and {@code tools/score-solo.py}; the
+     * figures are in the pull request that set it.
+     */
+    private static final double STROKE_DECIBELS = 6.0;
+
+    /**
+     * How deep, as a share of a stroke, any other dip in the same note may be:
+     * a level that dips as deep elsewhere is a tremolo, which the synthetic
+     * flute renders carry (#882).
+     */
+    private static final double STROKE_ALONE_SHARE = 0.5;
 
     /**
      * How strongly the track's own pitches must sit on the grid a tuning offset
@@ -250,7 +269,7 @@ public final class MelodyEstimator {
      */
     public static NoteTrack estimate(PitchTrack pitches) {
         Objects.requireNonNull(pitches, "pitches");
-        return segment(pitches, null, 0, STEADY_SEMITONES,
+        return segment(pitches, null, null, 0, STEADY_SEMITONES,
                 RANGE_FLOOR_SEMITONES, RANGE_SPREAD_QUANTILE, MOST_OCTAVES_OUT,
                 ONE_GESTURE_SEMITONES, false).melody();
     }
@@ -266,7 +285,7 @@ public final class MelodyEstimator {
     public static NoteTrack estimate(PitchTrack pitches, OnsetEnvelope envelope) {
         Objects.requireNonNull(pitches, "pitches");
         Objects.requireNonNull(envelope, "envelope");
-        return segment(pitches, envelope, 0, STEADY_SEMITONES,
+        return segment(pitches, envelope, null, 0, STEADY_SEMITONES,
                 RANGE_FLOOR_SEMITONES, RANGE_SPREAD_QUANTILE, MOST_OCTAVES_OUT,
                 ONE_GESTURE_SEMITONES, false).melody();
     }
@@ -305,13 +324,26 @@ public final class MelodyEstimator {
      */
     public static Segmented explain(PitchTrack pitches, OnsetEnvelope envelope,
                                     double tuningOffsetSemitones, boolean separated) {
+        return explain(pitches, envelope, null, tuningOffsetSemitones, separated);
+    }
+
+    /**
+     * The same, with the level of the signal the track was read from, which
+     * splits a note its player struck again without the voice stopping
+     * (#882). The pipeline calls this one.
+     *
+     * @param level that signal's level, or null to split on the envelope alone
+     */
+    public static Segmented explain(PitchTrack pitches, OnsetEnvelope envelope,
+                                    LevelContour level, double tuningOffsetSemitones,
+                                    boolean separated) {
         Objects.requireNonNull(pitches, "pitches");
         Objects.requireNonNull(envelope, "envelope");
         if (!Double.isFinite(tuningOffsetSemitones)) {
             throw new IllegalArgumentException("tuningOffsetSemitones must be finite, got: "
                     + tuningOffsetSemitones);
         }
-        return segment(pitches, envelope, tuningOffsetSemitones, STEADY_SEMITONES,
+        return segment(pitches, envelope, level, tuningOffsetSemitones, STEADY_SEMITONES,
                 RANGE_FLOOR_SEMITONES, RANGE_SPREAD_QUANTILE, MOST_OCTAVES_OUT,
                 ONE_GESTURE_SEMITONES, separated);
     }
@@ -323,6 +355,16 @@ public final class MelodyEstimator {
      */
     public static NoteTrack estimate(PitchTrack pitches, OnsetEnvelope envelope,
                                      double tuningOffsetSemitones, double steadySemitones) {
+        return estimate(pitches, envelope, null, tuningOffsetSemitones, steadySemitones);
+    }
+
+    /**
+     * The same, with the level {@link
+     * #explain(PitchTrack, OnsetEnvelope, LevelContour, double, boolean)} takes.
+     */
+    public static NoteTrack estimate(PitchTrack pitches, OnsetEnvelope envelope,
+                                     LevelContour level, double tuningOffsetSemitones,
+                                     double steadySemitones) {
         Objects.requireNonNull(pitches, "pitches");
         Objects.requireNonNull(envelope, "envelope");
         if (!Double.isFinite(tuningOffsetSemitones)) {
@@ -333,7 +375,7 @@ public final class MelodyEstimator {
             throw new IllegalArgumentException("steadySemitones must be finite and positive,"
                     + " got: " + steadySemitones);
         }
-        return segment(pitches, envelope, tuningOffsetSemitones, steadySemitones,
+        return segment(pitches, envelope, level, tuningOffsetSemitones, steadySemitones,
                 RANGE_FLOOR_SEMITONES, RANGE_SPREAD_QUANTILE, MOST_OCTAVES_OUT,
                 ONE_GESTURE_SEMITONES, false).melody();
     }
@@ -367,6 +409,20 @@ public final class MelodyEstimator {
                                      double rangeFloorSemitones, double rangeSpreadQuantile,
                                      int mostOctavesOut, double gestureSemitones,
                                      boolean separated) {
+        return estimate(pitches, envelope, null, tuningOffsetSemitones, steadySemitones,
+                rangeFloorSemitones, rangeSpreadQuantile, mostOctavesOut, gestureSemitones,
+                separated);
+    }
+
+    /**
+     * The same, with the level {@link
+     * #explain(PitchTrack, OnsetEnvelope, LevelContour, double, boolean)} takes.
+     */
+    public static NoteTrack estimate(PitchTrack pitches, OnsetEnvelope envelope,
+                                     LevelContour level, double tuningOffsetSemitones,
+                                     double steadySemitones, double rangeFloorSemitones,
+                                     double rangeSpreadQuantile, int mostOctavesOut,
+                                     double gestureSemitones, boolean separated) {
         Objects.requireNonNull(pitches, "pitches");
         Objects.requireNonNull(envelope, "envelope");
         if (!Double.isFinite(tuningOffsetSemitones)) {
@@ -393,16 +449,16 @@ public final class MelodyEstimator {
             throw new IllegalArgumentException("gestureSemitones must be finite and"
                     + " non-negative, got: " + gestureSemitones);
         }
-        return segment(pitches, envelope, tuningOffsetSemitones, steadySemitones,
+        return segment(pitches, envelope, level, tuningOffsetSemitones, steadySemitones,
                 rangeFloorSemitones, rangeSpreadQuantile, mostOctavesOut, gestureSemitones,
                 separated).melody();
     }
 
     private static Segmented segment(PitchTrack pitches, OnsetEnvelope envelope,
-                                     double tuningOffsetSemitones, double steadySemitones,
-                                     double rangeFloorSemitones, double rangeSpreadQuantile,
-                                     int mostOctavesOut, double gestureSemitones,
-                                     boolean separated) {
+                                     LevelContour level, double tuningOffsetSemitones,
+                                     double steadySemitones, double rangeFloorSemitones,
+                                     double rangeSpreadQuantile, int mostOctavesOut,
+                                     double gestureSemitones, boolean separated) {
         // Decided once for the whole track and before anything is cut: the
         // offset shifts where a semitone boundary falls, so a decision taken
         // per run would let one note of a phrase be rounded on a grid the next
@@ -413,6 +469,7 @@ public final class MelodyEstimator {
         List<String> startedBy = new ArrayList<>();
         List<Integer> ofRun = new ArrayList<>();
         List<MelodyTrace.Run> runs = new ArrayList<>();
+        List<MelodyTrace.Strike> strikes = new ArrayList<>();
         int voicedFrames = 0;
         int frame = 0;
         while (frame < pitches.frameCount()) {
@@ -425,7 +482,8 @@ public final class MelodyEstimator {
                 end++;
             }
             voicedFrames += end - frame;
-            Cut cut = notesOfRun(pitches, envelope, frame, end, grid, steadySemitones);
+            Cut cut = notesOfRun(pitches, envelope, level, frame, end, grid, steadySemitones,
+                    strikes);
             notes.addAll(cut.notes());
             startedBy.addAll(cut.startedBy());
             cut.notes().forEach(note -> ofRun.add(runs.size()));
@@ -441,7 +499,8 @@ public final class MelodyEstimator {
         return new Segmented(
                 new NoteTrack(PartRole.LEAD_VOCAL, NoteTrack.VOICE, voices, trackConfidence(voices)),
                 new MelodyTrace(null, track(pitches, voicedFrames), tuning, folded.fold(),
-                        runs, folded.gestures(), traced(voices, startedBy, ofRun, folded)));
+                        runs, folded.gestures(), traced(voices, startedBy, ofRun, folded),
+                        strikes));
     }
 
     /**
@@ -513,7 +572,7 @@ public final class MelodyEstimator {
 
     /**
      * Whether the voicedness between two notes dips the way {@link
-     * #voiceRestartsAt} asks of a re-articulation, against the first note's.
+     * #leastVoicedness} asks of a re-articulation, against the first note's.
      */
     private static boolean voicePausesBetween(PitchTrack pitches, Note first, Note second) {
         int[] span = {frameAt(pitches, first.onsetSeconds()),
@@ -843,8 +902,9 @@ public final class MelodyEstimator {
     private record Cut(List<Note> notes, List<String> startedBy, MelodyTrace.Run run) {
     }
 
-    private static Cut notesOfRun(PitchTrack pitches, OnsetEnvelope envelope,
-                                  int from, int to, double grid, double steadySemitones) {
+    private static Cut notesOfRun(PitchTrack pitches, OnsetEnvelope envelope, LevelContour level,
+                                  int from, int to, double grid, double steadySemitones,
+                                  List<MelodyTrace.Strike> strikes) {
         double frameSeconds = 1 / pitches.frameRate();
         int confirmFrames = Math.max(1, (int) Math.ceil(MIN_NOTE_SECONDS / frameSeconds));
         List<int[]> spans = cut(pitches, from, to, confirmFrames);
@@ -879,7 +939,7 @@ public final class MelodyEstimator {
             List<Double> starts = new ArrayList<>();
             starts.add(onset);
             if (envelope != null) {
-                rearticulations(envelope, pitches, span, onset, end, starts);
+                rearticulations(envelope, level, pitches, span, onset, end, starts, strikes);
             }
             for (int piece = 0; piece < starts.size(); piece++) {
                 double pieceStart = starts.get(piece);
@@ -920,53 +980,148 @@ public final class MelodyEstimator {
         return false;
     }
 
+    /** Where a note may have been struck again, and which reading proposed it. */
+    private enum Proposed { PEAK, STROKE, SWELL }
+
+    private record Candidate(double seconds, Proposed by) {
+    }
+
     /**
-     * Adds the boundaries of a note's re-articulations to {@code starts}.
+     * Adds the boundaries of a note's re-articulations to {@code starts}, and
+     * what was read at each place one was considered to {@code strikes}.
      *
-     * <p>A peak may cut only strictly inside the note, at least
-     * {@link #MIN_NOTE_SECONDS} from either end and from the previous cut:
-     * nearer the start it is the note's own attack, nearer the end it is the
-     * next note's, and either way the piece it would leave is shorter than
-     * anything this class calls a note.
+     * <p>Two things strike a note again: an envelope peak where the voice
+     * restarts, and the level falling and coming back where it does nowhere
+     * else in the note, which is a tongued repeat on a wind instrument whose
+     * voice never stops (#882). A level that dips as deep elsewhere in the
+     * note is a tremolo, not a stroke. A cut lands only strictly inside the
+     * note, at least {@link #MIN_NOTE_SECONDS} from either end and from the
+     * previous cut: nearer the start it is the note's own attack, nearer the
+     * end it is the next note's, and either way the piece it would leave is
+     * shorter than anything this class calls a note.
      */
-    private static void rearticulations(OnsetEnvelope envelope, PitchTrack pitches, int[] span,
-                                        double onset, double end, List<Double> starts) {
+    private static void rearticulations(OnsetEnvelope envelope, LevelContour level,
+                                        PitchTrack pitches, int[] span, double onset, double end,
+                                        List<Double> starts, List<MelodyTrace.Strike> strikes) {
         double medianVoicedness = medianVoicedness(pitches, span);
-        int fromFrame = envelope.frameOf(onset + MIN_NOTE_SECONDS);
-        int toFrame = envelope.frameOf(end - MIN_NOTE_SECONDS);
-        for (int frame = fromFrame; frame <= toFrame; frame++) {
-            double time = envelope.timeOf(frame);
+        double last = end - MIN_NOTE_SECONDS;
+        List<Candidate> candidates = new ArrayList<>();
+        for (int frame = envelope.frameOf(onset + MIN_NOTE_SECONDS);
+                frame <= envelope.frameOf(last); frame++) {
             // The loop bound is a rounded frame index, so a peak can land a
             // few milliseconds past the boundary it was computed from; the
             // start side needs no twin, because the spacing guard below
             // already holds every cut at least MIN_NOTE_SECONDS after the
             // onset the list opens with.
-            if (time >= end - MIN_NOTE_SECONDS) {
-                continue;
+            if (envelope.timeOf(frame) < last && isPeak(envelope, frame, REARTICULATION_FLOOR)) {
+                candidates.add(new Candidate(envelope.timeOf(frame), Proposed.PEAK));
             }
-            if (isPeak(envelope, frame, REARTICULATION_FLOOR)
-                    && voiceRestartsAt(pitches, span, medianVoicedness, time)
-                    && time >= starts.get(starts.size() - 1) + MIN_NOTE_SECONDS) {
+        }
+        if (level != null) {
+            List<double[]> dips = new ArrayList<>();
+            for (int frame = level.frameOf(onset + MIN_NOTE_SECONDS);
+                    frame <= level.frameOf(last); frame++) {
+                double time = level.timeOf(frame);
+                double dip = levelDip(level, frame, onset, end);
+                if (time > onset && time < last && dip > 0) {
+                    dips.add(new double[] {time, dip});
+                }
+            }
+            for (double[] dip : dips) {
+                if (dip[1] < STROKE_DECIBELS) {
+                    continue;
+                }
+                boolean alone = true;
+                for (double[] other : dips) {
+                    alone &= other == dip || other[1] < STROKE_ALONE_SHARE * dip[1];
+                }
+                candidates.add(new Candidate(dip[0], alone ? Proposed.STROKE : Proposed.SWELL));
+            }
+            candidates.sort(Comparator.comparingDouble(Candidate::seconds));
+        }
+        for (Candidate candidate : candidates) {
+            double time = candidate.seconds();
+            double voicedness = leastVoicedness(pitches, span, time) / medianVoicedness;
+            boolean struck = switch (candidate.by()) {
+                case PEAK -> voicedness < REARTICULATION_DIP_SHARE;
+                case STROKE -> true;
+                case SWELL -> false;
+            };
+            boolean room = time >= starts.get(starts.size() - 1) + MIN_NOTE_SECONDS;
+            if (struck && room) {
                 starts.add(time);
             }
+            strikes.add(new MelodyTrace.Strike(time, strongestNear(envelope, time), voicedness,
+                    level == null ? 0 : deepestDipNear(level, time, onset, end),
+                    candidate.by() == Proposed.SWELL ? MelodyTrace.Strike.SWELL
+                            : !struck ? MelodyTrace.Strike.HELD
+                            : !room ? MelodyTrace.Strike.CROWDED
+                            : candidate.by() == Proposed.STROKE ? MelodyTrace.Strike.LEVEL
+                            : MelodyTrace.Strike.ENVELOPE));
         }
     }
 
     /**
-     * True when the voice itself restarts around a time: its voicedness dips
-     * against the note's own median, somewhere within {@link
-     * #DIP_REACH_SECONDS} of the point asked about.
+     * How far the level at a frame lies under the lower of the loudest frames
+     * within {@link #DIP_REACH_SECONDS} either side of it, inside the note; zero
+     * unless the frame is a local minimum. Both sides are asked so that a note
+     * fading out, or one arriving, is not a stroke: the level has to come back.
+     */
+    private static double levelDip(LevelContour level, int frame, double onset, double end) {
+        double[] db = level.decibels();
+        if (frame == 0 || frame + 1 >= db.length || db[frame] > db[frame - 1]
+                || db[frame] >= db[frame + 1]) {
+            return 0;
+        }
+        int reach = (int) Math.ceil(DIP_REACH_SECONDS * level.frameRate());
+        double before = Double.NEGATIVE_INFINITY;
+        for (int f = Math.max(level.frameOf(onset), frame - reach); f < frame; f++) {
+            before = Math.max(before, db[f]);
+        }
+        double after = Double.NEGATIVE_INFINITY;
+        for (int f = frame + 1; f <= Math.min(level.frameOf(end) - 1, frame + reach); f++) {
+            after = Math.max(after, db[f]);
+        }
+        return Math.max(0, Math.min(before, after) - db[frame]);
+    }
+
+    private static double deepestDipNear(LevelContour level, double time, double onset,
+                                         double end) {
+        int centre = level.frameOf(time);
+        int reach = (int) Math.ceil(DIP_REACH_SECONDS * level.frameRate());
+        double deepest = 0;
+        for (int f = Math.max(0, centre - reach);
+                f <= Math.min(level.length() - 1, centre + reach); f++) {
+            deepest = Math.max(deepest, levelDip(level, f, onset, end));
+        }
+        return deepest;
+    }
+
+    private static double strongestNear(OnsetEnvelope envelope, double time) {
+        int centre = envelope.frameOf(time);
+        int reach = (int) Math.ceil(DIP_REACH_SECONDS * envelope.frameRate());
+        double strongest = Double.NEGATIVE_INFINITY;
+        for (int f = Math.max(0, centre - reach);
+                f <= Math.min(envelope.length() - 1, centre + reach); f++) {
+            strongest = Math.max(strongest, envelope.strength()[f]);
+        }
+        return strongest;
+    }
+
+    /**
+     * The least voicedness within {@link #DIP_REACH_SECONDS} of a time, inside
+     * the span: the voice itself restarting there dips it against the note's
+     * own median.
      *
      * <p>The localisation is deliberately coarse -- the pitch window smears
-     * any dip by its own 93 ms -- but it is not free to widen: on the real
+     * any dip by its own width -- but it is not free to widen: on the real
      * singing a reach of this size and one spanning the whole note answer
      * identically, and on the accompanied package the note-wide reach admits
      * more pad cuts. A single-frame reach loses real splits on both corpora.
      * It keeps a note's far end out of the question; it does not place the
      * restart precisely.
      */
-    private static boolean voiceRestartsAt(PitchTrack pitches, int[] span, double medianVoicedness,
-                                           double time) {
+    private static double leastVoicedness(PitchTrack pitches, int[] span, double time) {
         // Inverts PitchTrack.timeOf: its frames are stamped at window centres,
         // where the envelope's are not.
         int centre = (int) Math.round(time * pitches.frameRate()
@@ -977,7 +1132,7 @@ public final class MelodyEstimator {
                 f <= Math.min(span[1] - 1, centre + reach); f++) {
             dip = Math.min(dip, pitches.voicedness()[f]);
         }
-        return dip < REARTICULATION_DIP_SHARE * medianVoicedness;
+        return dip;
     }
 
     /**

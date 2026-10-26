@@ -42,6 +42,7 @@ import dev.olivelli.musicwizard.dsp.Chroma;
 import dev.olivelli.musicwizard.dsp.ChordEstimator;
 import dev.olivelli.musicwizard.dsp.DownbeatEstimator;
 import dev.olivelli.musicwizard.dsp.KeyEstimator;
+import dev.olivelli.musicwizard.dsp.LevelContour;
 import dev.olivelli.musicwizard.dsp.MelodyEstimator;
 import dev.olivelli.musicwizard.dsp.MeterEstimator;
 import dev.olivelli.musicwizard.dsp.HarmonicRhythm;
@@ -348,7 +349,8 @@ public final class AudioTranscriber {
         if (melodyAudio == audio) {
             progress.accept("tracking the melody in the full mix");
             PitchTrack pitches = trackPitch(melodyAudio, settings);
-            mixMelody = MelodyEstimator.explain(pitches, envelope, tuning);
+            mixMelody = MelodyEstimator.explain(pitches, envelope,
+                    LevelContour.fromAudio(melodyAudio), tuning, false);
             noteOnsets = pitches.voicedShare() >= LINE_ALONE_VOICED_SHARE;
             if (noteOnsets) {
                 progress.accept("a line alone: its notes join the onsets the beat is tracked from");
@@ -659,7 +661,7 @@ public final class AudioTranscriber {
             }
             MelodyEstimator.Segmented segmented = mixMelody != null ? mixMelody
                     : MelodyEstimator.explain(trackPitch(melodyAudio, settings), melodyEnvelope,
-                            tuning, separated);
+                            LevelContour.fromAudio(melodyAudio), tuning, separated);
             // Nothing on a line alone says a voice played it (#862).
             NoteTrack melody = noteOnsets
                     ? segmented.melody().withName(NoteTrack.LEAD) : segmented.melody();
