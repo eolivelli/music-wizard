@@ -440,8 +440,7 @@ public final class MeterEstimator {
      * does for a line in three that holds a note every other bar. Not
      * {@link #MARGIN}: a line in three leaves its rivals at the null, and a
      * ratio over the null is a ratio of noise. Nothing else is read from a
-     * line — the two-pulse bar rests on harmony it does not have, and six on
-     * a tracker below the beat.
+     * line: six would be a tracker below the beat, and two is #871.
      */
     public static Estimate decideLine(Reading reading) {
         Objects.requireNonNull(reading, "reading");

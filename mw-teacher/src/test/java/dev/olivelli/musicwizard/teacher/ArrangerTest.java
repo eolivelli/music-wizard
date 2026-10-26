@@ -226,8 +226,8 @@ class ArrangerTest {
 
     @Test
     void aGradedMelodyInThreeKeepsToItsBars() {
-        // #715 for the graded melody: the 3/4 templates are bars of three, and
-        // only level three holds a note across the bar line.
+        // #715 for the graded melody: the 3/4 templates are bars of three; level
+        // two keeps inside them and level three holds a note across the bar line.
         List<long[]> level2 = spans(Arranger.arrange(SpecParser.parse(
                 GRADED_WALTZ.formatted(2))).getTracks()[1]);
         assertThat(level2).isNotEmpty().allSatisfy(span ->
