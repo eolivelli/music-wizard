@@ -176,8 +176,8 @@ final class AnalyzeCommand implements Callable<Integer> {
     @Option(names = "--instrument", paramLabel = "NAME",
             description = "What plays the melody, e.g. Flute: the name its staff is"
                     + " printed under. Recorded in the workspace, as init --instrument"
-                    + " is, so later runs keep it; a cached analysis is renamed, not"
-                    + " recomputed.")
+                    + " is, so later runs keep it; an empty name forgets it. A cached"
+                    + " analysis is renamed, not recomputed.")
     String instrument;
 
     @Option(names = "--force", description = "Ignore cached stage results and recompute.")
@@ -252,8 +252,8 @@ final class AnalyzeCommand implements Callable<Integer> {
             score = withTranscribedLyrics(workspace, score, config, stem);
         }
 
-        if (instrument != null && !instrument.isBlank()) {
-            workspace.updateInstrument(instrument.strip());
+        if (instrument != null) {
+            workspace.updateInstrument(instrument.isBlank() ? null : instrument.strip());
         }
         score = named(score, kind, workspace.instrument());
 

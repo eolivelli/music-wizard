@@ -149,4 +149,21 @@ class LineAlonePageTest {
             assertThat(out(page + ".musicxml")).contains("<part-name>Flauto</part-name>");
         }
     }
+
+    @Test
+    @DisplayName("and an empty name forgets it")
+    void anEmptyNameForgetsTheInstrument() throws IOException {
+        for (String name : List.of("Flauto", "")) {
+            CliRunner.Result named = CliRunner.run("analyze", workspace.toString(),
+                    "--melody", "--skip-separation", "--time-signature", "4/4",
+                    "--instrument", name);
+            assertThat(named.exitCode()).as(named.all()).isZero();
+        }
+        CliRunner.Result render = CliRunner.run("render", workspace.toString(),
+                "--parts", "playable", "--no-pdf");
+        assertThat(render.exitCode()).as(render.all()).isZero();
+
+        assertThat(Workspace.open(workspace).instrument()).isEmpty();
+        assertThat(out("lead-playable.ly")).contains("instrumentName = \"Lead\"");
+    }
 }

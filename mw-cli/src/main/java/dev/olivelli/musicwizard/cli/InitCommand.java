@@ -55,8 +55,7 @@ final class InitCommand implements Callable<Integer> {
 
     @Option(names = "--instrument", paramLabel = "NAME",
             description = "What plays the melody, e.g. Flute: the name its staff is"
-                    + " printed under. Without it, a line playing alone is called Lead"
-                    + " and anything else Voice.")
+                    + " printed under.")
     String instrument;
 
     @Override
