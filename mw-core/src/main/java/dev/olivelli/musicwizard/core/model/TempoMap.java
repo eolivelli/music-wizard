@@ -359,7 +359,7 @@ public record TempoMap(List<TempoSegment> segments, List<MeterChange> meterChang
      * <p>The phase cannot be honoured when the first pulse falls at exactly
      * second 0: there is no lead-in to lengthen, and the anchor outranks the
      * phase. That corner keeps the phase-unaware behaviour rather than half of
-     * the promise, unless the pulses before the downbeat are left out — see
+     * the promise, unless the pulse before the downbeat is left out — see
      * {@link #leadInPulses(double, double, int, int, double)}.
      *
      * @param firstDownbeatPulse index into {@code beatSeconds} of a pulse that
@@ -379,8 +379,8 @@ public record TempoMap(List<TempoSegment> segments, List<MeterChange> meterChang
     }
 
     /**
-     * The same map, told when the music starts, so that tracked pulses nothing
-     * is played on can be left out with the stretch before them — see
+     * The same map, told when the music starts, so that a first tracked pulse
+     * nothing is played on can be left out with the stretch before it — see
      * {@link #leadInPulses(double, double, int, int, double)}.
      *
      * @param firstSoundSeconds when the first note starts, or NaN when that is
@@ -465,8 +465,8 @@ public record TempoMap(List<TempoSegment> segments, List<MeterChange> meterChang
         // beat off the grid in 6/8. When the downbeat phase is known, the count
         // is furthermore chosen so the first downbeat lands on a bar line, and
         // a lead-in too short to be a pulse is left out of the map altogether,
-        // whose origin then sits on the first tracked pulse, or on the first
-        // downbeat when nothing is played before it -- see leadInPulses.
+        // whose origin then sits on the first tracked pulse, or on the downbeat
+        // after it when nothing is played before that -- see leadInPulses.
         // Whatever the count, every tracked pulse the map holds sits on a whole
         // pulse from the origin.
         int leadInPulses = leadInPulses(firstBeat, firstInterval, firstDownbeatPulse,
@@ -563,16 +563,19 @@ public record TempoMap(List<TempoSegment> segments, List<MeterChange> meterChang
     }
 
     /**
-     * The same count, or a negative one: when the stretch is under {@link
-     * #UNMODELLED_LEAD_IN_PULSES} and nothing starts before the first downbeat,
-     * the tracked pulses before that downbeat are left out with the stretch,
-     * and the map's origin sits on the downbeat (#859). Without the first
-     * sound the pulses are kept, since a pickup may be played on them.
+     * The same count, or -1: when the stretch is under {@link
+     * #UNMODELLED_LEAD_IN_PULSES}, the first tracked pulse is a bar's last, and
+     * nothing starts before the downbeat after it, that pulse is left out with
+     * the stretch and the map's origin sits on the downbeat (#859). More
+     * silent pulses than one are kept as the opening bar's rest, which is what
+     * a player who counted a bar in plays. Without the first sound the pulse
+     * is kept, since a pickup may be played on it.
      *
      * @param firstSoundSeconds when the first note starts, or NaN when that is
      *                          not known; a note up to the unmodelled fraction
      *                          of a pulse early still counts as on the downbeat
-     * @return the pulses of lead-in, or minus the tracked pulses left out
+     * @return the pulses of lead-in, or -1 when the first tracked pulse is
+     *         left out
      */
     public static int leadInPulses(double firstBeatSeconds, double pulseSeconds,
                                    int firstDownbeatPulse, int pulsesPerBar,
@@ -601,10 +604,9 @@ public record TempoMap(List<TempoSegment> segments, List<MeterChange> meterChang
             if (phase == 0) {
                 return 0;
             }
-            double downbeatSeconds = firstBeatSeconds + phase * pulseSeconds;
-            if (firstSoundSeconds
-                    >= downbeatSeconds - UNMODELLED_LEAD_IN_PULSES * pulseSeconds) {
-                return -phase;
+            if (phase == 1 && firstSoundSeconds
+                    >= firstBeatSeconds + (1 - UNMODELLED_LEAD_IN_PULSES) * pulseSeconds) {
+                return -1;
             }
         }
         // Guard the cast: a pathological interval (units confusion, say

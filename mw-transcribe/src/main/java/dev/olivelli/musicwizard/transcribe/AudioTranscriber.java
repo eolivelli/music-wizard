@@ -527,7 +527,7 @@ public final class AudioTranscriber {
         // lone tracked pulse carries no interval and falls back, keeping the
         // clip transcribable.
         // Known only where the line's notes were read before the beat: there
-        // they say whether a pickup is played on the pulses before the first
+        // they say whether a pickup is played on the pulse before the first
         // downbeat (#859).
         double firstSound = noteOnsets
                 ? mixMelody.melody().notes().stream()
@@ -1047,7 +1047,7 @@ public final class AudioTranscriber {
         }
         if (leadInPulses <= 0) {
             // Too short to model: the map's origin is the first tracked pulse,
-            // or the first downbeat when the pulses before it are left out.
+            // or the downbeat after it when that pulse is left out.
             return new TempoMap(
                     List.of(new TempoMap.TempoSegment(0,
                             firstBeatSeconds - leadInPulses * pulseSeconds, quarterBpm,

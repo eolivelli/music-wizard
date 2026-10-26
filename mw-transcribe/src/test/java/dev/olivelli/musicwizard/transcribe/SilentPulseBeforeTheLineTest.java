@@ -28,6 +28,7 @@ import dev.olivelli.musicwizard.core.model.TimeSignature;
 import dev.olivelli.musicwizard.testkit.SignalFactory;
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 
@@ -110,5 +111,18 @@ class SilentPulseBeforeTheLineTest {
         double pickup = score.beatGrid().orElseThrow().beatTimes().get(0);
 
         assertThat(score.tempoMap().secondsToBeats(pickup)).isCloseTo(3.0, within(1e-9));
+    }
+
+    @Test
+    @DisplayName("a bar counted in before the line keeps its bar of rest")
+    void aCountedInBarIsKept() {
+        double firstNote = 3 * BEAT + 0.10;
+        Score score = transcribe(firstNote, false, null);
+        List<Double> beats = score.beatGrid().orElseThrow().beatTimes();
+        assertThat(beats.get(0)).as("the fixture's tracker puts a pulse inside the stretch")
+                .isLessThan(TempoMap.UNMODELLED_LEAD_IN_PULSES * BEAT);
+        assertThat(beats.get(3)).isCloseTo(firstNote, within(BEAT / 4));
+
+        assertThat(score.tempoMap().secondsToBeats(beats.get(3))).isCloseTo(4.0, within(1e-9));
     }
 }
