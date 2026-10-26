@@ -220,6 +220,12 @@ public final class MelodyEstimator {
      */
     private static final double ONE_GESTURE_SEMITONES = 2;
 
+    /**
+     * The longest an attack an octave under its note may last and still be
+     * read as that note rather than as one of its own (#860).
+     */
+    static final double SUB_OCTAVE_ATTACK_SECONDS = 0.2;
+
     private MelodyEstimator() {
     }
 
@@ -246,7 +252,7 @@ public final class MelodyEstimator {
         Objects.requireNonNull(pitches, "pitches");
         return segment(pitches, null, 0, STEADY_SEMITONES,
                 RANGE_FLOOR_SEMITONES, RANGE_SPREAD_QUANTILE, MOST_OCTAVES_OUT,
-                ONE_GESTURE_SEMITONES).melody();
+                ONE_GESTURE_SEMITONES, false).melody();
     }
 
     /**
@@ -262,7 +268,7 @@ public final class MelodyEstimator {
         Objects.requireNonNull(envelope, "envelope");
         return segment(pitches, envelope, 0, STEADY_SEMITONES,
                 RANGE_FLOOR_SEMITONES, RANGE_SPREAD_QUANTILE, MOST_OCTAVES_OUT,
-                ONE_GESTURE_SEMITONES).melody();
+                ONE_GESTURE_SEMITONES, false).melody();
     }
 
     /**
@@ -287,6 +293,18 @@ public final class MelodyEstimator {
      */
     public static Segmented explain(PitchTrack pitches, OnsetEnvelope envelope,
                                     double tuningOffsetSemitones) {
+        return explain(pitches, envelope, tuningOffsetSemitones, false);
+    }
+
+    /**
+     * The same for a track read from a separated stem or from the whole signal.
+     *
+     * @param separated whether the track was read from a separated stem, where
+     *                  a short note an octave under the next is not taken for
+     *                  that note's attack (#860)
+     */
+    public static Segmented explain(PitchTrack pitches, OnsetEnvelope envelope,
+                                    double tuningOffsetSemitones, boolean separated) {
         Objects.requireNonNull(pitches, "pitches");
         Objects.requireNonNull(envelope, "envelope");
         if (!Double.isFinite(tuningOffsetSemitones)) {
@@ -295,7 +313,7 @@ public final class MelodyEstimator {
         }
         return segment(pitches, envelope, tuningOffsetSemitones, STEADY_SEMITONES,
                 RANGE_FLOOR_SEMITONES, RANGE_SPREAD_QUANTILE, MOST_OCTAVES_OUT,
-                ONE_GESTURE_SEMITONES);
+                ONE_GESTURE_SEMITONES, separated);
     }
 
     /**
@@ -317,7 +335,7 @@ public final class MelodyEstimator {
         }
         return segment(pitches, envelope, tuningOffsetSemitones, steadySemitones,
                 RANGE_FLOOR_SEMITONES, RANGE_SPREAD_QUANTILE, MOST_OCTAVES_OUT,
-                ONE_GESTURE_SEMITONES).melody();
+                ONE_GESTURE_SEMITONES, false).melody();
     }
 
     /**
@@ -335,6 +353,20 @@ public final class MelodyEstimator {
                                      double tuningOffsetSemitones, double steadySemitones,
                                      double rangeFloorSemitones, double rangeSpreadQuantile,
                                      int mostOctavesOut, double gestureSemitones) {
+        return estimate(pitches, envelope, tuningOffsetSemitones, steadySemitones,
+                rangeFloorSemitones, rangeSpreadQuantile, mostOctavesOut, gestureSemitones,
+                false);
+    }
+
+    /**
+     * The same for a track read from a separated stem or from the whole signal,
+     * in the sense of {@link #explain(PitchTrack, OnsetEnvelope, double, boolean)}.
+     */
+    public static NoteTrack estimate(PitchTrack pitches, OnsetEnvelope envelope,
+                                     double tuningOffsetSemitones, double steadySemitones,
+                                     double rangeFloorSemitones, double rangeSpreadQuantile,
+                                     int mostOctavesOut, double gestureSemitones,
+                                     boolean separated) {
         Objects.requireNonNull(pitches, "pitches");
         Objects.requireNonNull(envelope, "envelope");
         if (!Double.isFinite(tuningOffsetSemitones)) {
@@ -362,14 +394,15 @@ public final class MelodyEstimator {
                     + " non-negative, got: " + gestureSemitones);
         }
         return segment(pitches, envelope, tuningOffsetSemitones, steadySemitones,
-                rangeFloorSemitones, rangeSpreadQuantile, mostOctavesOut, gestureSemitones)
-                .melody();
+                rangeFloorSemitones, rangeSpreadQuantile, mostOctavesOut, gestureSemitones,
+                separated).melody();
     }
 
     private static Segmented segment(PitchTrack pitches, OnsetEnvelope envelope,
                                      double tuningOffsetSemitones, double steadySemitones,
                                      double rangeFloorSemitones, double rangeSpreadQuantile,
-                                     int mostOctavesOut, double gestureSemitones) {
+                                     int mostOctavesOut, double gestureSemitones,
+                                     boolean separated) {
         // Decided once for the whole track and before anything is cut: the
         // offset shifts where a semitone boundary falls, so a decision taken
         // per run would let one note of a phrase be rounded on a grid the next
@@ -399,6 +432,9 @@ public final class MelodyEstimator {
             runs.add(cut.run());
             frame = end;
         }
+        if (!separated) {
+            absorbSubOctaveAttacks(pitches, notes, startedBy, ofRun, runs);
+        }
         Folded folded = foldOctaves(notes, rangeFloorSemitones, rangeSpreadQuantile,
                 mostOctavesOut, gestureSemitones);
         List<Note> voices = folded.notes();
@@ -406,6 +442,95 @@ public final class MelodyEstimator {
                 new NoteTrack(PartRole.LEAD_VOCAL, "Voice", voices, trackConfidence(voices)),
                 new MelodyTrace(null, track(pitches, voicedFrames), tuning, folded.fold(),
                         runs, folded.gestures(), traced(voices, startedBy, ofRun, folded)));
+    }
+
+    /**
+     * Joins a short note that is a run of its own to the note opening the next
+     * run, where that note is an octave above it and the voice carries on
+     * between them (#860).
+     *
+     * <p>The shape is the tracker reading the sub-octave of a note while it
+     * speaks, and the decoder leaving the voiced state to make the leap; the
+     * octave fold cannot remove it, because the octave under a line's lower
+     * notes is still inside the line's band. A voice that pauses between the
+     * two is a note sung again, read an octave low, and is left to the fold.
+     * The note takes the attack's start, and the two runs are traced as one.
+     *
+     * <p>Not applied to a separated stem: through the separator the same
+     * shape was more often the attack read right and the note read an octave
+     * high.
+     */
+    private static void absorbSubOctaveAttacks(PitchTrack pitches, List<Note> notes,
+                                               List<String> startedBy, List<Integer> ofRun,
+                                               List<MelodyTrace.Run> runs) {
+        for (int i = 0; i + 1 < notes.size(); i++) {
+            Note attack = notes.get(i);
+            Note note = notes.get(i + 1);
+            int first = ofRun.get(i);
+            int last = ofRun.get(i + 1);
+            if (!MelodyTrace.Note.RUN.equals(startedBy.get(i))
+                    || first == last
+                    || note.midiPitch() - attack.midiPitch() != 12
+                    || attack.durationSeconds() > SUB_OCTAVE_ATTACK_SECONDS
+                    || note.onsetSeconds() - attack.offsetSeconds() >= MIN_NOTE_SECONDS
+                    || voicePausesBetween(pitches, attack, note)) {
+                continue;
+            }
+            notes.set(i, Note.ofSeconds(attack.onsetSeconds(),
+                    note.offsetSeconds() - attack.onsetSeconds(), note.midiPitch(),
+                    note.confidence()));
+            notes.remove(i + 1);
+            startedBy.remove(i + 1);
+            ofRun.remove(i + 1);
+            joinRuns(runs, first, last);
+            for (int later = i + 1; later < ofRun.size(); later++) {
+                ofRun.set(later, ofRun.get(later) - (last - first));
+            }
+        }
+    }
+
+    /** Folds runs {@code first} to {@code last} into one, the attack among its joined pieces. */
+    private static void joinRuns(List<MelodyTrace.Run> runs, int first, int last) {
+        List<MelodyTrace.Run> joined = runs.subList(first, last + 1);
+        int pieces = 0;
+        int held = 0;
+        int merged = 1;
+        int rearticulations = 0;
+        int count = -1;
+        for (MelodyTrace.Run run : joined) {
+            pieces += run.pieces();
+            held += run.held();
+            merged += run.joined();
+            rearticulations += run.rearticulations();
+            count += run.notes();
+        }
+        MelodyTrace.Run one = new MelodyTrace.Run(joined.get(0).fromSeconds(),
+                joined.get(joined.size() - 1).toSeconds(), pieces, held, merged,
+                rearticulations, count, joined.get(0).unassignedSeconds());
+        joined.clear();
+        runs.add(first, one);
+    }
+
+    /**
+     * Whether the voicedness between two notes dips the way {@link
+     * #voiceRestartsAt} asks of a re-articulation, against the first note's.
+     */
+    private static boolean voicePausesBetween(PitchTrack pitches, Note first, Note second) {
+        int[] span = {frameAt(pitches, first.onsetSeconds()),
+                      frameAt(pitches, first.offsetSeconds())};
+        double floor = REARTICULATION_DIP_SHARE * medianVoicedness(pitches, span);
+        for (int frame = span[1]; frame < frameAt(pitches, second.onsetSeconds()); frame++) {
+            if (pitches.voicedness()[frame] < floor) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Inverts {@link PitchTrack#timeOf}, which is where every note boundary was read. */
+    private static int frameAt(PitchTrack pitches, double seconds) {
+        return (int) Math.round((seconds * pitches.sampleRate() - pitches.windowSize() / 2.0)
+                / pitches.hopSize());
     }
 
     private static MelodyTrace.Track track(PitchTrack pitches, int voicedFrames) {

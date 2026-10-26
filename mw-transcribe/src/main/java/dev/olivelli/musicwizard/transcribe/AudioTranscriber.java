@@ -651,7 +651,8 @@ public final class AudioTranscriber {
                 stage.fact("floor", String.format(Locale.ROOT, "%.1f Hz", settings.melodyFloorHz()));
             }
             MelodyEstimator.Segmented segmented = mixMelody != null ? mixMelody
-                    : MelodyEstimator.explain(trackPitch(melodyAudio, settings), melodyEnvelope, tuning);
+                    : MelodyEstimator.explain(trackPitch(melodyAudio, settings), melodyEnvelope,
+                            tuning, separated);
             NoteTrack melody = segmented.melody();
             recordMelody(stage, segmented.trace().readFrom(
                     separated ? MelodyTrace.SEPARATED_VOCAL : MelodyTrace.FULL_MIX));
