@@ -185,7 +185,9 @@ public record MelodyTrace(
     }
 
     /**
-     * One unbroken run of voiced frames, and what the cutting made of it.
+     * One unbroken run of voiced frames, and what the cutting made of it. A
+     * sub-octave attack joined to its note across the decoder's leap is one
+     * run with it (#860).
      *
      * <p>{@code unassignedSeconds} is the run's own head, before the first piece
      * that held a pitch: a singer arriving at a note from below spends it
@@ -199,7 +201,8 @@ public record MelodyTrace(
      * @param held               how many of them held a pitch long enough to
      *                           become a note
      * @param joined             how many held pieces were joined to their
-     *                           neighbour for rounding to the same semitone
+     *                           neighbour for rounding to the same semitone,
+     *                           or as its attack an octave under it
      * @param rearticulations    boundaries the onset envelope added inside a note
      * @param notes              notes the run produced
      * @param unassignedSeconds  how much of the run no note covers

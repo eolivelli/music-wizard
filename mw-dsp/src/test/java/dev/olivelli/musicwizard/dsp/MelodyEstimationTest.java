@@ -746,21 +746,25 @@ class MelodyEstimationTest {
     class SubOctaveAttacks {
 
         /**
-         * B5 held, a rest, then an attack of the given pitch and length before
-         * A5 (#860), the frames between the two unvoiced and with the voicedness
-         * given: the decoder leaves the voiced state to make a leap even where
-         * the sound carries on.
+         * The same track with the frames from {@code from} to {@code to} at the
+         * voicedness given: the decoder leaves the voiced state to make a leap
+         * even where the sound carries on.
          */
+        private static PitchTrack voicedness(PitchTrack plain, int from, int to,
+                                             double voicedness) {
+            double[] changed = plain.voicedness().clone();
+            for (int frame = from; frame < to; frame++) {
+                changed[frame] = voicedness;
+            }
+            return new PitchTrack(plain.frequenciesHz(), plain.voiced(), changed, RATE,
+                    PitchTracker.WINDOW, PitchTracker.HOP);
+        }
+
+        /** B5 held, a rest, then an attack of the given pitch and length before A5 (#860). */
         private static PitchTrack attack(Double pitch, int frames, int gapFrames,
                                          double gapVoicedness) {
-            PitchTrack plain = track(83.0, 40, null, 15, pitch, frames, null, gapFrames,
-                    81.0, 56);
-            double[] voicedness = plain.voicedness().clone();
-            for (int frame = 55 + frames; frame < 55 + frames + gapFrames; frame++) {
-                voicedness[frame] = gapVoicedness;
-            }
-            return new PitchTrack(plain.frequenciesHz(), plain.voiced(), voicedness, RATE,
-                    PitchTracker.WINDOW, PitchTracker.HOP);
+            return voicedness(track(83.0, 40, null, 15, pitch, frames, null, gapFrames,
+                    81.0, 56), 55 + frames, 55 + frames + gapFrames, gapVoicedness);
         }
 
         private static PitchTrack attack(Double pitch, int frames, int gapFrames) {
@@ -817,19 +821,23 @@ class MelodyEstimationTest {
         @Test
         @DisplayName("and one the voice did not restart for")
         void aNoteInsideARunIsKept() {
-            PitchTrack plain = track(83.0, 40, 69.0, 12, null, 2, 81.0, 56);
-            double[] voicedness = plain.voicedness().clone();
-            voicedness[52] = 0.9;
-            voicedness[53] = 0.9;
-            PitchTrack pitches = new PitchTrack(plain.frequenciesHz(), plain.voiced(),
-                    voicedness, RATE, PitchTracker.WINDOW, PitchTracker.HOP);
+            PitchTrack pitches = voicedness(track(83.0, 40, 69.0, 12, null, 2, 81.0, 56),
+                    52, 54, 0.9);
 
             assertThat(pitches(MelodyEstimator.estimate(pitches)))
                     .containsExactly(83, 69, 81);
         }
 
         @Test
-        @DisplayName("the joined note is traced to the run it starts in")
+        @DisplayName("and one that leads into its note within one run")
+        void anAttackInsideTheRunIsKept() {
+            assertThat(pitches(MelodyEstimator.estimate(
+                    track(83.0, 40, null, 15, 69.0, 12, 81.0, 56))))
+                    .containsExactly(83, 69, 81);
+        }
+
+        @Test
+        @DisplayName("the two runs are traced as one, the attack among its joined pieces")
         void isTraced() {
             MelodyTrace trace = MelodyEstimator.explain(attack(69.0, 12, 2),
                     new OnsetEnvelope(new double[400], 172.0), 0).trace();
@@ -838,8 +846,29 @@ class MelodyEstimationTest {
                     .containsExactly(MelodyTrace.Note.RUN, MelodyTrace.Note.RUN);
             assertThat(trace.notes()).extracting(MelodyTrace.Note::run)
                     .containsExactly(0, 1);
-            assertThat(trace.runs()).extracting(MelodyTrace.Run::notes)
-                    .containsExactly(1, 1, 0);
+            assertThat(trace.runs()).hasSize(2);
+            MelodyTrace.Run joined = trace.runs().get(1);
+            assertThat(joined.fromSeconds()).isEqualTo(trace.notes().get(1).fromSeconds());
+            assertThat(joined.toSeconds()).isEqualTo(trace.notes().get(1).toSeconds());
+            assertThat(joined.joined()).isEqualTo(1);
+            assertThat(joined.held() - joined.joined() + joined.rearticulations())
+                    .isEqualTo(joined.notes())
+                    .isEqualTo(1);
+        }
+
+        @Test
+        @DisplayName("later notes keep pointing at their own runs")
+        void laterRunsAreRenumbered() {
+            MelodyTrace trace = MelodyEstimator.explain(
+                    voicedness(track(83.0, 40, null, 15, 69.0, 12, null, 2, 81.0, 56,
+                            null, 15, 79.0, 40), 67, 69, 0.9),
+                    new OnsetEnvelope(new double[600], 172.0), 0).trace();
+
+            assertThat(trace.notes()).extracting(MelodyTrace.Note::midiPitch)
+                    .containsExactly(83, 81, 79);
+            assertThat(trace.notes()).extracting(MelodyTrace.Note::run)
+                    .containsExactly(0, 1, 2);
+            assertThat(trace.runs()).hasSize(3);
         }
     }
 

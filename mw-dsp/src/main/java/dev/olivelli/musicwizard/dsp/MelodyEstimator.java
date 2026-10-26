@@ -416,15 +416,16 @@ public final class MelodyEstimator {
     }
 
     /**
-     * Joins a short note opening a run to the note it leads into where that
-     * note is an octave above it and the voice carries on between them (#860).
+     * Joins a short note that is a run of its own to the note opening the next
+     * run, where that note is an octave above it and the voice carries on
+     * between them (#860).
      *
      * <p>The shape is the tracker reading the sub-octave of a note while it
      * speaks, and the decoder leaving the voiced state to make the leap; the
      * octave fold cannot remove it, because the octave under a line's lower
      * notes is still inside the line's band. A voice that pauses between the
      * two is a note sung again, read an octave low, and is left to the fold.
-     * The note that follows takes the attack's start.
+     * The note takes the attack's start, and the two runs are traced as one.
      */
     private static void absorbSubOctaveAttacks(PitchTrack pitches, List<Note> notes,
                                                List<String> startedBy, List<Integer> ofRun,
@@ -432,25 +433,49 @@ public final class MelodyEstimator {
         for (int i = 0; i + 1 < notes.size(); i++) {
             Note attack = notes.get(i);
             Note note = notes.get(i + 1);
+            int first = ofRun.get(i);
+            int last = ofRun.get(i + 1);
             if (!MelodyTrace.Note.RUN.equals(startedBy.get(i))
+                    || first == last
                     || note.midiPitch() - attack.midiPitch() != 12
                     || attack.durationSeconds() > SUB_OCTAVE_ATTACK_SECONDS
                     || note.onsetSeconds() - attack.offsetSeconds() >= MIN_NOTE_SECONDS
                     || voicePausesBetween(pitches, attack, note)) {
                 continue;
             }
-            int run = ofRun.get(i + 1);
-            MelodyTrace.Run left = runs.get(run);
-            runs.set(run, new MelodyTrace.Run(left.fromSeconds(), left.toSeconds(),
-                    left.pieces(), left.held(), left.joined(), left.rearticulations(),
-                    left.notes() - 1, left.unassignedSeconds()));
             notes.set(i, Note.ofSeconds(attack.onsetSeconds(),
                     note.offsetSeconds() - attack.onsetSeconds(), note.midiPitch(),
                     note.confidence()));
             notes.remove(i + 1);
             startedBy.remove(i + 1);
             ofRun.remove(i + 1);
+            joinRuns(runs, first, last);
+            for (int later = i + 1; later < ofRun.size(); later++) {
+                ofRun.set(later, ofRun.get(later) - (last - first));
+            }
         }
+    }
+
+    /** Folds runs {@code first} to {@code last} into one, the attack among its joined pieces. */
+    private static void joinRuns(List<MelodyTrace.Run> runs, int first, int last) {
+        List<MelodyTrace.Run> joined = runs.subList(first, last + 1);
+        int pieces = 0;
+        int held = 0;
+        int merged = 1;
+        int rearticulations = 0;
+        int count = -1;
+        for (MelodyTrace.Run run : joined) {
+            pieces += run.pieces();
+            held += run.held();
+            merged += run.joined();
+            rearticulations += run.rearticulations();
+            count += run.notes();
+        }
+        MelodyTrace.Run one = new MelodyTrace.Run(joined.get(0).fromSeconds(),
+                joined.get(joined.size() - 1).toSeconds(), pieces, held, merged,
+                rearticulations, count, joined.get(0).unassignedSeconds());
+        joined.clear();
+        runs.add(first, one);
     }
 
     /**
