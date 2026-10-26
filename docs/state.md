@@ -261,7 +261,9 @@ the counts.
 A first tracked
 beat a frame after the origin no longer opens the page on a bar of rests:
 a lead-in shorter than a fraction of a pulse is left out of the tempo map,
-whose origin then sits on that beat (#824). Behind the same gate, the key
+whose origin then sits on that beat (#824) — or, on a line alone whose
+first note is the first downbeat, on that downbeat, leaving out a tracked
+pulse in the silence before it that is the bar's last (#859). Behind the same gate, the key
 is read from the line's notes rather than from the chords named over it,
 which on a single line are a chord per note or two leaning to the dominant
 (#825): the scale names the signature, and the tonic note and the minor's

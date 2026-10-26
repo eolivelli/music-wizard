@@ -277,6 +277,68 @@ class TempoMapTest {
         }
 
         @Test
+        @DisplayName("leaves out a first pulse nothing is played on when it is a bar's last")
+        void aSilentLastPulseIsLeftOut() {
+            // #859: the tracker's first pulse a frame in, in the silence before
+            // a line whose first note is the downbeat one pulse later.
+            for (double first : new double[] {0.046, 0.0}) {
+                List<Double> pulses = pulsesFrom(first);
+                double downbeat = pulses.get(1);
+                TempoMap map = TempoMap.fromBeatTimes(
+                        pulses, TimeSignature.FOUR_FOUR, 1.0, 1, 4, downbeat + 0.01);
+
+                assertThat(map.segments()).as("first %s", first)
+                        .hasSize(pulses.size() - 2)
+                        .allMatch(segment -> segment.provenance() == Provenance.MEASURED);
+                assertThat(map.beatsToSeconds(0.0)).isEqualTo(downbeat);
+                assertThat(map.secondsToBeats(pulses.get(0))).isZero();
+                for (int i = 1; i < pulses.size(); i++) {
+                    MusicalTime at = map.toMusicalTime(map.secondsToBeats(pulses.get(i)));
+                    assertThat(at.bar()).as("pulse %d", i).isEqualTo((i - 1) / 4);
+                    assertThat(at.beatInBar()).as("pulse %d", i)
+                            .isCloseTo((i - 1) % 4, within(1e-9));
+                }
+            }
+        }
+
+        @Test
+        @DisplayName("keeps more silent pulses than one before the downbeat as the opening bar")
+        void aCountedInBarIsKept() {
+            List<Double> pulses = pulsesFrom(0.046);
+            for (int phase = 2; phase < 4; phase++) {
+                TempoMap map = TempoMap.fromBeatTimes(pulses, TimeSignature.FOUR_FOUR, 1.0,
+                        phase, 4, pulses.get(phase));
+
+                assertThat(map.segments().get(0).provenance()).as("phase %d", phase)
+                        .isEqualTo(Provenance.DERIVED);
+                assertThat(map.secondsToBeats(pulses.get(phase))).as("phase %d", phase)
+                        .isCloseTo(4.0, within(1e-9));
+            }
+        }
+
+        @Test
+        @DisplayName("keeps a first pulse before the downbeat when a note starts on it")
+        void aPlayedPulseBeforeTheDownbeatIsKept() {
+            List<Double> pulses = pulsesFrom(0.046);
+            for (double sound : new double[] {pulses.get(0), Double.NaN}) {
+                TempoMap map = TempoMap.fromBeatTimes(
+                        pulses, TimeSignature.FOUR_FOUR, 1.0, 1, 4, sound);
+
+                assertThat(map.segments().get(0).provenance()).as("sound at %s", sound)
+                        .isEqualTo(Provenance.DERIVED);
+                assertThat(map.secondsToBeats(pulses.get(0))).isCloseTo(3.0, within(1e-9));
+            }
+            // With the downbeat the grid's last pulse, no interval opens the map
+            // on it, and the pulses are kept.
+            List<Double> two = List.of(0.046, 0.546);
+            TempoMap kept = TempoMap.fromBeatTimes(two, TimeSignature.FOUR_FOUR, 1.0, 1, 4, 1.0);
+            assertThat(kept.secondsToBeats(0.546)).isCloseTo(4.0, within(1e-9));
+            TempoMap atOrigin = TempoMap.fromBeatTimes(
+                    List.of(0.0, 0.5), TimeSignature.FOUR_FOUR, 1.0, 1, 4, 1.0);
+            assertThat(atOrigin.secondsToBeats(0.5)).isCloseTo(1.0, within(1e-9));
+        }
+
+        @Test
         @DisplayName("models a longer stretch before a first downbeat as a whole bar")
         void aLongerStretchBeforeADownbeatIsABarOfLeadIn() {
             // Past the fraction the map leaves out, a lead-in is modelled so a
@@ -310,6 +372,26 @@ class TempoMapTest {
             assertThat(TempoMap.leadInPulses(1.1, 0.5, 0, 4))
                     .as("a stretch of two pulses before a downbeat rounds to the bar")
                     .isEqualTo(4);
+
+            double downbeat = under + 0.5;
+            double early = TempoMap.UNMODELLED_LEAD_IN_PULSES * 0.5;
+            assertThat(TempoMap.leadInPulses(under, 0.5, 1, 4, downbeat))
+                    .as("nothing before the downbeat: the pulse before it is left out")
+                    .isEqualTo(-1);
+            assertThat(TempoMap.leadInPulses(under, 0.5, 1, 4, downbeat - early))
+                    .as("a note the unmodelled fraction early is still on the downbeat")
+                    .isEqualTo(-1);
+            assertThat(TempoMap.leadInPulses(under, 0.5, 1, 4, downbeat - early * 1.01))
+                    .as("a note before that is a pickup").isEqualTo(3);
+            assertThat(TempoMap.leadInPulses(under, 0.5, 1, 4, Double.NaN))
+                    .as("an unknown start keeps the pulse").isEqualTo(3);
+            assertThat(TempoMap.leadInPulses(under, 0.5, 0, 4, Double.NaN)).isZero();
+            assertThat(TempoMap.leadInPulses(under, 0.5, 0, 4, 10.0)).isZero();
+            assertThat(TempoMap.leadInPulses(under, 0.5, 2, 4, under + 1.0))
+                    .as("two silent pulses are the opening bar's rest").isEqualTo(2);
+            assertThat(TempoMap.leadInPulses(at, 0.5, 1, 4, at + 0.5))
+                    .as("past the bound the stretch is modelled whatever the first sound")
+                    .isEqualTo(3);
         }
     }
 
