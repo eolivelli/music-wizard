@@ -564,7 +564,7 @@ class TempoOverrideTest {
         // a downbeat within a fraction of a pulse of the origin is the origin,
         // not a whole bar of derived lead-in at some enormous rate.
         TempoMap map = AudioTranscriber.constantPulseFrom(
-                120, TimeSignature.FOUR_FOUR, 0.046, Provenance.SUPPLIED, 1.0, 0, 4);
+                120, TimeSignature.FOUR_FOUR, 0.046, Provenance.SUPPLIED, 1.0, 0, 4, Double.NaN);
 
         assertThat(provenances(map)).containsExactly(Provenance.SUPPLIED);
         assertThat(map.beatsToSeconds(0.0)).isEqualTo(0.046);
@@ -575,9 +575,32 @@ class TempoOverrideTest {
         // The same stretch before a pulse that is not a downbeat keeps the
         // lead-in its phase needs.
         TempoMap phased = AudioTranscriber.constantPulseFrom(
-                120, TimeSignature.FOUR_FOUR, 0.046, Provenance.SUPPLIED, 1.0, 2, 4);
+                120, TimeSignature.FOUR_FOUR, 0.046, Provenance.SUPPLIED, 1.0, 2, 4, Double.NaN);
         assertThat(provenances(phased)).containsExactly(Provenance.DERIVED, Provenance.SUPPLIED);
         assertThat(phased.secondsToBeats(0.046)).isCloseTo(2.0, within(1e-9));
+    }
+
+    @Test
+    @DisplayName("puts the origin on the first downbeat when nothing is played before it")
+    void silentPulsesBeforeTheDownbeatAreLeftOut() {
+        // #859 through the supplied-tempo builder: the downbeat is where the
+        // typed pulse puts it, a pulse after the first tracked one.
+        for (double first : new double[] {0.046, 0.0}) {
+            TempoMap map = AudioTranscriber.constantPulseFrom(
+                    120, TimeSignature.FOUR_FOUR, first, Provenance.SUPPLIED, 1.0, 1, 4,
+                    first + 0.5);
+
+            assertThat(provenances(map)).as("first %s", first)
+                    .containsExactly(Provenance.SUPPLIED);
+            assertThat(map.beatsToSeconds(0.0)).isCloseTo(first + 0.5, within(1e-12));
+            assertThat(map.secondsToBeats(first)).isZero();
+            assertThat(map.secondsToBeats(first + 2.5)).isCloseTo(4.0, within(1e-9));
+        }
+
+        TempoMap pickup = AudioTranscriber.constantPulseFrom(
+                120, TimeSignature.FOUR_FOUR, 0.046, Provenance.SUPPLIED, 1.0, 1, 4, 0.046);
+        assertThat(provenances(pickup)).containsExactly(Provenance.DERIVED, Provenance.SUPPLIED);
+        assertThat(pickup.secondsToBeats(0.046)).isCloseTo(3.0, within(1e-9));
     }
 
     @Test

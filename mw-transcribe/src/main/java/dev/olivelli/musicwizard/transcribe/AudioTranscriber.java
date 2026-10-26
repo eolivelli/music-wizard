@@ -24,6 +24,7 @@ import dev.olivelli.musicwizard.core.model.BeatGrid;
 import dev.olivelli.musicwizard.core.model.Chord;
 import dev.olivelli.musicwizard.core.model.ChordProgression;
 import dev.olivelli.musicwizard.core.model.Confidence;
+import dev.olivelli.musicwizard.core.model.Note;
 import dev.olivelli.musicwizard.core.model.NoteTrack;
 import dev.olivelli.musicwizard.core.model.Provenance;
 import dev.olivelli.musicwizard.core.model.PitchSpelling;
@@ -525,6 +526,13 @@ public final class AudioTranscriber {
         // correcting the tempo in 6/8 would silently move every bar line. A
         // lone tracked pulse carries no interval and falls back, keeping the
         // clip transcribable.
+        // Known only where the line's notes were read before the beat: there
+        // they say whether a pickup is played on the pulses before the first
+        // downbeat (#859).
+        double firstSound = noteOnsets
+                ? mixMelody.melody().notes().stream()
+                        .mapToDouble(Note::onsetSeconds).min().orElse(Double.NaN)
+                : Double.NaN;
         TempoMap tempoMap;
         if (beatTimes.size() >= 2 && settings.tempoOverride() == null) {
             // The pulse the bars were counted in, not the meter's counted beat:
@@ -532,7 +540,7 @@ public final class AudioTranscriber {
             // outright rather than tiling a bar with pulses that do not fill it.
             tempoMap = TempoMap.fromBeatTimes(beatTimes, meter,
                     pulseQuarters.orElse(meter.beatUnitQuarters()),
-                    downbeat.phase(), pulsesPerBar);
+                    downbeat.phase(), pulsesPerBar, firstSound);
         } else {
             // A typed tempo, or a clip with no interval to infer one from —
             // both take the figure and its origin from one place, so a tempo
@@ -546,7 +554,7 @@ public final class AudioTranscriber {
             tempoMap = constantPulseFrom(fallback.pulsesPerMinute(), meter,
                     beatTimes.get(0), fallback.provenance(),
                     pulseQuarters.orElse(meter.beatUnitQuarters()),
-                    downbeat.phase(), pulsesPerBar);
+                    downbeat.phase(), pulsesPerBar, firstSound);
         }
 
         // Where the meter came from, on the map itself: until now the run said
@@ -564,7 +572,7 @@ public final class AudioTranscriber {
         // A line alone has nothing under it to read chords from; the trace
         // keeps what the estimator read (#843).
         boolean withheld = noteOnsets && !named.isEmpty();
-        ChordProgression chords = withheld ? noChordThroughout(named) : named;
+        ChordProgression chords = withheld ? noChordThroughout(named, tempoMap) : named;
         if (withheld) {
             progress.accept("a line alone: nothing sounds under it to read chords from,"
                     + " so none is named");
@@ -706,13 +714,19 @@ public final class AudioTranscriber {
 
     /**
      * The confidence is unknown rather than the estimator's: that figure rated
-     * the labels being withheld.
+     * the labels being withheld. Never opened before the map's origin, or the
+     * chart, barred from the chords' own start, would open a bar earlier than
+     * the staff (#859).
      */
-    static ChordProgression noChordThroughout(ChordProgression estimated) {
+    static ChordProgression noChordThroughout(ChordProgression estimated, TempoMap map) {
         List<Chord> spans = estimated.chords();
-        return new ChordProgression(List.of(Chord.noChord(
-                spans.getFirst().startSeconds(), spans.getLast().endSeconds(),
-                Confidence.UNKNOWN)), Confidence.UNKNOWN);
+        double end = spans.getLast().endSeconds();
+        double origin = map.beatsToSeconds(0.0);
+        double start = origin < end
+                ? Math.max(spans.getFirst().startSeconds(), origin)
+                : spans.getFirst().startSeconds();
+        return new ChordProgression(List.of(Chord.noChord(start, end, Confidence.UNKNOWN)),
+                Confidence.UNKNOWN);
     }
 
     /**
@@ -987,7 +1001,7 @@ public final class AudioTranscriber {
         // "phase unknown", not a claim that a bar holds one pulse, and the
         // tiling check would read it as the claim.
         return buildConstantPulseFrom(pulsesPerMinute, meter, firstBeatSeconds, provenance,
-                meter.beatUnitQuarters(), 0, 1);
+                meter.beatUnitQuarters(), 0, 1, Double.NaN);
     }
 
     /**
@@ -1003,37 +1017,41 @@ public final class AudioTranscriber {
      *
      * @param firstDownbeatPulse index of a tracked pulse that begins a bar
      * @param pulsesPerBar       tracked pulses in one bar
+     * @param firstSoundSeconds  when the first note starts, or NaN when that
+     *                           is not known
      */
     static TempoMap constantPulseFrom(double pulsesPerMinute, TimeSignature meter,
                                       double firstBeatSeconds, Provenance provenance,
                                       double pulseQuarters, int firstDownbeatPulse,
-                                      int pulsesPerBar) {
+                                      int pulsesPerBar, double firstSoundSeconds) {
         TempoMap.requireBarPhase(meter, pulseQuarters, firstDownbeatPulse, pulsesPerBar);
         return buildConstantPulseFrom(pulsesPerMinute, meter, firstBeatSeconds, provenance,
-                pulseQuarters, firstDownbeatPulse, pulsesPerBar);
+                pulseQuarters, firstDownbeatPulse, pulsesPerBar, firstSoundSeconds);
     }
 
     private static TempoMap buildConstantPulseFrom(
             double pulsesPerMinute, TimeSignature meter, double firstBeatSeconds,
             Provenance provenance, double pulseQuarters, int firstDownbeatPulse,
-            int pulsesPerBar) {
+            int pulsesPerBar, double firstSoundSeconds) {
         // Built first so that a bad tempo is rejected in the units it was typed
         // in, before any of the arithmetic below can turn it into something else.
         TempoMap constant = TempoMap.constantPulse(pulsesPerMinute, meter, provenance);
-        if (!(firstBeatSeconds > 0)) {
+        double quarterBpm = constant.initialTempo();
+        double pulseSeconds = 60.0 * pulseQuarters / quarterBpm;
+        int leadInPulses = TempoMap.leadInPulses(Math.max(0, firstBeatSeconds), pulseSeconds,
+                firstDownbeatPulse, pulsesPerBar, firstSoundSeconds);
+        if (!(firstBeatSeconds > 0) && (leadInPulses >= 0 || firstBeatSeconds != 0)) {
             // The first pulse is already the origin, so there is no lead-in and
             // nothing to anchor: the constant map carries the phase as it is.
             return constant;
         }
-        double quarterBpm = constant.initialTempo();
-        double pulseSeconds = 60.0 * pulseQuarters / quarterBpm;
-
-        int leadInPulses = TempoMap.leadInPulses(
-                firstBeatSeconds, pulseSeconds, firstDownbeatPulse, pulsesPerBar);
-        if (leadInPulses == 0) {
-            // Too short to model: the map's origin is the first tracked pulse.
+        if (leadInPulses <= 0) {
+            // Too short to model: the map's origin is the first tracked pulse,
+            // or the first downbeat when the pulses before it are left out.
             return new TempoMap(
-                    List.of(new TempoMap.TempoSegment(0, firstBeatSeconds, quarterBpm, provenance)),
+                    List.of(new TempoMap.TempoSegment(0,
+                            firstBeatSeconds - leadInPulses * pulseSeconds, quarterBpm,
+                            provenance)),
                     List.of(new TempoMap.MeterChange(0, meter)));
         }
         double leadInTempo = 60.0 * leadInPulses * pulseQuarters / firstBeatSeconds;

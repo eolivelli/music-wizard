@@ -343,7 +343,7 @@ public record TempoMap(List<TempoSegment> segments, List<MeterChange> meterChang
         Objects.requireNonNull(timeSignature, "timeSignature");
         // Phase unknown: one pulse to the "bar" makes the congruence vacuous,
         // so the lead-in is exactly what the pulse-only rule always gave.
-        return buildFromBeatTimes(beatSeconds, timeSignature, pulseQuarters, 0, 1);
+        return buildFromBeatTimes(beatSeconds, timeSignature, pulseQuarters, 0, 1, Double.NaN);
     }
 
     /**
@@ -359,7 +359,8 @@ public record TempoMap(List<TempoSegment> segments, List<MeterChange> meterChang
      * <p>The phase cannot be honoured when the first pulse falls at exactly
      * second 0: there is no lead-in to lengthen, and the anchor outranks the
      * phase. That corner keeps the phase-unaware behaviour rather than half of
-     * the promise.
+     * the promise, unless the pulses before the downbeat are left out — see
+     * {@link #leadInPulses(double, double, int, int, double)}.
      *
      * @param firstDownbeatPulse index into {@code beatSeconds} of a pulse that
      *                           begins a bar; only its remainder modulo
@@ -373,9 +374,25 @@ public record TempoMap(List<TempoSegment> segments, List<MeterChange> meterChang
     public static TempoMap fromBeatTimes(List<Double> beatSeconds, TimeSignature timeSignature,
                                          double pulseQuarters, int firstDownbeatPulse,
                                          int pulsesPerBar) {
+        return fromBeatTimes(beatSeconds, timeSignature, pulseQuarters, firstDownbeatPulse,
+                pulsesPerBar, Double.NaN);
+    }
+
+    /**
+     * The same map, told when the music starts, so that tracked pulses nothing
+     * is played on can be left out with the stretch before them — see
+     * {@link #leadInPulses(double, double, int, int, double)}.
+     *
+     * @param firstSoundSeconds when the first note starts, or NaN when that is
+     *                          not known
+     */
+    public static TempoMap fromBeatTimes(List<Double> beatSeconds, TimeSignature timeSignature,
+                                         double pulseQuarters, int firstDownbeatPulse,
+                                         int pulsesPerBar, double firstSoundSeconds) {
         requireBarPhase(timeSignature, pulseQuarters, firstDownbeatPulse, pulsesPerBar);
         return buildFromBeatTimes(beatSeconds, timeSignature, pulseQuarters,
-                Math.floorMod(firstDownbeatPulse, pulsesPerBar), pulsesPerBar);
+                Math.floorMod(firstDownbeatPulse, pulsesPerBar), pulsesPerBar,
+                firstSoundSeconds);
     }
 
     /**
@@ -411,7 +428,7 @@ public record TempoMap(List<TempoSegment> segments, List<MeterChange> meterChang
 
     private static TempoMap buildFromBeatTimes(
             List<Double> beatSeconds, TimeSignature timeSignature, double pulseQuarters,
-            int firstDownbeatPulse, int pulsesPerBar) {
+            int firstDownbeatPulse, int pulsesPerBar, double firstSoundSeconds) {
         Objects.requireNonNull(beatSeconds, "beatSeconds");
         Objects.requireNonNull(timeSignature, "timeSignature");
         // Bounded, not merely positive. A pulse of 1e-320 or Double.MAX_VALUE is
@@ -448,12 +465,22 @@ public record TempoMap(List<TempoSegment> segments, List<MeterChange> meterChang
         // beat off the grid in 6/8. When the downbeat phase is known, the count
         // is furthermore chosen so the first downbeat lands on a bar line, and
         // a lead-in too short to be a pulse is left out of the map altogether,
-        // whose origin then sits on the first tracked pulse -- see leadInPulses.
-        // Whatever the count, every tracked pulse sits on a whole pulse from the
-        // origin.
-        int leadInPulses = firstBeat > 0
-                ? leadInPulses(firstBeat, firstInterval, firstDownbeatPulse, pulsesPerBar)
-                : 0;
+        // whose origin then sits on the first tracked pulse, or on the first
+        // downbeat when nothing is played before it -- see leadInPulses.
+        // Whatever the count, every tracked pulse the map holds sits on a whole
+        // pulse from the origin.
+        int leadInPulses = leadInPulses(firstBeat, firstInterval, firstDownbeatPulse,
+                pulsesPerBar, firstSoundSeconds);
+        if (!(firstBeat > 0)) {
+            // No lead-in to lengthen; only leaving pulses out honours the phase.
+            leadInPulses = Math.min(0, leadInPulses);
+        }
+        if (-leadInPulses > beatSeconds.size() - 2) {
+            // No interval starts at the downbeat to open the map with.
+            leadInPulses = firstBeat > 0
+                    ? leadInPulses(firstBeat, firstInterval, firstDownbeatPulse, pulsesPerBar)
+                    : 0;
+        }
 
         // Written so that a quarter-note pulse multiplies by an exact 1.0 in the
         // same association order the pulse-agnostic version used, which leaves
@@ -472,7 +499,7 @@ public record TempoMap(List<TempoSegment> segments, List<MeterChange> meterChang
             built.add(new TempoSegment(
                     0, 0.0, 60.0 * leadInPulses * pulseQuarters / firstBeat, Provenance.DERIVED));
         }
-        for (int i = 0; i < beatSeconds.size() - 1; i++) {
+        for (int i = Math.max(0, -leadInPulses); i < beatSeconds.size() - 1; i++) {
             double start = beatSeconds.get(i);
             double interval = beatSeconds.get(i + 1) - start;
             built.add(new TempoSegment(
@@ -531,6 +558,25 @@ public record TempoMap(List<TempoSegment> segments, List<MeterChange> meterChang
      */
     public static int leadInPulses(double firstBeatSeconds, double pulseSeconds,
                                    int firstDownbeatPulse, int pulsesPerBar) {
+        return leadInPulses(firstBeatSeconds, pulseSeconds, firstDownbeatPulse, pulsesPerBar,
+                Double.NaN);
+    }
+
+    /**
+     * The same count, or a negative one: when the stretch is under {@link
+     * #UNMODELLED_LEAD_IN_PULSES} and nothing starts before the first downbeat,
+     * the tracked pulses before that downbeat are left out with the stretch,
+     * and the map's origin sits on the downbeat (#859). Without the first
+     * sound the pulses are kept, since a pickup may be played on them.
+     *
+     * @param firstSoundSeconds when the first note starts, or NaN when that is
+     *                          not known; a note up to the unmodelled fraction
+     *                          of a pulse early still counts as on the downbeat
+     * @return the pulses of lead-in, or minus the tracked pulses left out
+     */
+    public static int leadInPulses(double firstBeatSeconds, double pulseSeconds,
+                                   int firstDownbeatPulse, int pulsesPerBar,
+                                   double firstSoundSeconds) {
         // Bounded, not merely positive, for the reason the pulse bounds in
         // buildFromBeatTimes are: the widest bar a TimeSignature can state is
         // 256 quarter beats and the shortest pulse accepted there is 1/1024,
@@ -551,8 +597,15 @@ public record TempoMap(List<TempoSegment> segments, List<MeterChange> meterChang
         // cannot overflow the sum into a phase it never named; the count side
         // cannot either, since both terms are bounded above.
         int phase = Math.floorMod(firstDownbeatPulse, pulsesPerBar);
-        if (ratio < UNMODELLED_LEAD_IN_PULSES && phase == 0) {
-            return 0;
+        if (ratio < UNMODELLED_LEAD_IN_PULSES) {
+            if (phase == 0) {
+                return 0;
+            }
+            double downbeatSeconds = firstBeatSeconds + phase * pulseSeconds;
+            if (firstSoundSeconds
+                    >= downbeatSeconds - UNMODELLED_LEAD_IN_PULSES * pulseSeconds) {
+                return -phase;
+            }
         }
         // Guard the cast: a pathological interval (units confusion, say
         // samples for seconds) would otherwise overflow silently into a

@@ -196,7 +196,10 @@ one file must not disagree about where beat one is (#84, #501). A lead-in
 shorter than a fraction of a pulse is left out instead, and the map's origin
 is the first tracked beat (#824): a tracker never reports a beat at the
 origin, and a whole bar of lead-in for that frame was a bar of rests on every
-page.
+page. Where the line's notes are known before the map is built — a line
+alone — and none starts before the first downbeat, the tracked pulses before
+that downbeat are left out with the stretch, and the origin is the downbeat
+(#859); without the notes they are kept, since a pickup may be played on them.
 
 On the chart, where the grid's downbeats are every one of them a plausible
 bar, they *are* the bar lines (#187); a veto (`evenThroughout`) refuses a
