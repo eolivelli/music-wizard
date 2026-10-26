@@ -742,6 +742,108 @@ class MelodyEstimationTest {
     }
 
     @Nested
+    @DisplayName("an attack read an octave under its note")
+    class SubOctaveAttacks {
+
+        /**
+         * B5 held, a rest, then an attack of the given pitch and length before
+         * A5 (#860), the frames between the two unvoiced and with the voicedness
+         * given: the decoder leaves the voiced state to make a leap even where
+         * the sound carries on.
+         */
+        private static PitchTrack attack(Double pitch, int frames, int gapFrames,
+                                         double gapVoicedness) {
+            PitchTrack plain = track(83.0, 40, null, 15, pitch, frames, null, gapFrames,
+                    81.0, 56);
+            double[] voicedness = plain.voicedness().clone();
+            for (int frame = 55 + frames; frame < 55 + frames + gapFrames; frame++) {
+                voicedness[frame] = gapVoicedness;
+            }
+            return new PitchTrack(plain.frequenciesHz(), plain.voiced(), voicedness, RATE,
+                    PitchTracker.WINDOW, PitchTracker.HOP);
+        }
+
+        private static PitchTrack attack(Double pitch, int frames, int gapFrames) {
+            return attack(pitch, frames, gapFrames, 0.9);
+        }
+
+        @Test
+        @DisplayName("is joined to the note it leads into, which keeps its start")
+        void isJoinedToItsNote() {
+            PitchTrack pitches = attack(69.0, 12, 2);
+            NoteTrack melody = MelodyEstimator.estimate(pitches);
+
+            assertThat(pitches(melody)).containsExactly(83, 81);
+            assertThat(melody.notes().get(1).onsetSeconds())
+                    .isCloseTo(pitches.timeOf(55), within(1e-9));
+            assertThat(melody.notes().get(1).offsetSeconds())
+                    .isCloseTo(pitches.timeOf(pitches.frameCount() - 1) + frameSeconds(),
+                            within(1e-9));
+        }
+
+        @Test
+        @DisplayName("but a sub-octave note held longer is a leap and stays")
+        void aLongerNoteIsALeap() {
+            int frames = (int) Math.ceil(
+                    MelodyEstimator.SUB_OCTAVE_ATTACK_SECONDS / frameSeconds()) + 1;
+
+            assertThat(pitches(MelodyEstimator.estimate(attack(69.0, frames, 2))))
+                    .containsExactly(83, 69, 81);
+        }
+
+        @Test
+        @DisplayName("and so does one the voice pauses after, which is a note sung again")
+        void aPauseAfterItKeepsIt() {
+            assertThat(pitches(MelodyEstimator.estimate(attack(69.0, 12, 2, 0.1))))
+                    .containsExactly(83, 69, 81);
+        }
+
+        @Test
+        @DisplayName("and so does one with a rest after it")
+        void aRestAfterItKeepsIt() {
+            assertThat(pitches(MelodyEstimator.estimate(attack(69.0, 12, 8))))
+                    .containsExactly(83, 69, 81);
+        }
+
+        @Test
+        @DisplayName("and one that is not an octave under it")
+        void anotherIntervalIsKept() {
+            assertThat(pitches(MelodyEstimator.estimate(attack(70.0, 12, 2))))
+                    .containsExactly(83, 70, 81);
+            assertThat(pitches(MelodyEstimator.estimate(attack(93.0, 12, 2))))
+                    .containsExactly(83, 93, 81);
+        }
+
+        @Test
+        @DisplayName("and one the voice did not restart for")
+        void aNoteInsideARunIsKept() {
+            PitchTrack plain = track(83.0, 40, 69.0, 12, null, 2, 81.0, 56);
+            double[] voicedness = plain.voicedness().clone();
+            voicedness[52] = 0.9;
+            voicedness[53] = 0.9;
+            PitchTrack pitches = new PitchTrack(plain.frequenciesHz(), plain.voiced(),
+                    voicedness, RATE, PitchTracker.WINDOW, PitchTracker.HOP);
+
+            assertThat(pitches(MelodyEstimator.estimate(pitches)))
+                    .containsExactly(83, 69, 81);
+        }
+
+        @Test
+        @DisplayName("the joined note is traced to the run it starts in")
+        void isTraced() {
+            MelodyTrace trace = MelodyEstimator.explain(attack(69.0, 12, 2),
+                    new OnsetEnvelope(new double[400], 172.0), 0).trace();
+
+            assertThat(trace.notes()).extracting(MelodyTrace.Note::startedBy)
+                    .containsExactly(MelodyTrace.Note.RUN, MelodyTrace.Note.RUN);
+            assertThat(trace.notes()).extracting(MelodyTrace.Note::run)
+                    .containsExactly(0, 1);
+            assertThat(trace.runs()).extracting(MelodyTrace.Run::notes)
+                    .containsExactly(1, 1, 0);
+        }
+    }
+
+    @Nested
     @DisplayName("a pitch that never settles")
     class Glides {
 

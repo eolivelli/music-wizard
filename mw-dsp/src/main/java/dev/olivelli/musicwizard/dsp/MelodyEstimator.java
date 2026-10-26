@@ -220,6 +220,12 @@ public final class MelodyEstimator {
      */
     private static final double ONE_GESTURE_SEMITONES = 2;
 
+    /**
+     * The longest an attack an octave under its note may last and still be
+     * read as that note rather than as one of its own (#860).
+     */
+    static final double SUB_OCTAVE_ATTACK_SECONDS = 0.2;
+
     private MelodyEstimator() {
     }
 
@@ -399,6 +405,7 @@ public final class MelodyEstimator {
             runs.add(cut.run());
             frame = end;
         }
+        absorbSubOctaveAttacks(pitches, notes, startedBy, ofRun, runs);
         Folded folded = foldOctaves(notes, rangeFloorSemitones, rangeSpreadQuantile,
                 mostOctavesOut, gestureSemitones);
         List<Note> voices = folded.notes();
@@ -406,6 +413,66 @@ public final class MelodyEstimator {
                 new NoteTrack(PartRole.LEAD_VOCAL, "Voice", voices, trackConfidence(voices)),
                 new MelodyTrace(null, track(pitches, voicedFrames), tuning, folded.fold(),
                         runs, folded.gestures(), traced(voices, startedBy, ofRun, folded)));
+    }
+
+    /**
+     * Joins a short note opening a run to the note it leads into where that
+     * note is an octave above it and the voice carries on between them (#860).
+     *
+     * <p>The shape is the tracker reading the sub-octave of a note while it
+     * speaks, and the decoder leaving the voiced state to make the leap; the
+     * octave fold cannot remove it, because the octave under a line's lower
+     * notes is still inside the line's band. A voice that pauses between the
+     * two is a note sung again, read an octave low, and is left to the fold.
+     * The note that follows takes the attack's start.
+     */
+    private static void absorbSubOctaveAttacks(PitchTrack pitches, List<Note> notes,
+                                               List<String> startedBy, List<Integer> ofRun,
+                                               List<MelodyTrace.Run> runs) {
+        for (int i = 0; i + 1 < notes.size(); i++) {
+            Note attack = notes.get(i);
+            Note note = notes.get(i + 1);
+            if (!MelodyTrace.Note.RUN.equals(startedBy.get(i))
+                    || note.midiPitch() - attack.midiPitch() != 12
+                    || attack.durationSeconds() > SUB_OCTAVE_ATTACK_SECONDS
+                    || note.onsetSeconds() - attack.offsetSeconds() >= MIN_NOTE_SECONDS
+                    || voicePausesBetween(pitches, attack, note)) {
+                continue;
+            }
+            int run = ofRun.get(i + 1);
+            MelodyTrace.Run left = runs.get(run);
+            runs.set(run, new MelodyTrace.Run(left.fromSeconds(), left.toSeconds(),
+                    left.pieces(), left.held(), left.joined(), left.rearticulations(),
+                    left.notes() - 1, left.unassignedSeconds()));
+            notes.set(i, Note.ofSeconds(attack.onsetSeconds(),
+                    note.offsetSeconds() - attack.onsetSeconds(), note.midiPitch(),
+                    note.confidence()));
+            notes.remove(i + 1);
+            startedBy.remove(i + 1);
+            ofRun.remove(i + 1);
+        }
+    }
+
+    /**
+     * Whether the voicedness between two notes dips the way {@link
+     * #voiceRestartsAt} asks of a re-articulation, against the first note's.
+     */
+    private static boolean voicePausesBetween(PitchTrack pitches, Note first, Note second) {
+        int[] span = {frameAt(pitches, first.onsetSeconds()),
+                      frameAt(pitches, first.offsetSeconds())};
+        double floor = REARTICULATION_DIP_SHARE * medianVoicedness(pitches, span);
+        for (int frame = span[1]; frame < frameAt(pitches, second.onsetSeconds()); frame++) {
+            if (pitches.voicedness()[frame] < floor) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Inverts {@link PitchTrack#timeOf}, which is where every note boundary was read. */
+    private static int frameAt(PitchTrack pitches, double seconds) {
+        return (int) Math.round((seconds * pitches.sampleRate() - pitches.windowSize() / 2.0)
+                / pitches.hopSize());
     }
 
     private static MelodyTrace.Track track(PitchTrack pitches, int voicedFrames) {
