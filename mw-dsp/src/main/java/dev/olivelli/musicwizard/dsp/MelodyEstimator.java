@@ -457,7 +457,8 @@ public final class MelodyEstimator {
      * The note takes the attack's start, and the two runs are traced as one.
      *
      * <p>Not applied to a separated stem: through the separator the same
-     * shape was the attack read right and the note read an octave high.
+     * shape was more often the attack read right and the note read an octave
+     * high.
      */
     private static void absorbSubOctaveAttacks(PitchTrack pitches, List<Note> notes,
                                                List<String> startedBy, List<Integer> ofRun,
