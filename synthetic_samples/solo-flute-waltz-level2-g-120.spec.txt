@@ -1,0 +1,22 @@
+title: Solo flute waltz, level two - eighths and rests, three quarter beats to a bar in G
+genre: folk-pop
+style: pop-ballad
+tempo: 120
+meter: 3/4
+key: G major
+seed: 13
+melody: flute
+melody-level: 2
+accompaniment: none
+bars:
+# A line alone in three (#869): nothing but the notes says where the bar is.
+# I-vi-IV-V, half cadence at each pass
+G Em C D
+G Em C D
+# IV-V-I, then the loop again
+C D G G
+G Em C D
+# ii-V-I and a plagal close onto the tonic
+Am D G Em
+C D G G
+C C G G

@@ -1371,6 +1371,26 @@ class SyntheticMeters(unittest.TestCase):
             stated)
 
 
+class LineMeters(unittest.TestCase):
+    """MeterSweep's line-alone rows state a meter each, held to the spec or
+    the `.melody.txt` that states it (#869)."""
+
+    def test_the_line_rows_want_what_their_truth_states(self):
+        rows = sweep_jobs("LINE_JOBS")
+        self.assertTrue(any(where == "synthetic_samples" for where, _, _ in rows))
+        self.assertTrue(any(where == "samples" for where, _, _ in rows))
+        for where, file, want in rows:
+            stem = Path(file).stem
+            if where == "synthetic_samples":
+                stated = synthetic.spec_meter(synthetic.parse_spec(
+                    synthetic.CORPUS / (stem + ".spec.txt")))
+            else:
+                stated = solo.parse_melody_text(
+                    (solo.SAMPLES / (stem + ".melody.txt")).read_text(encoding="utf-8")
+                )["headers"]["meter"]
+            self.assertEqual(stated, want, file)
+
+
 class MeterReadingRow(unittest.TestCase):
     """#703: the reading's confidence comes off the score file, so this pins
     what the file has to hold and how the figure is rounded."""
@@ -2712,6 +2732,17 @@ class SoloPageRules(unittest.TestCase):
         self.assertEqual(2, read["measures"])
         self.assertEqual((0, "major"), read["key"])
 
+    def test_the_meter_is_the_one_the_page_opens_with(self):
+        page = self.page("<attributes><time><beats>3</beats><beat-type>4</beat-type></time>"
+                         "</attributes>" + self.note("C", 4, 3) + "</measure>"
+                         "<measure number=\"2\"><attributes><time><beats>4</beats>"
+                         "<beat-type>4</beat-type></time></attributes>"
+                         + self.note("D", 4, 4) + "</measure>")
+        read = solo.page_notes(page)
+        self.assertEqual("3/4", read["meter"])
+        self.assertEqual("3/4 OK", solo.meter_verdict(read, "3/4"))
+        self.assertEqual("3/4 WRONG", solo.meter_verdict(read, "4/4"))
+
     def test_a_tie_is_one_note_at_the_length_a_player_holds(self):
         page = self.page(self.note("C", 4, 2) + self.note("G", 4, 2, "start")
                          + "</measure><measure number=\"2\">" + self.note("G", 4, 1, "stop")
@@ -2915,10 +2946,10 @@ class SoloMelodyText(unittest.TestCase):
     def test_the_sheet_row_is_the_same_columns_as_a_package_s(self):
         reference = [(4.0, 1.0, 60), (5.0, 1.0, 64), (6.0, 2.0, 67)]
         page = {"notes": [(4.0, 1.0, 60), (5.0, 1.0, 64), (6.0, 1.0, 67)],
-                "measures": 2, "key": (0, "major")}
+                "measures": 2, "key": (0, "major"), "meter": "4/4"}
         row = solo.sheet_row("take", page, "Tempo   222.2 BPM\n",
-                             {"tempo": "111", "key": "C major"}, reference, 2)
-        self.assertEqual("  take: bars=2/2  tempo 222.2/111 (x2.00)  shift +0.00"
+                             {"tempo": "111", "key": "C major"}, reference, 2, "4/4")
+        self.assertEqual("  take: bars=2/2  meter 4/4 OK  tempo 222.2/111 (x2.00)  shift +0.00"
                          "  notes=3/3  placed 100.0%  held 66.7%  key OK", row)
 
 

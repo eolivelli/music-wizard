@@ -1,0 +1,24 @@
+title: Solo flute waltz, level three - notes held across the bar line, three quarter beats to a bar in E minor
+genre: folk-pop
+style: pop-ballad
+tempo: 132
+meter: 3/4
+key: E minor
+seed: 41
+melody: flute
+melody-level: 3
+accompaniment: none
+bars:
+# A line alone in three (#869): nothing but the notes says where the bar is.
+# Verse: the minor loop i-VI-III-VII, twice
+Em C G D
+Em C G D
+# Bridge: the Andalusian descent i-VII-VI-V, twice
+Em D C B
+Em D C B
+# Chorus: one loop pass, then iv-V turned aside onto VI
+Em C G D
+Am B C C
+# Close: iv-V-i twice, the tonic held
+Am B Em Em
+Am B Em Em

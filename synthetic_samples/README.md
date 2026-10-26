@@ -52,9 +52,9 @@ two thirds of the header and a 12/8 package's at two thirds of it as well, so
 two packages meant to be counted at the same rate do not carry the same number.
 A style is a set of patterns of a particular bar length and feel rather than a
 parameter, so only the pairs listed above are written and the arranger refuses
-any other outright. It refuses a melody outside 4/4 too: `MelodyGenerator`'s
-rhythm templates are bars of four (#715), so those packages carry
-`melody: none`.
+any other outright. It refuses a melody outside 4/4 too, except a graded one
+in 3/4: `MelodyGenerator`'s style templates are bars of four (#715), and the
+`melody-level` ramp is written in bars of four and of three.
 
 Grids draw from the shared harmonic vocabulary of mainstream Western popular
 music: I–V–vi–IV and its rotations, I–IV–V, the 50s doo-wop I–vi–IV–V, the
@@ -87,14 +87,17 @@ and piano, each at every level of the ramp, in keys and at tempi the
 `melody-level*` packages do not use — and they exist for the page rather
 than for the tracker: `tools/score-solo.py` takes every accompaniment-free
 package through the playable part and scores what was engraved, on the grid,
-against the package's own MIDI — bar count, tempo, the whole-bar shift the
+against the package's own MIDI — bar count, meter, tempo, the whole-bar shift the
 page opens with, note placement, note length and key signature. The two
 instruments are the pair: a piano's attacks are heard by the onset envelope
 and a flute's are not, so the flute rows are what the beat read from the
 melody's notes was measured on (#814), and the piano rows are the control —
 their notes place as they did on the flux alone, and what the change did
 cost them is the lead-in bar of #824 where the first tracked beat moved. The syncopation level is
-#826 and the key column #825. Its baseline is
+#826 and the key column #825. The `solo-*-waltz-*` packages are the same in
+3/4, for the meter column: a line alone states its bar in its notes and
+nothing else (#869). The level-three flute waltz is tracked at the dotted
+quarter, so it is barred in four (#870). Its baseline is
 `tools/baselines/score-solo.txt`, diffed by premerge and CI like the others.
 
 A package with a `pad` is scored on chords like any other, and reads far worse

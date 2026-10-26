@@ -16,6 +16,7 @@
 
 package dev.olivelli.musicwizard.teacher;
 
+import dev.olivelli.musicwizard.core.model.TimeSignature;
 import dev.olivelli.musicwizard.testkit.MidiFixtures.SequenceBuilder.PartBuilder;
 import java.util.ArrayList;
 import java.util.List;
@@ -103,6 +104,19 @@ final class MelodyGenerator {
             this.bars = bars;
             this.endings = endings;
         }
+
+        private double[][][] bars(TimeSignature meter) {
+            return TimeSignature.THREE_FOUR.equals(meter) ? WALTZ_BARS[ordinal()] : bars;
+        }
+
+        private double[][][] endings(TimeSignature meter) {
+            return TimeSignature.THREE_FOUR.equals(meter) ? WALTZ_ENDINGS[ordinal()] : endings;
+        }
+    }
+
+    /** Whether a meter has a graded melody written for it (#715). */
+    static boolean isGraded(TimeSignature meter) {
+        return TimeSignature.FOUR_FOUR.equals(meter) || TimeSignature.THREE_FOUR.equals(meter);
     }
 
     /** Level one: nothing but a chord tone on every beat. */
@@ -152,6 +166,55 @@ final class MelodyGenerator {
             {{0, 1.5}, {1.5, 2.5}},
             {{0.5, 3.5}},
             {{0, 3}},
+    };
+
+    /**
+     * The same ramp in bars of three quarter beats, indexed by level: each level
+     * adds what the 4/4 one adds, and only beat one is strong.
+     */
+    private static final double[][][][] WALTZ_BARS = {
+            {
+                    {{0, 1}, {1, 1}, {2, 1}},
+            },
+            {
+                    {{0, 1}, {1, 1}, {2, 1}},
+                    {{0, 2}, {2, 1}},
+                    {{0, 1}, {1, 0.5}, {1.5, 0.5}, {2, 1}},
+                    {{0, 1.5}, {1.5, 0.5}, {2, 1}},
+                    {{0, 1}, {2, 1}},
+            },
+            {
+                    {{0, 2}, {2, 1.5}},
+                    {{0, 1}, {1, 1}, {2, 2}},
+                    {{0, 1.5}, {1.5, 0.5}, {2, 1}},
+                    {{0, 2}, {2, 1}},
+                    {{0, 0.5}, {0.5, 0.5}, {1, 2.5}},
+            },
+            {
+                    {{0.5, 1}, {1.5, 0.5}, {2, 1}},
+                    {{0, 1}, {1.5, 0.5}, {2, 1.5}},
+                    {{0, 0.5}, {0.5, 1}, {1.5, 1.5}},
+                    {{0.5, 1.5}, {2, 1}},
+            },
+    };
+
+    private static final double[][][][] WALTZ_ENDINGS = {
+            null,
+            {
+                    {{0, 3}},
+                    {{0, 2}},
+                    {{0, 1}, {1, 2}},
+            },
+            {
+                    {{0, 2}, {2, 2}},
+                    {{0, 3}},
+                    {{0, 1.5}, {1.5, 1.5}},
+            },
+            {
+                    {{0, 1.5}, {1.5, 1.5}},
+                    {{0.5, 2.5}},
+                    {{0, 3}},
+            },
     };
 
     private final SampleSpec spec;
@@ -219,7 +282,8 @@ final class MelodyGenerator {
                 continue; // the note before is still sounding: this is the tie
             }
             ChordSymbol chord = spec.bars().get(bar).chordAt(note[0], spec.meter());
-            boolean strong = note[0] == 0 || note[0] == barBeats / 2;
+            boolean strong = note[0] == 0
+                    || spec.meter().numerator() % 2 == 0 && note[0] == barBeats / 2;
             current = level.chordTonesOnly || strong ? nextChordTone(chord, rng) : step(rng);
             part.note(at, note[1], current, humanize(rng, strong ? 88 : 80));
             busyUntil = at + note[1];
@@ -227,9 +291,10 @@ final class MelodyGenerator {
     }
 
     private double[][] pickLeveled(Random rng, int bar) {
-        double[][][] templates = level.endings != null && bar % 4 == 3
-                ? level.endings
-                : level.bars;
+        double[][][] endings = level.endings(spec.meter());
+        double[][][] templates = endings != null && bar % 4 == 3
+                ? endings
+                : level.bars(spec.meter());
         return templates[rng.nextInt(templates.length)];
     }
 
