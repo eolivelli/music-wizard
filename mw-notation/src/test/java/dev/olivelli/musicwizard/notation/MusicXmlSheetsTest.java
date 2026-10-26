@@ -191,6 +191,19 @@ class MusicXmlSheetsTest {
     }
 
     @Test
+    @DisplayName("a line alone writes no symbol, and its staff is the one the symbols ride")
+    void aLineAloneWritesNoSymbol() {
+        QuantizedScore alone = lineAlone();
+        String xml = MusicXmlExport.leadSheet(alone, melodyOf(alone));
+
+        assertValidMusicXml("line alone", xml);
+        assertThat(xml).doesNotContain("<harmony");
+        assertThat(xml).isEqualTo(leadSheetXml().replaceAll("(?s) *<harmony>.*?</harmony>\n", ""));
+        assertThat(MusicXmlExport.chordChart(alone.score()))
+                .as("the chart still says so").contains("<kind text=\"N.C.\">none</kind>");
+    }
+
+    @Test
     @DisplayName("opens the symbols on the pickup, cut to it")
     void symbolsOpenOnThePickup() {
         Document document = parse(leadSheetXml());
@@ -598,6 +611,18 @@ class MusicXmlSheetsTest {
         Score score = Score.empty(map, 60)
                 .withTrack(melody)
                 .withChords(new ChordProgression(chords, Confidence.CERTAIN));
+        return Fixtures.quantized(score, GridResolution.HALF_BEAT, GridResolution.HALF_BEAT,
+                GridResolution.HALF_BEAT, GridResolution.HALF_BEAT);
+    }
+
+    /** {@link #leadSheet}'s melody under one no-chord span, as a line alone is (#861). */
+    private static QuantizedScore lineAlone() {
+        Score withChords = leadSheet().score();
+        Score score = Score.empty(withChords.tempoMap(), withChords.durationSeconds())
+                .withTrack(melodyOf(leadSheet()))
+                .withChords(new ChordProgression(List.of(
+                        Chord.noChord(0, 8, Confidence.of(0.0)).quantizedTo(0, 16)),
+                        Confidence.of(0.0)));
         return Fixtures.quantized(score, GridResolution.HALF_BEAT, GridResolution.HALF_BEAT,
                 GridResolution.HALF_BEAT, GridResolution.HALF_BEAT);
     }

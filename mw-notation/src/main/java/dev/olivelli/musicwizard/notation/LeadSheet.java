@@ -90,8 +90,9 @@ public final class LeadSheet {
                 // line: the staff below carries both already, and a lead sheet
                 // that printed the tempo twice would be reporting one estimate
                 // as two.
-                .add(pickup -> Optional.of(
-                        ChordChart.chordNamesBlock(score, bars, false, pickup)))
+                .add(pickup -> ChartLayout.namesAChord(bars)
+                        ? Optional.of(ChordChart.chordNamesBlock(score, bars, false, pickup))
+                        : Optional.empty())
                 // The staff is the pickup's own source, so it is the one
                 // context that ignores its argument.
                 .add(pickup -> Optional.of(staff.lilyPond()))
