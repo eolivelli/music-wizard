@@ -501,8 +501,8 @@ public final class MeterEstimator {
     private static final double ON_THE_BEAT = 0.25;
 
     /**
-     * How long a note must last, in pulses to the next note's onset, to count as
-     * held: two pulses or more, read to the nearest pulse.
+     * How long, in pulses to the next note's onset, a note must last to count
+     * as held: past the next beat, read to the nearest pulse.
      */
     private static final double HELD = 1.5;
 

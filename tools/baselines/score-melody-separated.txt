@@ -32,8 +32,11 @@ Melody, note by note against each package's own MIDI melody track
   solo-flute-level2-eb-66: notes=102/87  F1@50ms 24.3%  F1@100ms 34.9%  pitch 61.2%  voiced 85.9%
   solo-flute-level3-em-92: notes=95/78  F1@50ms 40.5%  F1@100ms 57.8%  pitch 79.2%  voiced 93.0%
   solo-flute-level4-a-138: notes=91/96  F1@50ms 9.6%  F1@100ms 15.0%  pitch 29.8%  voiced 64.1%
+  solo-flute-waltz-level2-g-120: notes=57/64  F1@50ms 14.9%  F1@100ms 16.5%  pitch 22.7%  voiced 48.4%
+  solo-flute-waltz-level3-em-132: notes=63/52  F1@50ms 47.0%  F1@100ms 69.6%  pitch 80.5%  voiced 94.4%
   solo-piano-level1-ab-104: notes=14/128  F1@50ms 0.0%  F1@100ms 0.0%  pitch 0.0%  voiced 3.8%
   solo-piano-level2-dm-63: notes=5/82  F1@50ms 0.0%  F1@100ms 0.0%  pitch 0.2%  voiced 0.7%
   solo-piano-level2-f-120: notes=11/116  F1@50ms 0.0%  F1@100ms 0.0%  pitch 0.0%  voiced 2.2%
   solo-piano-level3-e-88: notes=7/78  F1@50ms 0.0%  F1@100ms 2.4%  pitch 0.1%  voiced 1.7%
   solo-piano-level4-cm-144: notes=1/97  F1@50ms 0.0%  F1@100ms 0.0%  pitch 0.4%  voiced 0.4%
+  solo-piano-waltz-level2-f-100: notes=2/54  F1@50ms 0.0%  F1@100ms 0.0%  pitch 0.2%  voiced 1.5%
