@@ -69,8 +69,11 @@ import java.util.Set;
  */
 public final class PlayableMelody {
 
-    /** The staff name the reduced part is engraved under. */
-    public static final String TRACK_NAME = "Voice (playable)";
+    /**
+     * The staff name a voice's reduced part is engraved under. Any other
+     * melody keeps its own name: its part is played by what played it (#862).
+     */
+    public static final String TRACK_NAME = NoteTrack.VOICE + " (playable)";
 
     /**
      * How long a note may be, in quarter-note beats, and still be read as an
@@ -264,7 +267,9 @@ public final class PlayableMelody {
         }
         Returned returned = returned(reduced, score, excursion);
         return new ReductionTrace(
-                new NoteTrack(PartRole.LEAD_VOCAL, TRACK_NAME, returned.heads(),
+                new NoteTrack(PartRole.LEAD_VOCAL,
+                        NoteTrack.VOICE.equals(melody.name()) ? TRACK_NAME : melody.name(),
+                        returned.heads(),
                         melody.confidence()),
                 sources(claims, groups, chosen, claimBeats),
                 heads(score.lyrics(), groups, chosen, returned));

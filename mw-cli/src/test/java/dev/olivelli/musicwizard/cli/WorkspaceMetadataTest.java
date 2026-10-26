@@ -116,6 +116,16 @@ class WorkspaceMetadataTest {
     }
 
     @Test
+    @DisplayName("init records the instrument, and info shows it")
+    void initRecordsTheInstrument() {
+        Path root = init(audioSource(), "tone", "--instrument", " Flauto ");
+
+        assertThat(Workspace.open(root).instrument()).contains("Flauto");
+        assertThat(CliRunner.run("info", root.toString()).out())
+                .containsPattern("Instrument +Flauto");
+    }
+
+    @Test
     @DisplayName("a second analysis serves the cache and still writes the metadata")
     void theCachedPathCarriesItToo() {
         // The entry is keyed on the recording and the options, so it holds a

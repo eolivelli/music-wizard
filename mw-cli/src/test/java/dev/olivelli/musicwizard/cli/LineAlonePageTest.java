@@ -121,4 +121,32 @@ class LineAlonePageTest {
         assertThat(counted).isPositive();
         assertThat(out("lead-playable.musicxml")).doesNotContain("<alter>");
     }
+
+    @Test
+    @DisplayName("the playable part is not called a voice (#862)")
+    void thePlayablePartIsCalledLead() throws IOException {
+        assertThat(out("lead-playable.ly")).contains("instrumentName = \"Lead\"");
+        assertThat(out("lead-playable.musicxml")).contains("<part-name>Lead</part-name>");
+    }
+
+    @Test
+    @DisplayName("and is called what the user says played it, from then on")
+    void theUserNamesTheInstrument() throws IOException {
+        CliRunner.Result named = CliRunner.run("analyze", workspace.toString(),
+                "--melody", "--skip-separation", "--time-signature", "4/4",
+                "--instrument", "Flauto");
+        assertThat(named.exitCode()).as(named.all()).isZero();
+        assertThat(named.out()).contains("reusing the cached analysis");
+        CliRunner.Result again = CliRunner.run("analyze", workspace.toString(),
+                "--melody", "--skip-separation", "--time-signature", "4/4");
+        assertThat(again.exitCode()).as(again.all()).isZero();
+        CliRunner.Result render = CliRunner.run("render", workspace.toString(),
+                "--parts", "lead,playable", "--no-pdf");
+        assertThat(render.exitCode()).as(render.all()).isZero();
+
+        for (String page : List.of("lead", "lead-playable")) {
+            assertThat(out(page + ".ly")).contains("instrumentName = \"Flauto\"");
+            assertThat(out(page + ".musicxml")).contains("<part-name>Flauto</part-name>");
+        }
+    }
 }

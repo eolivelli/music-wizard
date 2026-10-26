@@ -257,6 +257,20 @@ class WorkspaceTest {
         }
 
         @Test
+        @DisplayName("records the instrument without disturbing the title, and keeps it after")
+        void recordsTheInstrument() {
+            Workspace workspace = newWorkspace();
+            workspace.updateMetadata("Yesterday", "The Beatles");
+
+            workspace.updateInstrument("Flauto");
+            workspace.updateMetadata("Today", "The Beatles");
+            workspace.updateConfig(workspace.readDescriptor().config());
+
+            assertThat(reopen(workspace.root()).instrument()).contains("Flauto");
+            assertThat(workspace.title()).contains("Today");
+        }
+
+        @Test
         @DisplayName("workspace preferences override the defaults")
         void workspaceConfigOverridesDefaults() {
             Workspace workspace = newWorkspace();

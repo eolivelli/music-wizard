@@ -439,7 +439,7 @@ public final class MelodyEstimator {
                 mostOctavesOut, gestureSemitones);
         List<Note> voices = folded.notes();
         return new Segmented(
-                new NoteTrack(PartRole.LEAD_VOCAL, "Voice", voices, trackConfidence(voices)),
+                new NoteTrack(PartRole.LEAD_VOCAL, NoteTrack.VOICE, voices, trackConfidence(voices)),
                 new MelodyTrace(null, track(pitches, voicedFrames), tuning, folded.fold(),
                         runs, folded.gestures(), traced(voices, startedBy, ofRun, folded)));
     }

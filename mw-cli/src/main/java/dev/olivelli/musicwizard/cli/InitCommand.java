@@ -53,6 +53,12 @@ final class InitCommand implements Callable<Integer> {
     @Option(names = "--artist", description = "Artist name, used on the printed score.")
     String artist;
 
+    @Option(names = "--instrument", paramLabel = "NAME",
+            description = "What plays the melody, e.g. Flute: the name its staff is"
+                    + " printed under. Without it, a line playing alone is called Lead"
+                    + " and anything else Voice.")
+    String instrument;
+
     @Override
     public Integer call() {
         Path target = workspaceDirectory != null
@@ -69,6 +75,9 @@ final class InitCommand implements Callable<Integer> {
         Workspace workspace = Workspace.create(target, sourceFile);
         if (title != null || artist != null) {
             workspace.updateMetadata(title, artist);
+        }
+        if (instrument != null && !instrument.isBlank()) {
+            workspace.updateInstrument(instrument.strip());
         }
 
         System.out.println("Created workspace " + workspace.root());

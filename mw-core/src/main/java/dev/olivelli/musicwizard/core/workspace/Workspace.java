@@ -81,6 +81,7 @@ public final class Workspace {
      * @param title            title, when known
      * @param artist           artist, when known
      * @param config           per-workspace preference overrides
+     * @param instrument       what plays the melody, as the user named it
      */
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record Descriptor(
@@ -90,7 +91,8 @@ public final class Workspace {
             String createdAt,
             String title,
             String artist,
-            MusicWizardConfig config) {
+            MusicWizardConfig config,
+            String instrument) {
     }
 
     private final Path root;
@@ -152,7 +154,8 @@ public final class Workspace {
                     Instant.now().toString(),
                     null,
                     null,
-                    MusicWizardConfig.empty()));
+                    MusicWizardConfig.empty(),
+                    null));
             return workspace;
         } catch (IOException | RuntimeException e) {
             // Otherwise a failure part-way through leaves a directory that cannot
@@ -538,12 +541,26 @@ public final class Workspace {
         return Optional.ofNullable(readDescriptor().artist());
     }
 
+    /** What the user said plays the melody, if anything. */
+    public Optional<String> instrument() {
+        return Optional.ofNullable(readDescriptor().instrument());
+    }
+
+    /** Records what plays the melody, leaving everything else untouched. */
+    public void updateInstrument(String instrument) {
+        Descriptor current = readDescriptor();
+        writeDescriptor(new Descriptor(
+                current.schemaVersion(), current.sourceFileName(), current.sourceSha256(),
+                current.createdAt(), current.title(), current.artist(), current.config(),
+                instrument));
+    }
+
     /** Records title and artist metadata, leaving everything else untouched. */
     public void updateMetadata(String title, String artist) {
         Descriptor current = readDescriptor();
         writeDescriptor(new Descriptor(
                 current.schemaVersion(), current.sourceFileName(), current.sourceSha256(),
-                current.createdAt(), title, artist, current.config()));
+                current.createdAt(), title, artist, current.config(), current.instrument()));
     }
 
     /** Replaces the per-workspace preference layer. */
@@ -551,7 +568,8 @@ public final class Workspace {
         Descriptor current = readDescriptor();
         writeDescriptor(new Descriptor(
                 current.schemaVersion(), current.sourceFileName(), current.sourceSha256(),
-                current.createdAt(), current.title(), current.artist(), config));
+                current.createdAt(), current.title(), current.artist(), config,
+                current.instrument()));
     }
 
     static String sha256(Path file) {
