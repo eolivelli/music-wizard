@@ -288,7 +288,8 @@ public final class OctaveSweep {
             if (reference.isEmpty()) {
                 continue;
             }
-            List<Span> estimate = estimate(front(benchmark.getValue(), separated), band);
+            List<Span> estimate =
+                    estimate(front(benchmark.getValue(), separated), band, separated);
             int frames = (int) (reference.get(reference.size() - 1).end() / FRAME_SECONDS);
             for (int frame = 0; frame < frames; frame++) {
                 int want = soundingAt(reference, frame * FRAME_SECONDS);
@@ -339,8 +340,9 @@ public final class OctaveSweep {
                                boolean separated, double asked) throws Exception {
         for (Map.Entry<String, Path> benchmark : benchmarks.entrySet()) {
             Front front = front(benchmark.getValue(), separated);
-            List<Span> unfolded = estimate(front, new double[] {band[0], band[1], 0, band[3]});
-            List<Span> folded = estimate(front, band);
+            List<Span> unfolded =
+                    estimate(front, new double[] {band[0], band[1], 0, band[3]}, separated);
+            List<Span> folded = estimate(front, band, separated);
             List<Span> reference = truth(benchmark.getValue());
             int moved = 0;
             int rightBefore = 0;
@@ -382,7 +384,8 @@ public final class OctaveSweep {
             if (reference.isEmpty()) {
                 continue;
             }
-            List<Span> estimate = estimate(front(benchmark.getValue(), separated), band);
+            List<Span> estimate =
+                    estimate(front(benchmark.getValue(), separated), band, separated);
             double at50 = noteF1(estimate, reference, TOLERANCES[0]);
             double at100 = noteF1(estimate, reference, TOLERANCES[1]);
             double[] framewise = framewise(estimate, reference);
@@ -548,10 +551,10 @@ public final class OctaveSweep {
 
     // ------------------------------------------------------------- the stage
 
-    private static List<Span> estimate(Front front, double[] band) {
+    private static List<Span> estimate(Front front, double[] band, boolean separated) {
         NoteTrack track = MelodyEstimator.estimate(
                 front.track(), front.envelope(), front.tuning(), STEADY, band[0], band[1],
-                (int) band[2], band[3]);
+                (int) band[2], band[3], separated);
         List<Span> notes = new ArrayList<>(track.size());
         for (Note note : track.notes()) {
             notes.add(new Span(note.onsetSeconds(),

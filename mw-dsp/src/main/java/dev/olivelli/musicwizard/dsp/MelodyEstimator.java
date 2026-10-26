@@ -252,7 +252,7 @@ public final class MelodyEstimator {
         Objects.requireNonNull(pitches, "pitches");
         return segment(pitches, null, 0, STEADY_SEMITONES,
                 RANGE_FLOOR_SEMITONES, RANGE_SPREAD_QUANTILE, MOST_OCTAVES_OUT,
-                ONE_GESTURE_SEMITONES).melody();
+                ONE_GESTURE_SEMITONES, false).melody();
     }
 
     /**
@@ -268,7 +268,7 @@ public final class MelodyEstimator {
         Objects.requireNonNull(envelope, "envelope");
         return segment(pitches, envelope, 0, STEADY_SEMITONES,
                 RANGE_FLOOR_SEMITONES, RANGE_SPREAD_QUANTILE, MOST_OCTAVES_OUT,
-                ONE_GESTURE_SEMITONES).melody();
+                ONE_GESTURE_SEMITONES, false).melody();
     }
 
     /**
@@ -293,6 +293,18 @@ public final class MelodyEstimator {
      */
     public static Segmented explain(PitchTrack pitches, OnsetEnvelope envelope,
                                     double tuningOffsetSemitones) {
+        return explain(pitches, envelope, tuningOffsetSemitones, false);
+    }
+
+    /**
+     * The same for a track read from a separated stem or from the whole signal.
+     *
+     * @param separated whether the track was read from a separated stem, where
+     *                  a short note an octave under the next is not taken for
+     *                  that note's attack (#860)
+     */
+    public static Segmented explain(PitchTrack pitches, OnsetEnvelope envelope,
+                                    double tuningOffsetSemitones, boolean separated) {
         Objects.requireNonNull(pitches, "pitches");
         Objects.requireNonNull(envelope, "envelope");
         if (!Double.isFinite(tuningOffsetSemitones)) {
@@ -301,7 +313,7 @@ public final class MelodyEstimator {
         }
         return segment(pitches, envelope, tuningOffsetSemitones, STEADY_SEMITONES,
                 RANGE_FLOOR_SEMITONES, RANGE_SPREAD_QUANTILE, MOST_OCTAVES_OUT,
-                ONE_GESTURE_SEMITONES);
+                ONE_GESTURE_SEMITONES, separated);
     }
 
     /**
@@ -323,7 +335,7 @@ public final class MelodyEstimator {
         }
         return segment(pitches, envelope, tuningOffsetSemitones, steadySemitones,
                 RANGE_FLOOR_SEMITONES, RANGE_SPREAD_QUANTILE, MOST_OCTAVES_OUT,
-                ONE_GESTURE_SEMITONES).melody();
+                ONE_GESTURE_SEMITONES, false).melody();
     }
 
     /**
@@ -341,6 +353,20 @@ public final class MelodyEstimator {
                                      double tuningOffsetSemitones, double steadySemitones,
                                      double rangeFloorSemitones, double rangeSpreadQuantile,
                                      int mostOctavesOut, double gestureSemitones) {
+        return estimate(pitches, envelope, tuningOffsetSemitones, steadySemitones,
+                rangeFloorSemitones, rangeSpreadQuantile, mostOctavesOut, gestureSemitones,
+                false);
+    }
+
+    /**
+     * The same for a track read from a separated stem or from the whole signal,
+     * in the sense of {@link #explain(PitchTrack, OnsetEnvelope, double, boolean)}.
+     */
+    public static NoteTrack estimate(PitchTrack pitches, OnsetEnvelope envelope,
+                                     double tuningOffsetSemitones, double steadySemitones,
+                                     double rangeFloorSemitones, double rangeSpreadQuantile,
+                                     int mostOctavesOut, double gestureSemitones,
+                                     boolean separated) {
         Objects.requireNonNull(pitches, "pitches");
         Objects.requireNonNull(envelope, "envelope");
         if (!Double.isFinite(tuningOffsetSemitones)) {
@@ -368,14 +394,15 @@ public final class MelodyEstimator {
                     + " non-negative, got: " + gestureSemitones);
         }
         return segment(pitches, envelope, tuningOffsetSemitones, steadySemitones,
-                rangeFloorSemitones, rangeSpreadQuantile, mostOctavesOut, gestureSemitones)
-                .melody();
+                rangeFloorSemitones, rangeSpreadQuantile, mostOctavesOut, gestureSemitones,
+                separated).melody();
     }
 
     private static Segmented segment(PitchTrack pitches, OnsetEnvelope envelope,
                                      double tuningOffsetSemitones, double steadySemitones,
                                      double rangeFloorSemitones, double rangeSpreadQuantile,
-                                     int mostOctavesOut, double gestureSemitones) {
+                                     int mostOctavesOut, double gestureSemitones,
+                                     boolean separated) {
         // Decided once for the whole track and before anything is cut: the
         // offset shifts where a semitone boundary falls, so a decision taken
         // per run would let one note of a phrase be rounded on a grid the next
@@ -405,7 +432,9 @@ public final class MelodyEstimator {
             runs.add(cut.run());
             frame = end;
         }
-        absorbSubOctaveAttacks(pitches, notes, startedBy, ofRun, runs);
+        if (!separated) {
+            absorbSubOctaveAttacks(pitches, notes, startedBy, ofRun, runs);
+        }
         Folded folded = foldOctaves(notes, rangeFloorSemitones, rangeSpreadQuantile,
                 mostOctavesOut, gestureSemitones);
         List<Note> voices = folded.notes();
@@ -425,23 +454,14 @@ public final class MelodyEstimator {
      * octave fold cannot remove it, because the octave under a line's lower
      * notes is still inside the line's band. A voice that pauses between the
      * two is a note sung again, read an octave low, and is left to the fold.
-     * So is a pair whose attack is the nearer of the two to the melody's
-     * centre: there the note is the one read an octave out. The note takes the
-     * attack's start, and the two runs are traced as one.
+     * The note takes the attack's start, and the two runs are traced as one.
+     *
+     * <p>Not applied to a separated stem: through the separator the same
+     * shape was the attack read right and the note read an octave high.
      */
     private static void absorbSubOctaveAttacks(PitchTrack pitches, List<Note> notes,
                                                List<String> startedBy, List<Integer> ofRun,
                                                List<MelodyTrace.Run> runs) {
-        if (notes.isEmpty()) {
-            return;
-        }
-        double[] pitchOf = new double[notes.size()];
-        double[] weights = new double[notes.size()];
-        for (int i = 0; i < notes.size(); i++) {
-            pitchOf[i] = notes.get(i).midiPitch();
-            weights[i] = notes.get(i).durationSeconds();
-        }
-        double centre = weightedQuantile(pitchOf, weights, 0.5);
         for (int i = 0; i + 1 < notes.size(); i++) {
             Note attack = notes.get(i);
             Note note = notes.get(i + 1);
@@ -450,8 +470,6 @@ public final class MelodyEstimator {
             if (!MelodyTrace.Note.RUN.equals(startedBy.get(i))
                     || first == last
                     || note.midiPitch() - attack.midiPitch() != 12
-                    || Math.abs(note.midiPitch() - centre)
-                            >= Math.abs(attack.midiPitch() - centre)
                     || attack.durationSeconds() > SUB_OCTAVE_ATTACK_SECONDS
                     || note.onsetSeconds() - attack.offsetSeconds() >= MIN_NOTE_SECONDS
                     || voicePausesBetween(pitches, attack, note)) {

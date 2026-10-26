@@ -829,12 +829,21 @@ class MelodyEstimationTest {
         }
 
         @Test
-        @DisplayName("and one nearer the line's centre than its note, which is the note read high")
-        void anAttackInTheLinesOctaveIsKept() {
-            PitchTrack pitches = voicedness(track(67.0, 80, null, 15, 69.0, 12, null, 2,
-                    81.0, 20), 107, 109, 0.9);
+        @DisplayName("on a line's high notes as on its low ones")
+        void aHighNoteIsJoinedToo() {
+            PitchTrack pitches = voicedness(track(67.0, 80, null, 15, 63.0, 12, null, 2,
+                    75.0, 20), 107, 109, 0.9);
 
-            assertThat(pitches(MelodyEstimator.estimate(pitches))).containsExactly(67, 69, 81);
+            assertThat(pitches(MelodyEstimator.estimate(pitches))).containsExactly(67, 75);
+        }
+
+        @Test
+        @DisplayName("but not on a separated stem, where the note is the one read high")
+        void aStemIsLeftAlone() {
+            MelodyEstimator.Segmented segmented = MelodyEstimator.explain(attack(69.0, 12, 2),
+                    new OnsetEnvelope(new double[400], 172.0), 0, true);
+
+            assertThat(pitches(segmented.melody())).containsExactly(83, 69, 81);
         }
 
         @Test
