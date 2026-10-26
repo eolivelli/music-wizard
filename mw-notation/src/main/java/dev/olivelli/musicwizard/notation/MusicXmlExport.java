@@ -677,6 +677,9 @@ public final class MusicXmlExport {
         private final double quarterBeatsPerMinute;
         private final List<ChartLayout.Bar> chart;
 
+        /** Whether the chart's symbols are written at all, as {@link LeadSheet} decides. */
+        private final boolean harmonic;
+
         private StaffClef clef;
         private Optional<Key> key = Optional.empty();
 
@@ -735,6 +738,7 @@ public final class MusicXmlExport {
             this.score = score;
             this.quarterBeatsPerMinute = TempoMark.headline(score, 0);
             this.chart = chart;
+            this.harmonic = ChartLayout.namesAChord(chart);
         }
 
         @Override
@@ -750,7 +754,8 @@ public final class MusicXmlExport {
             index = barIndex;
             written = 0;
             expected = divisionsOf(barMeter.quarterBeatsPerBar());
-            harmonies = barIndex < chart.size() ? placed(chart.get(barIndex)) : new ArrayList<>();
+            harmonies = harmonic && barIndex < chart.size()
+                    ? placed(chart.get(barIndex)) : new ArrayList<>();
             barShift = 0;
             lyrics = sungByBar == null ? new ArrayList<>() : lyricsOf(barIndex);
             boolean first = bars == 0;
@@ -796,7 +801,8 @@ public final class MusicXmlExport {
             if (!chart.isEmpty()) {
                 StaffNotation.Pickup pickup =
                         new StaffNotation.Pickup(wholeNotesNumerator, wholeNotesDenominator);
-                harmonies = placed(ChordChart.intoPickup(chart.get(0), pickup));
+                harmonies = harmonic
+                        ? placed(ChordChart.intoPickup(chart.get(0), pickup)) : new ArrayList<>();
                 placeLyrics(Optional.of(pickup));
             }
         }

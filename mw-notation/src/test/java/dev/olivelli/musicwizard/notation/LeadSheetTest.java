@@ -103,6 +103,19 @@ class LeadSheetTest {
         return Quantizer.quantize(score);
     }
 
+    /** {@link #withPickup}'s melody alone, under one no-chord span, as a line alone is (#861). */
+    private static QuantizedScore lineAlone() {
+        Score withChords = withPickup().score();
+        TempoMap map = withChords.tempoMap();
+        Score score = Score.empty(map, withChords.durationSeconds())
+                .withTrack(withChords.track(PartRole.LEAD_VOCAL).orElseThrow())
+                .withChords(new ChordProgression(List.of(
+                        Chord.noChord(0, map.beatsToSeconds(16), Confidence.of(0.0))
+                                .quantizedTo(0, 16)),
+                        Confidence.of(0.0)));
+        return Quantizer.quantize(score);
+    }
+
     /** The same, starting on beat one, and with words under it. */
     private static QuantizedScore withLyrics() {
         TempoMap map = TempoMap.constant(QUARTER_BPM, TimeSignature.FOUR_FOUR);
@@ -540,6 +553,20 @@ class LeadSheetTest {
 
         assertThat(context(chart, "\\new Lyrics"))
                 .contains("\\override VerticalAxisGroup.staff-affinity = #DOWN");
+    }
+
+    @Test
+    @DisplayName("a line alone has no chord row, and its staff is the one a chord row sits over")
+    void aLineAloneHasNoChordRow() {
+        QuantizedScore alone = lineAlone();
+        QuantizedScore chorded = withPickup();
+
+        String page = LeadSheet.toLilyPond(alone, melodyOf(alone));
+        String withRow = LeadSheet.toLilyPond(chorded, melodyOf(chorded));
+
+        assertThat(page).doesNotContain("ChordNames").contains("\\partial 4");
+        String row = context(withRow, "  \\new ChordNames") + "\n";
+        assertThat(page).isEqualTo(withRow.replace(row, ""));
     }
 
     @Test

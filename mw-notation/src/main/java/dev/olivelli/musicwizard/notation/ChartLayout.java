@@ -144,6 +144,16 @@ final class ChartLayout {
     }
 
     /**
+     * Whether any bar holds a chord with a name. A line alone carries only
+     * no-chord, and a page over a staff then prints no chord row (#861).
+     */
+    static boolean namesAChord(List<Bar> bars) {
+        return bars.stream()
+                .flatMap(bar -> bar.cells().stream())
+                .anyMatch(cell -> cell.chord().filter(chord -> !chord.isNoChord()).isPresent());
+    }
+
+    /**
      * The same bars before {@link #atHarmonicRhythm} reduces them. This stage
      * drops nothing — every chord begins exactly one cell (#174); the
      * reduction then drops chords deliberately (#212). Kept separate so a
