@@ -829,6 +829,15 @@ class MelodyEstimationTest {
         }
 
         @Test
+        @DisplayName("and one nearer the line's centre than its note, which is the note read high")
+        void anAttackInTheLinesOctaveIsKept() {
+            PitchTrack pitches = voicedness(track(67.0, 80, null, 15, 69.0, 12, null, 2,
+                    81.0, 20), 107, 109, 0.9);
+
+            assertThat(pitches(MelodyEstimator.estimate(pitches))).containsExactly(67, 69, 81);
+        }
+
+        @Test
         @DisplayName("and one that leads into its note within one run")
         void anAttackInsideTheRunIsKept() {
             assertThat(pitches(MelodyEstimator.estimate(

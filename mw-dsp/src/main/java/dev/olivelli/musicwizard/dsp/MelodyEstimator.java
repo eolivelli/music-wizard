@@ -425,11 +425,24 @@ public final class MelodyEstimator {
      * octave fold cannot remove it, because the octave under a line's lower
      * notes is still inside the line's band. A voice that pauses between the
      * two is a note sung again, read an octave low, and is left to the fold.
-     * The note takes the attack's start, and the two runs are traced as one.
+     * So is a pair whose attack is the nearer of the two to the melody's
+     * centre: there the note is the one read an octave out, which is what a
+     * separated stem does. The note takes the attack's start, and the two runs
+     * are traced as one.
      */
     private static void absorbSubOctaveAttacks(PitchTrack pitches, List<Note> notes,
                                                List<String> startedBy, List<Integer> ofRun,
                                                List<MelodyTrace.Run> runs) {
+        if (notes.isEmpty()) {
+            return;
+        }
+        double[] pitchOf = new double[notes.size()];
+        double[] weights = new double[notes.size()];
+        for (int i = 0; i < notes.size(); i++) {
+            pitchOf[i] = notes.get(i).midiPitch();
+            weights[i] = notes.get(i).durationSeconds();
+        }
+        double centre = weightedQuantile(pitchOf, weights, 0.5);
         for (int i = 0; i + 1 < notes.size(); i++) {
             Note attack = notes.get(i);
             Note note = notes.get(i + 1);
@@ -438,6 +451,8 @@ public final class MelodyEstimator {
             if (!MelodyTrace.Note.RUN.equals(startedBy.get(i))
                     || first == last
                     || note.midiPitch() - attack.midiPitch() != 12
+                    || Math.abs(note.midiPitch() - centre)
+                            >= Math.abs(attack.midiPitch() - centre)
                     || attack.durationSeconds() > SUB_OCTAVE_ATTACK_SECONDS
                     || note.onsetSeconds() - attack.offsetSeconds() >= MIN_NOTE_SECONDS
                     || voicePausesBetween(pitches, attack, note)) {
