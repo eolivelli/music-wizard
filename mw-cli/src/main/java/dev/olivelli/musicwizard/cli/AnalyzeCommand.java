@@ -173,6 +173,13 @@ final class AnalyzeCommand implements Callable<Integer> {
                     + "transcribed from the recording itself.")
     String lyricsLanguage;
 
+    @Option(names = "--instrument", paramLabel = "NAME",
+            description = "What plays the melody, e.g. Flute: the name its staff is"
+                    + " printed under. Recorded in the workspace, as init --instrument"
+                    + " is, so later runs keep it; an empty name forgets it. A cached"
+                    + " analysis is renamed, not recomputed.")
+    String instrument;
+
     @Option(names = "--force", description = "Ignore cached stage results and recompute.")
     boolean force;
 
@@ -245,6 +252,11 @@ final class AnalyzeCommand implements Callable<Integer> {
             score = withTranscribedLyrics(workspace, score, config, stem);
         }
 
+        if (instrument != null) {
+            workspace.updateInstrument(instrument.isBlank() ? null : instrument.strip());
+        }
+        score = named(score, kind, workspace.instrument());
+
         // The score is persisted before the cache entry: the failure cannot
         // then happen before the deliverable is safe.
         workspace.writeScore(score);
@@ -282,6 +294,23 @@ final class AnalyzeCommand implements Callable<Integer> {
         return score.withMetadata(
                 workspace.title().or(score::title).orElse(null),
                 workspace.artist().or(score::artist).orElse(null));
+    }
+
+    /**
+     * The score with its melody named for what played it (#862): the
+     * workspace's instrument when the user gave one, and otherwise the
+     * transcription's own name — except that a line alone with words under it
+     * was sung. Outside the cache for the reason {@link #titled} is.
+     */
+    static Score named(Score score, SourceKind kind, Optional<String> instrument) {
+        Optional<NoteTrack> lead = score.track(PartRole.LEAD_VOCAL);
+        if (lead.isEmpty()) {
+            return score;
+        }
+        String name = instrument.orElseGet(() -> kind == SourceKind.AUDIO
+                && NoteTrack.LEAD.equals(lead.get().name()) && !score.lyrics().isEmpty()
+                ? NoteTrack.VOICE : lead.get().name());
+        return name.equals(lead.get().name()) ? score : score.withTrack(lead.get().withName(name));
     }
 
     /**

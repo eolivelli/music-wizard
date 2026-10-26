@@ -40,6 +40,7 @@ final class InfoCommand implements Callable<Integer> {
         System.out.println("Created     " + descriptor.createdAt());
         System.out.println("Title       " + orDash(descriptor.title()));
         System.out.println("Artist      " + orDash(descriptor.artist()));
+        System.out.println("Instrument  " + orDash(descriptor.instrument()));
         System.out.println("Source hash " + (workspace.sourceMatchesDigest() ? "matches" : "CHANGED"));
         System.out.println();
         System.out.println("Score       " + (Files.isRegularFile(workspace.scoreFile())

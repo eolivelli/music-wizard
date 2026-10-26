@@ -758,6 +758,31 @@ class PlayableMelodyTest {
         return new LyricLine(Arrays.asList(words), Confidence.of(0.8));
     }
 
+    @Nested
+    @DisplayName("the part's name")
+    class Name {
+
+        @Test
+        @DisplayName("a voice's part says it is the playable one")
+        void aVoiceIsSuffixed() {
+            Score score = played(notes(note(0.0, 1.0, 60)), ChordProgression.empty());
+
+            assertThat(PlayableMelody.reduce(score).name()).isEqualTo(PlayableMelody.TRACK_NAME);
+        }
+
+        @Test
+        @DisplayName("any other melody's part keeps the melody's own name (#862)")
+        void anInstrumentKeepsItsName() {
+            Score score = played(notes(note(0.0, 1.0, 60)), ChordProgression.empty());
+            NoteTrack melody = score.track(PartRole.LEAD_VOCAL).orElseThrow();
+
+            for (String name : List.of(NoteTrack.LEAD, "Flauto")) {
+                assertThat(PlayableMelody.reduce(score.withTrack(melody.withName(name))).name())
+                        .isEqualTo(name);
+            }
+        }
+    }
+
     private static Score sung(List<Note> notes, LyricLine... lines) {
         return score(notes, ChordProgression.empty(),
                 new Lyrics(Arrays.asList(lines), "it", Confidence.of(0.8)));

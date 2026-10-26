@@ -26,11 +26,17 @@ import java.util.Optional;
  * A monophonic or polyphonic sequence of notes belonging to one part.
  *
  * @param role       what this part is, which decides clef and transposition
- * @param name       display name for the staff, e.g. "Voice"
+ * @param name       display name for the staff, e.g. {@link #VOICE}
  * @param notes      the notes, ordered by onset
  * @param confidence overall trust in this transcription
  */
 public record NoteTrack(PartRole role, String name, List<Note> notes, Confidence confidence) {
+
+    /** What a melody is called when nothing says what played it. */
+    public static final String VOICE = "Voice";
+
+    /** What a line playing alone is called when nothing says what played it (#862). */
+    public static final String LEAD = "Lead";
 
     public NoteTrack {
         Objects.requireNonNull(role, "role");
@@ -111,6 +117,10 @@ public record NoteTrack(PartRole role, String name, List<Note> notes, Confidence
     @JsonIgnore
     public boolean isQuantized() {
         return notes.stream().allMatch(Note::isQuantized);
+    }
+
+    public NoteTrack withName(String newName) {
+        return new NoteTrack(role, newName, notes, confidence);
     }
 
     /** Returns a copy with the notes replaced. */

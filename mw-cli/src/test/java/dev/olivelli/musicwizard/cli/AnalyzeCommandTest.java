@@ -21,6 +21,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import dev.olivelli.musicwizard.core.model.BeatGrid;
 import dev.olivelli.musicwizard.core.model.Confidence;
 import dev.olivelli.musicwizard.core.model.Key;
+import dev.olivelli.musicwizard.core.model.LyricLine;
+import dev.olivelli.musicwizard.core.model.LyricWord;
+import dev.olivelli.musicwizard.core.model.Lyrics;
+import dev.olivelli.musicwizard.core.model.Note;
+import dev.olivelli.musicwizard.core.model.NoteTrack;
+import dev.olivelli.musicwizard.core.model.PartRole;
 import dev.olivelli.musicwizard.core.model.Mode;
 import dev.olivelli.musicwizard.core.model.PitchSpelling;
 import dev.olivelli.musicwizard.core.model.Score;
@@ -29,6 +35,7 @@ import dev.olivelli.musicwizard.core.model.TimeSignature;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -221,6 +228,59 @@ class AnalyzeCommandTest {
         @DisplayName("--time-signature says it pins that unit")
         void meterSaysItPinsTheUnit() {
             assertThat(usage()).contains("pins the beat --tempo is counted in");
+        }
+    }
+
+    /** What the melody's staff is called (#862). */
+    @Nested
+    @DisplayName("the melody's name")
+    class MelodyName {
+
+        private Score led(String name, boolean sung) {
+            Score score = Score.empty(TempoMap.constant(120), 4.0).withTrack(new NoteTrack(
+                    PartRole.LEAD_VOCAL, name, List.of(Note.ofSeconds(0.0, 1.0, 72, Confidence.of(0.8))),
+                    Confidence.of(0.7)));
+            return sung ? score.withLyrics(new Lyrics(List.of(new LyricLine(
+                    List.of(LyricWord.ofSeconds("la", 0.0, 1.0, Confidence.of(0.8))),
+                    Confidence.of(0.8))), "it", Confidence.of(0.8))) : score;
+        }
+
+        private static String nameOf(Score score) {
+            return score.track(PartRole.LEAD_VOCAL).orElseThrow().name();
+        }
+
+        @Test
+        @DisplayName("is the instrument the user named, whatever the transcription called it")
+        void theUserNamesIt() {
+            for (String name : List.of(NoteTrack.VOICE, NoteTrack.LEAD)) {
+                assertThat(nameOf(AnalyzeCommand.named(led(name, true), SourceKind.AUDIO,
+                        Optional.of("Flauto")))).isEqualTo("Flauto");
+            }
+        }
+
+        @Test
+        @DisplayName("a line alone with words under it was sung")
+        void aSungLineAloneIsAVoice() {
+            assertThat(nameOf(AnalyzeCommand.named(led(NoteTrack.LEAD, true), SourceKind.AUDIO,
+                    Optional.empty()))).isEqualTo(NoteTrack.VOICE);
+            assertThat(nameOf(AnalyzeCommand.named(led(NoteTrack.LEAD, false), SourceKind.AUDIO,
+                    Optional.empty()))).isEqualTo(NoteTrack.LEAD);
+        }
+
+        @Test
+        @DisplayName("a MIDI file's own track name is left as the file wrote it")
+        void aMidiNameIsTheFiles() {
+            assertThat(nameOf(AnalyzeCommand.named(led(NoteTrack.LEAD, true), SourceKind.MIDI,
+                    Optional.empty()))).isEqualTo(NoteTrack.LEAD);
+        }
+
+        @Test
+        @DisplayName("a score without a melody is left alone")
+        void noMelodyNoName() {
+            Score score = Score.empty(TempoMap.constant(120), 4.0);
+
+            assertThat(AnalyzeCommand.named(score, SourceKind.AUDIO, Optional.of("Flauto")))
+                    .isSameAs(score);
         }
     }
 }

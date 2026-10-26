@@ -660,7 +660,9 @@ public final class AudioTranscriber {
             MelodyEstimator.Segmented segmented = mixMelody != null ? mixMelody
                     : MelodyEstimator.explain(trackPitch(melodyAudio, settings), melodyEnvelope,
                             tuning, separated);
-            NoteTrack melody = segmented.melody();
+            // Nothing on a line alone says a voice played it (#862).
+            NoteTrack melody = noteOnsets
+                    ? segmented.melody().withName(NoteTrack.LEAD) : segmented.melody();
             recordMelody(stage, segmented.trace().readFrom(
                     separated ? MelodyTrace.SEPARATED_VOCAL : MelodyTrace.FULL_MIX));
             if (melody.isEmpty()) {

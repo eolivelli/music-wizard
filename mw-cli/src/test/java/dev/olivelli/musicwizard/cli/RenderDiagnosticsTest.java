@@ -104,7 +104,8 @@ class RenderDiagnosticsTest {
                 new MusicWizardConfig(null, null,
                         new MusicWizardConfig.NotationConfig(
                                 engraver.toString(), null, null, null, null, null, null),
-                        null, null, null)));
+                        null, null, null),
+                descriptor.instrument()));
         return root;
     }
 
