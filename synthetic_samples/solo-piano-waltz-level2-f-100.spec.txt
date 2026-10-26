@@ -1,0 +1,22 @@
+title: Solo piano waltz, level two - eighths and rests, three quarter beats to a bar in F
+genre: folk-pop
+style: pop-ballad
+tempo: 100
+meter: 3/4
+key: F major
+seed: 29
+melody: piano
+melody-level: 2
+accompaniment: none
+bars:
+# A line alone in three (#869), struck rather than blown: the control the
+# flute waltzes are read against, as the 4/4 piano rows are.
+# I-vi-IV-V, half cadence at each pass
+F Dm Bb C
+F Dm Bb C
+# IV-V-I, then the loop again
+Bb C F F
+F Dm Bb C
+# ii-V-I and a plagal close onto the tonic
+Gm C F Dm
+Bb C F F

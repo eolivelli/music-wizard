@@ -435,13 +435,20 @@ public final class AudioTranscriber {
                 NnlsAblation.extract(transform, tuning).beatSynchronous(beatTimes);
 
         // The meter, read from the same beat-synchronous chroma the phase is
-        // read from — and from the mix's own onset envelope, which is where how
-        // the pulse divides is read. Read even where a meter was typed: the
+        // read from — and from the onset envelope, which is where how the
+        // pulse divides is read. Read even where a meter was typed: the
         // signature is an instruction and wins outright, as a supplied downbeat
         // does, but the same reading carries how many tracked pulses fill a bar,
         // and that is a fact about where the tracker landed rather than a rival
         // signature (#736).
-        MeterEstimator.Estimate reading = MeterEstimator.estimate(beatTimes, chroma, rhythm);
+        // On a line alone, from its notes and behind the same gate as the key
+        // and the beat, because its chroma changes with every note (#869).
+        MeterEstimator.Estimate reading = noteOnsets
+                ? MeterEstimator.estimate(beatTimes, mixMelody.melody(), rhythm)
+                : MeterEstimator.estimate(beatTimes, chroma, rhythm);
+        if (noteOnsets) {
+            progress.accept("a line alone: the meter is read from its notes");
+        }
         boolean suppliedMeter = settings.timeSignature() != null;
         TimeSignature meter = suppliedMeter ? settings.timeSignature() : reading.meter();
 

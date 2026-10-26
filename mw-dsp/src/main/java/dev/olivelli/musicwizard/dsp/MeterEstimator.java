@@ -18,8 +18,12 @@ package dev.olivelli.musicwizard.dsp;
 
 import dev.olivelli.musicwizard.core.model.BeatGrid;
 import dev.olivelli.musicwizard.core.model.Confidence;
+import dev.olivelli.musicwizard.core.model.Note;
+import dev.olivelli.musicwizard.core.model.NoteTrack;
 import dev.olivelli.musicwizard.core.model.TimeSignature;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -111,6 +115,9 @@ public final class MeterEstimator {
      */
     private static final int IN_TWO = 2;
 
+    /** The one bar length a line alone may leave the assumption for. */
+    private static final int IN_THREE = 3;
+
     /** The bar length assumed when the evidence does not displace it. */
     private static final int ASSUMED = 4;
 
@@ -140,7 +147,7 @@ public final class MeterEstimator {
      */
     private static final List<BarLength> BAR_LENGTHS = List.of(
             new BarLength(IN_TWO, false, reading -> TimeSignature.SIX_EIGHT),
-            new BarLength(3, true, reading -> TimeSignature.THREE_FOUR),
+            new BarLength(IN_THREE, true, reading -> TimeSignature.THREE_FOUR),
             new BarLength(ASSUMED, true, reading -> TimeSignature.FOUR_FOUR),
             new BarLength(6, true, MeterEstimator::groupingOfSix));
 
@@ -396,14 +403,8 @@ public final class MeterEstimator {
         Objects.requireNonNull(beatTimes, "beatTimes");
         Objects.requireNonNull(chroma, "chroma");
         Objects.requireNonNull(envelope, "envelope");
-
-        // Novelty is only defined where a beat has a chroma span on both sides,
-        // exactly as DownbeatEstimator scopes it.
-        int firstBeat = 1;
-        int lastBeat = beatTimes.size() - 2;
-        int usable = lastBeat - firstBeat + 1;
-        if (usable < BARS_FOR_A_READING * longestBar() || chroma.frameCount() == 0) {
-            return new Reading(noHarmony(), 0, 0, 0, Math.max(0, usable));
+        if (!usable(beatTimes) || chroma.frameCount() == 0) {
+            return unreadable(beatTimes);
         }
         if (!chroma.isBeatSynchronous() || chroma.frameCount() != beatTimes.size() - 1) {
             throw new IllegalArgumentException(
@@ -412,16 +413,131 @@ public final class MeterEstimator {
                             + chroma.frameCount()
                             + (chroma.isBeatSynchronous() ? "" : " on a fixed time grid"));
         }
+        return readSeries(beatTimes, DownbeatEstimator.harmonicNovelty(chroma), envelope);
+    }
 
-        double[] novelty = DownbeatEstimator.harmonicNovelty(chroma);
+    /**
+     * Reads the meter of a line playing alone, with 4/4 as the prior (#869).
+     *
+     * <p>Nothing sounds under such a line, so its chroma changes wherever its
+     * pitch does and says nothing about the bar. What a line states its bar
+     * with is where its held notes start, and that series is read in the
+     * harmony's place and decided by {@link #decideLine}.
+     *
+     * @param line the line's notes, on the clock {@code beatTimes} are on
+     */
+    public static Estimate estimate(List<Double> beatTimes, NoteTrack line,
+                                    OnsetEnvelope envelope) {
+        return decideLine(read(beatTimes, line, envelope));
+    }
+
+    /**
+     * The meter a line's reading names: three pulses or the assumed four.
+     *
+     * <p>A line in four states its half bar as readily as its bar, so a
+     * supported two or four is the prior's own evidence, and three is believed
+     * where it is supported and neither of them is. Not {@link #MARGIN}: a
+     * line in three leaves both at the null, and a ratio over the null is a
+     * ratio of noise. Nothing else is read from a line — the two-pulse bar
+     * rests on harmony it does not have, and six on a tracker below the beat.
+     */
+    public static Estimate decideLine(Reading reading) {
+        Objects.requireNonNull(reading, "reading");
+        boolean inThree = reading.at(IN_THREE) >= SUPPORTED
+                && reading.at(IN_TWO) < SUPPORTED
+                && reading.at(ASSUMED) < SUPPORTED;
+        int pulses = inThree ? IN_THREE : ASSUMED;
+        return new Estimate(meterAt(reading, pulses), pulses, confidenceIn(reading, pulses));
+    }
+
+    /** The statistics {@link #estimate(List, NoteTrack, OnsetEnvelope)} decides on. */
+    public static Reading read(List<Double> beatTimes, NoteTrack line, OnsetEnvelope envelope) {
+        Objects.requireNonNull(beatTimes, "beatTimes");
+        Objects.requireNonNull(line, "line");
+        Objects.requireNonNull(envelope, "envelope");
+        if (!usable(beatTimes) || line.isEmpty()) {
+            return unreadable(beatTimes);
+        }
+        return readSeries(beatTimes, heldNoteStarts(beatTimes, line), envelope);
+    }
+
+    /**
+     * Novelty is only defined where a beat has a chroma span on both sides,
+     * exactly as DownbeatEstimator scopes it, and a line's series is read over
+     * the same beats so that the two readings are of one stretch.
+     */
+    private static final int FIRST_BEAT = 1;
+
+    private static int lastBeat(List<Double> beatTimes) {
+        return beatTimes.size() - 2;
+    }
+
+    private static boolean usable(List<Double> beatTimes) {
+        return lastBeat(beatTimes) - FIRST_BEAT + 1 >= BARS_FOR_A_READING * longestBar();
+    }
+
+    private static Reading unreadable(List<Double> beatTimes) {
+        return new Reading(noHarmony(), 0, 0, 0,
+                Math.max(0, lastBeat(beatTimes) - FIRST_BEAT + 1));
+    }
+
+    private static Reading readSeries(List<Double> beatTimes, double[] perBeat,
+                                      OnsetEnvelope envelope) {
+        int lastBeat = lastBeat(beatTimes);
         Map<Integer, Double> harmonic = new HashMap<>();
         for (BarLength length : BAR_LENGTHS) {
             harmonic.put(length.pulses(),
-                    periodicity(novelty, firstBeat, lastBeat, length.pulses()));
+                    periodicity(perBeat, FIRST_BEAT, lastBeat, length.pulses()));
         }
         Divisions divisions = divisionsOfThePulse(envelope, trackedPulse(beatTimes));
         return new Reading(harmonic, divisions.inThree(), divisions.inTwo(),
-                divisions.onThePulse(), usable);
+                divisions.onThePulse(), lastBeat - FIRST_BEAT + 1);
+    }
+
+    /** How far from a tracked beat, in pulses, a note may start and still be on it. */
+    private static final double ON_THE_BEAT = 0.25;
+
+    /**
+     * How long a note must last, in pulses to the next note's onset, to count as
+     * held: two pulses or more, read to the nearest pulse.
+     */
+    private static final double HELD = 1.5;
+
+    /**
+     * One per beat where a held note starts on it and zero elsewhere. Lengths
+     * run to the next onset rather than to the note's own end, since how
+     * legato a note is played does not move the bar it starts.
+     */
+    static double[] heldNoteStarts(List<Double> beatTimes, NoteTrack line) {
+        List<Note> notes = new ArrayList<>(line.notes());
+        notes.sort(Comparator.comparingDouble(Note::onsetSeconds));
+        double[] starts = new double[beatTimes.size()];
+        for (int i = 0; i < notes.size(); i++) {
+            Note note = notes.get(i);
+            double at = beatPosition(beatTimes, note.onsetSeconds());
+            long beat = Math.round(at);
+            if (beat < 0 || beat >= starts.length || Math.abs(at - beat) > ON_THE_BEAT) {
+                continue;
+            }
+            double until = i + 1 < notes.size()
+                    ? notes.get(i + 1).onsetSeconds()
+                    : note.offsetSeconds();
+            if (beatPosition(beatTimes, until) - at >= HELD) {
+                starts[(int) beat] = 1;
+            }
+        }
+        return starts;
+    }
+
+    /** A time as a fractional beat index, the first and last spans extended outward. */
+    private static double beatPosition(List<Double> beatTimes, double seconds) {
+        int last = beatTimes.size() - 1;
+        int span = 0;
+        while (span < last - 1 && seconds >= beatTimes.get(span + 1)) {
+            span++;
+        }
+        double from = beatTimes.get(span);
+        return span + (seconds - from) / (beatTimes.get(span + 1) - from);
     }
 
     /** No periodicity at any length, which is what too short a stretch reports. */

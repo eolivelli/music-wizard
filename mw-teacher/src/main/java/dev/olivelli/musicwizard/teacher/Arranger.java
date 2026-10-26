@@ -81,10 +81,12 @@ public final class Arranger {
             throw new IllegalArgumentException(
                     spec.style().id() + " is not arranged in " + spec.meter());
         }
-        if (spec.melodyProgram() != null && !TimeSignature.FOUR_FOUR.equals(spec.meter())) {
+        if (spec.melodyProgram() != null && !TimeSignature.FOUR_FOUR.equals(spec.meter())
+                && !(spec.melodyLevel() != null && MelodyGenerator.isGraded(spec.meter()))) {
             throw new IllegalArgumentException(
-                    "the melody generator writes bars of 4/4 only, so " + spec.meter()
-                            + " needs 'melody: none' (#715)");
+                    "the melody generator writes a style's bars in 4/4 and a graded"
+                            + " melody in 4/4 or 3/4, so " + spec.meter()
+                            + " needs 'melody: none' or a 'melody-level' it is graded in (#715)");
         }
         this.spec = spec;
         this.rng = new Random(spec.seed());
