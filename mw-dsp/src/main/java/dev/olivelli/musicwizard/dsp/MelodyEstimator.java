@@ -426,9 +426,8 @@ public final class MelodyEstimator {
      * notes is still inside the line's band. A voice that pauses between the
      * two is a note sung again, read an octave low, and is left to the fold.
      * So is a pair whose attack is the nearer of the two to the melody's
-     * centre: there the note is the one read an octave out, which is what a
-     * separated stem does. The note takes the attack's start, and the two runs
-     * are traced as one.
+     * centre: there the note is the one read an octave out. The note takes the
+     * attack's start, and the two runs are traced as one.
      */
     private static void absorbSubOctaveAttacks(PitchTrack pitches, List<Note> notes,
                                                List<String> startedBy, List<Integer> ofRun,
