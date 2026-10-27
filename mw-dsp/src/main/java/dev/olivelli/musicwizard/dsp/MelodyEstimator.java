@@ -51,8 +51,8 @@ import java.util.Objects;
  * amplitude event — so a strong envelope peak inside a note cuts it in two,
  * but only where the voice itself restarts (#495), and so does the level
  * falling and coming back with something struck, which is a tongued repeat
- * whose voice never stops, unless it dips as deep again too soon after to be
- * anything but a tremolo (#882). Only the printed notes are cut there: the
+ * whose voice never stops, unless the level dips like a tremolo around it
+ * (#882). Only the printed notes are cut there: the
  * beat is tracked from the line without them. The constants carry what
  * both melody corpora said about the floors.
  *
@@ -162,8 +162,8 @@ public final class MelodyEstimator {
 
     /**
      * How deep, as a share of a stroke, another dip within {@link
-     * #TREMOLO_SECONDS} of it may be: a level that dips as deep again that soon
-     * is a tremolo, which the synthetic flute renders carry (#882).
+     * #TREMOLO_SECONDS} of it may be before the stroke reads as a tremolo,
+     * which the synthetic flute renders carry (#882).
      */
     private static final double STROKE_ALONE_SHARE = 0.5;
 
@@ -932,18 +932,17 @@ public final class MelodyEstimator {
             onsets[i] = pitches.timeOf(merged.get(i)[0]);
         }
         // Across the note boundaries too, since a tremolo does not stop for
-        // them -- but not the dip at a boundary, which is the next note's
-        // articulation and not a tremolo's.
+        // them; each marked when it lies at a place the pitch moved, dropped
+        // pieces included, since there it may be the next note's articulation.
         List<double[]> runDips = new ArrayList<>();
         if (level != null) {
             for (double[] dip : levelDips(level, pitches.timeOf(from), runEnd)) {
                 boolean atBoundary = false;
-                for (double boundary : onsets) {
-                    atBoundary |= Math.abs(dip[0] - boundary) <= DIP_REACH_SECONDS;
+                for (int[] piece : spans) {
+                    atBoundary |= Math.abs(dip[0] - pitches.timeOf(piece[0]))
+                            <= DIP_REACH_SECONDS;
                 }
-                if (!atBoundary) {
-                    runDips.add(dip);
-                }
+                runDips.add(new double[] {dip[0], dip[1], atBoundary ? 1 : 0});
             }
         }
         List<Note> notes = new ArrayList<>(merged.size());
@@ -1020,14 +1019,14 @@ public final class MelodyEstimator {
      * <p>Two things strike a note again: an envelope peak where the voice
      * restarts, and a stroke -- the level falling and coming back with the
      * envelope above its mean -- which is a tongued repeat on a wind instrument
-     * whose voice never stops (#882). A level that dips as deep again within
-     * {@link #TREMOLO_SECONDS} is a tremolo and not a stroke. A cut lands only strictly inside the note, at least {@link
+     * whose voice never stops (#882), unless the level dips like a tremolo
+     * around it (#885). A cut lands only strictly inside the note, at least {@link
      * #MIN_NOTE_SECONDS} from either end and from the previous cut: nearer the
      * start it is the note's own attack, nearer the end it is the next note's,
      * and either way the piece it would leave is shorter than anything this
      * class calls a note.
      *
-     * @param runDips every dip of the run this note is in, as {@link #levelDips} reads them
+     * @param runDips the dips of the run this note is in, each marked where the pitch moved
      */
     private static void rearticulations(OnsetEnvelope envelope, LevelContour level,
                                         List<double[]> runDips, PitchTrack pitches, int[] span,
@@ -1055,11 +1054,8 @@ public final class MelodyEstimator {
                 }
                 boolean alone = true;
                 for (double[] other : runDips) {
-                    double apart = Math.abs(other[0] - dip[0]);
-                    // A dip within the reach is this one's own bottom, not a
-                    // second dip.
-                    alone &= apart <= DIP_REACH_SECONDS || apart > TREMOLO_SECONDS
-                            || other[1] < STROKE_ALONE_SHARE * dip[1];
+                    alone &= !echoes(other, dip)
+                            || other[2] == 1 && !hasEchoBeyond(runDips, other, dip);
                 }
                 // The envelope is mean-zero: above it, something was struck.
                 boolean attacked = strongestNear(envelope, dip[0] - level.offsetSeconds()) > 0;
@@ -1097,6 +1093,32 @@ public final class MelodyEstimator {
                             : peak ? MelodyTrace.Strike.ENVELOPE
                             : MelodyTrace.Strike.LEVEL));
         }
+    }
+
+    /**
+     * Whether {@code other} is as deep a dip as a tremolo would repeat {@code
+     * dip} with: further than {@link #DIP_REACH_SECONDS}, which would be this
+     * dip's own bottom, and no further than {@link #TREMOLO_SECONDS}.
+     */
+    private static boolean echoes(double[] other, double[] dip) {
+        double apart = Math.abs(other[0] - dip[0]);
+        return apart > DIP_REACH_SECONDS && apart <= TREMOLO_SECONDS
+                && other[1] >= STROKE_ALONE_SHARE * dip[1];
+    }
+
+    /**
+     * Whether a dip where the pitch moved is echoed on its far side from
+     * {@code dip}: a tremolo's dips run on through a change of pitch, and an
+     * articulation's does not.
+     */
+    private static boolean hasEchoBeyond(List<double[]> dips, double[] boundary, double[] dip) {
+        for (double[] beyond : dips) {
+            if (Math.signum(beyond[0] - boundary[0]) == Math.signum(boundary[0] - dip[0])
+                    && echoes(beyond, boundary)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

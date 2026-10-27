@@ -219,6 +219,26 @@ class MelodyEstimationTest {
             return new LevelContour(decibels, LEVEL_RATE, 0);
         }
 
+        /** One voiced run held at (hertz, frames) pairs in turn. */
+        private PitchTrack steps(double... hertzAndFrames) {
+            List<Double> hz = new ArrayList<>();
+            for (int i = 0; i < hertzAndFrames.length; i += 2) {
+                for (int f = 0; f < (int) hertzAndFrames[i + 1]; f++) {
+                    hz.add(hertzAndFrames[i]);
+                }
+            }
+            return voicedAt(hz.stream().mapToDouble(Double::doubleValue).toArray());
+        }
+
+        private PitchTrack voicedAt(double[] hz) {
+            boolean[] voiced = new boolean[hz.length];
+            double[] voicedness = new double[hz.length];
+            Arrays.fill(voiced, true);
+            Arrays.fill(voicedness, 0.9);
+            return new PitchTrack(hz, voiced, voicedness, RATE,
+                    PitchTracker.WINDOW, PitchTracker.HOP);
+        }
+
         private NoteTrack withLevel(PitchTrack pitches, OnsetEnvelope envelope,
                                     LevelContour level) {
             return MelodyEstimator.explain(pitches, envelope, level, 0, false).melody();
@@ -268,23 +288,47 @@ class MelodyEstimationTest {
         @Test
         @DisplayName("a repeat soon after a tongued change of pitch still cuts")
         void aRepeatAfterATonguedChangeCuts() {
-            // G, then A from about 0.45 s, tongued into and struck again soon
-            // after: the dip at the change is the A's own articulation.
-            double[] hz = new double[100];
-            boolean[] voiced = new boolean[100];
-            double[] voicedness = new double[100];
-            for (int i = 0; i < hz.length; i++) {
-                hz[i] = i < 38 ? 392 : 440;
-                voiced[i] = true;
-                voicedness[i] = 0.9;
-            }
-            NoteTrack melody = withLevel(
-                    new PitchTrack(hz, voiced, voicedness, RATE,
-                            PitchTracker.WINDOW, PitchTracker.HOP),
+            // G, then an A tongued into and struck again soon after: the dip
+            // at the change is the A's own articulation.
+            NoteTrack melody = withLevel(steps(392, 38, 440, 62),
                     peaksAt(1.3, 0.45, 1.0, 0.6, 1.0), strokesAt(1.3, 14, 0.45, 0.6));
 
             assertThat(pitches(melody)).containsExactly(67, 69, 69);
             assertThat(melody.notes().get(2).onsetSeconds()).isCloseTo(0.6, within(0.01));
+        }
+
+        @Test
+        @DisplayName("a repeat after a change of pitch crossed unsteadily still cuts")
+        void aRepeatAfterAnUnsteadyCrossingCuts() {
+            // The crossing is a piece of its own that holds no pitch and is
+            // dropped, so the A's onset lands past the articulation's dip.
+            double[] crossing = {68.2, 67.8, 68.6, 67.9, 68.5, 67.8, 68.6, 68.0};
+            double[] hz = new double[100];
+            for (int i = 0; i < hz.length; i++) {
+                double midi = i < 38 ? 67 : i < 46 ? crossing[i - 38] : 69;
+                hz[i] = 440 * Math.pow(2, (midi - 69) / 12);
+            }
+            NoteTrack melody = withLevel(voicedAt(hz),
+                    peaksAt(1.3, 0.49, 1.0, 0.65, 1.0), strokesAt(1.3, 14, 0.49, 0.65));
+
+            assertThat(pitches(melody)).containsExactly(67, 69, 69);
+            assertThat(melody.notes().get(2).onsetSeconds()).isCloseTo(0.65, within(0.01));
+        }
+
+        @Test
+        @DisplayName("a tremolo running through changes of pitch cuts nothing")
+        void aTremoloThroughAChangeOfPitchDoesNotCut() {
+            double[] times = new double[8];
+            double[] peaks = new double[16];
+            for (int k = 0; k < times.length; k++) {
+                times[k] = 0.2 + 0.15 * k;
+                peaks[2 * k] = times[k];
+                peaks[2 * k + 1] = 1.0;
+            }
+            NoteTrack melody = withLevel(steps(392, 38, 440, 25, 392, 37),
+                    peaksAt(1.3, peaks), strokesAt(1.3, 14, times));
+
+            assertThat(pitches(melody)).containsExactly(67, 69, 67);
         }
 
         @Test
