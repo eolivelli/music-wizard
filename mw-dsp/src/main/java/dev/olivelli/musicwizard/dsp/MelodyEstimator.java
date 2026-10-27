@@ -932,15 +932,20 @@ public final class MelodyEstimator {
             onsets[i] = pitches.timeOf(merged.get(i)[0]);
         }
         // Across the note boundaries too, since a tremolo does not stop for
-        // them; each marked when it lies at a place the pitch moved, dropped
-        // pieces included, since there it may be the next note's articulation.
+        // them; each marked when it lies where the pitch moved -- at a note's
+        // onset, or in a piece crossing between two notes that held no pitch --
+        // since there it is the next note's articulation.
         List<double[]> runDips = new ArrayList<>();
         if (level != null) {
             for (double[] dip : levelDips(level, pitches.timeOf(from), runEnd)) {
                 boolean atBoundary = false;
+                for (double onset : onsets) {
+                    atBoundary |= Math.abs(dip[0] - onset) <= DIP_REACH_SECONDS;
+                }
                 for (int[] piece : spans) {
-                    atBoundary |= Math.abs(dip[0] - pitches.timeOf(piece[0]))
-                            <= DIP_REACH_SECONDS;
+                    atBoundary |= !kept.contains(piece)
+                            && dip[0] >= pitches.timeOf(piece[0]) - DIP_REACH_SECONDS
+                            && dip[0] <= pitches.timeOf(piece[1] - 1) + DIP_REACH_SECONDS;
                 }
                 runDips.add(new double[] {dip[0], dip[1], atBoundary ? 1 : 0});
             }
@@ -1055,8 +1060,7 @@ public final class MelodyEstimator {
                 boolean atBoundary = false;
                 boolean alone = true;
                 for (double[] other : runDips) {
-                    // The next note's articulation, landed inside this one
-                    // because the pitch crossed to it unsteadily.
+                    // Where the pitch crossed unsteadily to the next note.
                     atBoundary |= other[0] == dip[0] && other[2] == 1;
                     alone &= !echoes(other, dip)
                             || other[2] == 1 && !hasEchoBeyond(runDips, other, dip);
