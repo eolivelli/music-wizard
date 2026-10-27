@@ -21,7 +21,6 @@ import dev.olivelli.musicwizard.dsp.BeatTracker;
 import dev.olivelli.musicwizard.dsp.Chroma;
 import dev.olivelli.musicwizard.dsp.HarmonicRhythm;
 import dev.olivelli.musicwizard.core.model.NoteTrack;
-import dev.olivelli.musicwizard.dsp.LevelContour;
 import dev.olivelli.musicwizard.dsp.MelodyEstimator;
 import dev.olivelli.musicwizard.dsp.MeterEstimator;
 import dev.olivelli.musicwizard.dsp.NnlsChroma;
@@ -254,8 +253,7 @@ public final class MeterSweep {
         double tuning = Chroma.estimateTuning(transform);
         Chroma frames = NnlsChroma.extract(transform, tuning).combined();
         NoteTrack melody = line
-                ? MelodyEstimator.explain(PitchTracker.track(audio), envelope,
-                        LevelContour.fromAudio(audio), tuning, false).melody()
+                ? MelodyEstimator.explain(PitchTracker.track(audio), envelope, tuning).melody()
                 : null;
         OnsetEnvelope rhythm = line ? envelope.withNoteOnsets(melody) : envelope;
         BeatTracker.Result beats = line

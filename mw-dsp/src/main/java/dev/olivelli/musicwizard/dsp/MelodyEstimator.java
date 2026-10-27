@@ -50,8 +50,10 @@ import java.util.Objects;
  * are indistinguishable in a pitch track outright — a re-articulation is an
  * amplitude event — so a strong envelope peak inside a note cuts it in two,
  * but only where the voice itself restarts (#495), and so does the level
- * falling and coming back where it does nowhere else in the note, which is a
- * tongued repeat whose voice never stops (#882). The constants carry what
+ * falling and coming back with something struck, which is a tongued repeat
+ * whose voice never stops, unless it dips as deep again too soon after to be
+ * anything but a tremolo (#882). Only the printed notes are cut there: the
+ * beat is tracked from the line without them. The constants carry what
  * both melody corpora said about the floors.
  *
  * <p>What the envelope deliberately does <em>not</em> do here is move the
@@ -159,11 +161,17 @@ public final class MelodyEstimator {
     private static final double STROKE_DECIBELS = 6.0;
 
     /**
-     * How deep, as a share of a stroke, any other dip in the same note may be:
-     * a level that dips as deep elsewhere is a tremolo, which the synthetic
-     * flute renders carry (#882).
+     * How deep, as a share of a stroke, another dip within {@link
+     * #TREMOLO_SECONDS} of it may be: a level that dips as deep again that soon
+     * is a tremolo, which the synthetic flute renders carry (#882).
      */
     private static final double STROKE_ALONE_SHARE = 0.5;
+
+    /**
+     * How far apart two dips of a tremolo may lie: a vibrato's period at its
+     * slowest. Strokes repeated faster than this read as a tremolo too.
+     */
+    private static final double TREMOLO_SECONDS = 0.2;
 
     /**
      * How strongly the track's own pitches must sit on the grid a tuning offset
@@ -922,6 +930,9 @@ public final class MelodyEstimator {
         for (int i = 0; i < merged.size(); i++) {
             onsets[i] = pitches.timeOf(merged.get(i)[0]);
         }
+        // Across the note boundaries too: a tremolo does not stop for them.
+        List<double[]> runDips = level == null
+                ? List.of() : levelDips(level, pitches.timeOf(from), runEnd);
         List<Note> notes = new ArrayList<>(merged.size());
         List<String> startedBy = new ArrayList<>(merged.size());
         for (int i = 0; i < merged.size(); i++) {
@@ -937,16 +948,18 @@ public final class MelodyEstimator {
             // envelope says where it was struck, not what it sounded like.
             Confidence confidence = Confidence.clamped(meanVoicedness(pitches, span));
             List<Double> starts = new ArrayList<>();
+            List<String> by = new ArrayList<>();
             starts.add(onset);
+            by.add(i == 0 ? MelodyTrace.Note.RUN : MelodyTrace.Note.PITCH);
             if (envelope != null) {
-                rearticulations(envelope, level, pitches, span, onset, end, starts, strikes);
+                rearticulations(envelope, level, runDips, pitches, span, onset, end, starts, by,
+                        strikes);
             }
             for (int piece = 0; piece < starts.size(); piece++) {
                 double pieceStart = starts.get(piece);
                 double pieceEnd = piece + 1 < starts.size() ? starts.get(piece + 1) : end;
                 notes.add(Note.ofSeconds(pieceStart, pieceEnd - pieceStart, pitch, confidence));
-                startedBy.add(piece > 0 ? MelodyTrace.Note.REARTICULATION
-                        : i == 0 ? MelodyTrace.Note.RUN : MelodyTrace.Note.PITCH);
+                startedBy.add(by.get(piece));
             }
         }
         double runStart = pitches.timeOf(from);
@@ -981,28 +994,32 @@ public final class MelodyEstimator {
     }
 
     /** Where a note may have been struck again, and which reading proposed it. */
-    private enum Proposed { PEAK, STROKE, SWELL }
+    private enum Proposed { PEAK, STROKE, SWELL, UNSTRUCK }
 
     private record Candidate(double seconds, Proposed by) {
     }
 
     /**
-     * Adds the boundaries of a note's re-articulations to {@code starts}, and
-     * what was read at each place one was considered to {@code strikes}.
+     * Adds the boundaries of a note's re-articulations to {@code starts}, the
+     * rule that placed each to {@code by}, and what was read at each place one
+     * was considered to {@code strikes}.
      *
      * <p>Two things strike a note again: an envelope peak where the voice
-     * restarts, and the level falling and coming back where it does nowhere
-     * else in the note, which is a tongued repeat on a wind instrument whose
-     * voice never stops (#882). A level that dips as deep elsewhere in the
-     * note is a tremolo, not a stroke. A cut lands only strictly inside the
-     * note, at least {@link #MIN_NOTE_SECONDS} from either end and from the
-     * previous cut: nearer the start it is the note's own attack, nearer the
-     * end it is the next note's, and either way the piece it would leave is
-     * shorter than anything this class calls a note.
+     * restarts, and a stroke -- the level falling and coming back with the
+     * envelope above its mean -- which is a tongued repeat on a wind instrument
+     * whose voice never stops (#882). A level that dips as deep again within
+     * {@link #TREMOLO_SECONDS} is a tremolo and not a stroke. A cut lands only strictly inside the note, at least {@link
+     * #MIN_NOTE_SECONDS} from either end and from the previous cut: nearer the
+     * start it is the note's own attack, nearer the end it is the next note's,
+     * and either way the piece it would leave is shorter than anything this
+     * class calls a note.
+     *
+     * @param runDips every dip of the run this note is in, as {@link #levelDips} reads them
      */
     private static void rearticulations(OnsetEnvelope envelope, LevelContour level,
-                                        PitchTrack pitches, int[] span, double onset, double end,
-                                        List<Double> starts, List<MelodyTrace.Strike> strikes) {
+                                        List<double[]> runDips, PitchTrack pitches, int[] span,
+                                        double onset, double end, List<Double> starts,
+                                        List<String> by, List<MelodyTrace.Strike> strikes) {
         double medianVoicedness = medianVoicedness(pitches, span);
         double last = end - MIN_NOTE_SECONDS;
         List<Candidate> candidates = new ArrayList<>();
@@ -1017,82 +1034,99 @@ public final class MelodyEstimator {
                 candidates.add(new Candidate(envelope.timeOf(frame), Proposed.PEAK));
             }
         }
+        List<double[]> dips = level == null ? List.of() : levelDips(level, onset, end);
         if (level != null) {
-            List<double[]> dips = new ArrayList<>();
-            for (int frame = level.frameOf(onset + MIN_NOTE_SECONDS);
-                    frame <= level.frameOf(last); frame++) {
-                double time = level.timeOf(frame);
-                double dip = levelDip(level, frame, onset, end);
-                if (time > onset && time < last && dip > 0) {
-                    dips.add(new double[] {time, dip});
-                }
-            }
             for (double[] dip : dips) {
-                if (dip[1] < STROKE_DECIBELS) {
+                if (dip[0] <= onset || dip[0] >= last || dip[1] < STROKE_DECIBELS) {
                     continue;
                 }
                 boolean alone = true;
-                for (double[] other : dips) {
-                    alone &= other == dip || other[1] < STROKE_ALONE_SHARE * dip[1];
+                for (double[] other : runDips) {
+                    double apart = Math.abs(other[0] - dip[0]);
+                    // A dip within the reach is this one's own bottom, not a
+                    // second dip.
+                    alone &= apart <= DIP_REACH_SECONDS || apart > TREMOLO_SECONDS
+                            || other[1] < STROKE_ALONE_SHARE * dip[1];
                 }
-                candidates.add(new Candidate(dip[0], alone ? Proposed.STROKE : Proposed.SWELL));
+                // The envelope is mean-zero: above it, something was struck.
+                boolean attacked = strongestNear(envelope, dip[0] - level.offsetSeconds()) > 0;
+                candidates.add(new Candidate(dip[0], !alone ? Proposed.SWELL
+                        : attacked ? Proposed.STROKE : Proposed.UNSTRUCK));
             }
             candidates.sort(Comparator.comparingDouble(Candidate::seconds));
         }
         for (Candidate candidate : candidates) {
             double time = candidate.seconds();
+            boolean peak = candidate.by() == Proposed.PEAK;
             double voicedness = leastVoicedness(pitches, span, time) / medianVoicedness;
             boolean struck = switch (candidate.by()) {
                 case PEAK -> voicedness < REARTICULATION_DIP_SHARE;
                 case STROKE -> true;
-                case SWELL -> false;
+                case SWELL, UNSTRUCK -> false;
             };
             boolean room = time >= starts.get(starts.size() - 1) + MIN_NOTE_SECONDS;
             if (struck && room) {
                 starts.add(time);
+                by.add(peak ? MelodyTrace.Note.REARTICULATION : MelodyTrace.Note.STROKE);
             }
-            strikes.add(new MelodyTrace.Strike(time, strongestNear(envelope, time), voicedness,
-                    level == null ? 0 : deepestDipNear(level, time, onset, end),
+            // Both readings on the level's axis, whose frames are centred
+            // where the envelope's start.
+            double centred = peak && level != null ? time + level.offsetSeconds() : time;
+            strikes.add(new MelodyTrace.Strike(time,
+                    strongestNear(envelope, peak || level == null
+                            ? time : time - level.offsetSeconds()),
+                    voicedness,
+                    level == null ? 0 : deepestDipNear(dips, centred),
                     candidate.by() == Proposed.SWELL ? MelodyTrace.Strike.SWELL
+                            : candidate.by() == Proposed.UNSTRUCK ? MelodyTrace.Strike.UNSTRUCK
                             : !struck ? MelodyTrace.Strike.HELD
                             : !room ? MelodyTrace.Strike.CROWDED
-                            : candidate.by() == Proposed.STROKE ? MelodyTrace.Strike.LEVEL
-                            : MelodyTrace.Strike.ENVELOPE));
+                            : peak ? MelodyTrace.Strike.ENVELOPE
+                            : MelodyTrace.Strike.LEVEL));
         }
     }
 
     /**
-     * How far the level at a frame lies under the lower of the loudest frames
-     * within {@link #DIP_REACH_SECONDS} either side of it, inside the note; zero
-     * unless the frame is a local minimum. Both sides are asked so that a note
-     * fading out, or one arriving, is not a stroke: the level has to come back.
+     * The dips inside a note: each local minimum of the level, at least {@link
+     * #MIN_NOTE_SECONDS} from either end, as its time and how far it lies under
+     * the lower of the loudest frames within {@link #DIP_REACH_SECONDS} either
+     * side of it inside the note. Both sides are asked so that a note fading
+     * out, or one arriving, is not a dip: the level has to come back.
      */
-    private static double levelDip(LevelContour level, int frame, double onset, double end) {
+    private static List<double[]> levelDips(LevelContour level, double onset, double end) {
         double[] db = level.decibels();
-        if (frame == 0 || frame + 1 >= db.length || db[frame] > db[frame - 1]
-                || db[frame] >= db[frame + 1]) {
-            return 0;
-        }
         int reach = (int) Math.ceil(DIP_REACH_SECONDS * level.frameRate());
-        double before = Double.NEGATIVE_INFINITY;
-        for (int f = Math.max(level.frameOf(onset), frame - reach); f < frame; f++) {
-            before = Math.max(before, db[f]);
+        int first = level.frameOf(onset);
+        int last = level.frameOf(end) - 1;
+        List<double[]> dips = new ArrayList<>();
+        for (int frame = Math.max(1, level.frameOf(onset + MIN_NOTE_SECONDS));
+                frame <= Math.min(db.length - 2, level.frameOf(end - MIN_NOTE_SECONDS));
+                frame++) {
+            if (db[frame] > db[frame - 1] || db[frame] >= db[frame + 1]) {
+                continue;
+            }
+            double before = Double.NEGATIVE_INFINITY;
+            for (int f = Math.max(first, frame - reach); f < frame; f++) {
+                before = Math.max(before, db[f]);
+            }
+            double after = Double.NEGATIVE_INFINITY;
+            for (int f = frame + 1; f <= Math.min(last, frame + reach); f++) {
+                after = Math.max(after, db[f]);
+            }
+            double depth = Math.min(before, after) - db[frame];
+            if (depth > 0) {
+                dips.add(new double[] {level.timeOf(frame), depth});
+            }
         }
-        double after = Double.NEGATIVE_INFINITY;
-        for (int f = frame + 1; f <= Math.min(level.frameOf(end) - 1, frame + reach); f++) {
-            after = Math.max(after, db[f]);
-        }
-        return Math.max(0, Math.min(before, after) - db[frame]);
+        return dips;
     }
 
-    private static double deepestDipNear(LevelContour level, double time, double onset,
-                                         double end) {
-        int centre = level.frameOf(time);
-        int reach = (int) Math.ceil(DIP_REACH_SECONDS * level.frameRate());
+    private static double deepestDipNear(List<double[]> dips, double time) {
         double deepest = 0;
-        for (int f = Math.max(0, centre - reach);
-                f <= Math.min(level.length() - 1, centre + reach); f++) {
-            deepest = Math.max(deepest, levelDip(level, f, onset, end));
+        for (double[] dip : dips) {
+            if (Math.abs(dip[0] - time) <= DIP_REACH_SECONDS) {
+                deepest = Math.max(deepest, dip[1]);
+            }
         }
         return deepest;
     }

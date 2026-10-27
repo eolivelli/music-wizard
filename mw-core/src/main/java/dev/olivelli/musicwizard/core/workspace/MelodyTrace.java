@@ -207,7 +207,7 @@ public record MelodyTrace(
      * @param joined             how many held pieces were joined to their
      *                           neighbour for rounding to the same semitone,
      *                           or as its attack an octave under it
-     * @param rearticulations    boundaries the onset envelope added inside a note
+     * @param rearticulations    boundaries added inside a note struck again
      * @param notes              notes the run produced
      * @param unassignedSeconds  how much of the run no note covers
      */
@@ -279,7 +279,8 @@ public record MelodyTrace(
      * @param startedBy       {@code run} where it opens a voiced run,
      *                        {@code pitch} where the pitch left the note before
      *                        it, {@code re-articulation} where the onset envelope
-     *                        cut a held note in two
+     *                        cut a held note in two, {@code stroke} where its
+     *                        level did
      * @param run             which run of {@link MelodyTrace#runs} it came from
      * @param gesture         which gesture of {@link MelodyTrace#gestures} decided
      *                        its octave, or null where the fold decided nothing
@@ -303,6 +304,9 @@ public record MelodyTrace(
 
         /** The onset envelope struck the same pitch again (#495). */
         public static final String REARTICULATION = "re-articulation";
+
+        /** The level fell and came back on the same pitch (#882). */
+        public static final String STROKE = "stroke";
 
         public Note {
             // The page prints this, so a note without one is a note this build
@@ -341,8 +345,11 @@ public record MelodyTrace(
         /** An envelope peak where the voice did not restart: kept whole. */
         public static final String HELD = "held";
 
-        /** The level fell and came back, but as far elsewhere in the note: kept whole. */
+        /** The level fell and came back, but as far again soon after or before: kept whole. */
         public static final String SWELL = "swell";
+
+        /** The level fell and came back with nothing struck: kept whole. */
+        public static final String UNSTRUCK = "unstruck";
 
         /** Struck, but too near the cut before it to leave a note between: kept whole. */
         public static final String CROWDED = "crowded";
