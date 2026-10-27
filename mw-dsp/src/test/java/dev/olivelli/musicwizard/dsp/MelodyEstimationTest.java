@@ -316,6 +316,45 @@ class MelodyEstimationTest {
         }
 
         @Test
+        @DisplayName("an unsteady crossing's articulation does not repeat the note left")
+        void anUnsteadyCrossingDoesNotRepeatTheNoteLeft() {
+            double[] crossing = {68.2, 67.8, 68.6, 67.9, 68.5, 67.8, 68.6, 68.0};
+            double[] hz = new double[100];
+            for (int i = 0; i < hz.length; i++) {
+                double midi = i < 38 ? 67 : i < 46 ? crossing[i - 38] : 69;
+                hz[i] = 440 * Math.pow(2, (midi - 69) / 12);
+            }
+            NoteTrack melody = withLevel(voicedAt(hz), peaksAt(1.3, 0.49, 1.0),
+                    strokesAt(1.3, 14, 0.49));
+
+            assertThat(pitches(melody)).containsExactly(67, 69);
+        }
+
+        @Test
+        @DisplayName("a repeat in a run tongued at a tremolo's spacing still cuts")
+        void aRepeatInAFastTonguedRunCuts() {
+            // G A A C D, every note tongued at the same spacing.
+            double[] times = {0.45, 0.6, 0.75, 0.9};
+            NoteTrack melody = withLevel(steps(392, 38, 440, 25, 523.25, 13, 587.33, 24),
+                    peaksAt(1.3, 0.45, 1.0, 0.6, 1.0, 0.75, 1.0, 0.9, 1.0),
+                    strokesAt(1.3, 14, times));
+
+            assertThat(pitches(melody)).containsExactly(67, 69, 69, 72, 74);
+        }
+
+        @Test
+        @DisplayName("repeats either side of a change at a tremolo's spacing read as a tremolo")
+        void repeatsEitherSideOfAChangeReadAsATremolo() {
+            // G G A A: three equal dips with a change of pitch at the middle one
+            // are what a tremolo through that change looks like (#885).
+            NoteTrack melody = withLevel(steps(392, 50, 440, 50),
+                    peaksAt(1.3, 0.45, 1.0, 0.6, 1.0, 0.75, 1.0),
+                    strokesAt(1.3, 14, 0.45, 0.6, 0.75));
+
+            assertThat(pitches(melody)).containsExactly(67, 69);
+        }
+
+        @Test
         @DisplayName("a tremolo running through changes of pitch cuts nothing")
         void aTremoloThroughAChangeOfPitchDoesNotCut() {
             double[] times = new double[8];
