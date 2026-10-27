@@ -246,7 +246,7 @@ class MelodyEstimationTest {
         }
 
         @Test
-        @DisplayName("a level that dips as deep again within a vibrato's period is a tremolo")
+        @DisplayName("a level that dips as deep again soon after is a tremolo")
         void aTremoloDoesNotCut() {
             NoteTrack melody = withLevel(heldNote(100, -1, -1),
                     peaksAt(1.3, 0.45, 1.0, 0.6, 1.0, 0.75, 1.0),
@@ -263,6 +263,28 @@ class MelodyEstimationTest {
 
             assertThat(pitches(melody)).containsExactly(69, 69, 69);
             assertThat(melody.notes().get(2).onsetSeconds()).isCloseTo(0.8, within(0.01));
+        }
+
+        @Test
+        @DisplayName("a repeat soon after a tongued change of pitch still cuts")
+        void aRepeatAfterATonguedChangeCuts() {
+            // G, then A from about 0.45 s, tongued into and struck again soon
+            // after: the dip at the change is the A's own articulation.
+            double[] hz = new double[100];
+            boolean[] voiced = new boolean[100];
+            double[] voicedness = new double[100];
+            for (int i = 0; i < hz.length; i++) {
+                hz[i] = i < 38 ? 392 : 440;
+                voiced[i] = true;
+                voicedness[i] = 0.9;
+            }
+            NoteTrack melody = withLevel(
+                    new PitchTrack(hz, voiced, voicedness, RATE,
+                            PitchTracker.WINDOW, PitchTracker.HOP),
+                    peaksAt(1.3, 0.45, 1.0, 0.6, 1.0), strokesAt(1.3, 14, 0.45, 0.6));
+
+            assertThat(pitches(melody)).containsExactly(67, 69, 69);
+            assertThat(melody.notes().get(2).onsetSeconds()).isCloseTo(0.6, within(0.01));
         }
 
         @Test
