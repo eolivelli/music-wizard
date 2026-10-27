@@ -168,8 +168,9 @@ public final class MelodyEstimator {
     private static final double STROKE_ALONE_SHARE = 0.5;
 
     /**
-     * How far apart two dips of a tremolo may lie: a vibrato's period at its
-     * slowest. Strokes repeated faster than this read as a tremolo too.
+     * How far apart two dips may lie and still be read as one tremolo. Strokes
+     * repeated faster than this read as a tremolo too, and a slower tremolo as
+     * strokes (#885).
      */
     private static final double TREMOLO_SECONDS = 0.2;
 
@@ -930,9 +931,21 @@ public final class MelodyEstimator {
         for (int i = 0; i < merged.size(); i++) {
             onsets[i] = pitches.timeOf(merged.get(i)[0]);
         }
-        // Across the note boundaries too: a tremolo does not stop for them.
-        List<double[]> runDips = level == null
-                ? List.of() : levelDips(level, pitches.timeOf(from), runEnd);
+        // Across the note boundaries too, since a tremolo does not stop for
+        // them -- but not the dip at a boundary, which is the next note's
+        // articulation and not a tremolo's.
+        List<double[]> runDips = new ArrayList<>();
+        if (level != null) {
+            for (double[] dip : levelDips(level, pitches.timeOf(from), runEnd)) {
+                boolean atBoundary = false;
+                for (double boundary : onsets) {
+                    atBoundary |= Math.abs(dip[0] - boundary) <= DIP_REACH_SECONDS;
+                }
+                if (!atBoundary) {
+                    runDips.add(dip);
+                }
+            }
+        }
         List<Note> notes = new ArrayList<>(merged.size());
         List<String> startedBy = new ArrayList<>(merged.size());
         for (int i = 0; i < merged.size(); i++) {
