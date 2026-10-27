@@ -331,6 +331,24 @@ class MelodyEstimationTest {
         }
 
         @Test
+        @DisplayName("a repeat whose attack scoops sharp before settling still cuts")
+        void aRepeatThatScoopsCuts() {
+            // The scoop is a piece of its own that rounds back to the note, so
+            // the cut it opens is joined away and is no change of pitch.
+            double[] hz = new double[100];
+            for (int i = 0; i < hz.length; i++) {
+                double midi = i < 50 ? 67 : i < 56 ? 67.65 : 67.1;
+                hz[i] = 440 * Math.pow(2, (midi - 69) / 12);
+            }
+            PitchTrack pitches = voicedAt(hz);
+            double struck = pitches.timeOf(50);
+            NoteTrack melody = withLevel(pitches, peaksAt(1.3, struck, 1.0),
+                    strokesAt(1.3, 14, struck));
+
+            assertThat(pitches(melody)).containsExactly(67, 67);
+        }
+
+        @Test
         @DisplayName("a repeat in a run tongued at a tremolo's spacing still cuts")
         void aRepeatInAFastTonguedRunCuts() {
             // G A A C D, every note tongued at the same spacing.
