@@ -1052,10 +1052,17 @@ public final class MelodyEstimator {
                 if (dip[0] <= onset || dip[0] >= last || dip[1] < STROKE_DECIBELS) {
                     continue;
                 }
+                boolean atBoundary = false;
                 boolean alone = true;
                 for (double[] other : runDips) {
+                    // The next note's articulation, landed inside this one
+                    // because the pitch crossed to it unsteadily.
+                    atBoundary |= other[0] == dip[0] && other[2] == 1;
                     alone &= !echoes(other, dip)
                             || other[2] == 1 && !hasEchoBeyond(runDips, other, dip);
+                }
+                if (atBoundary) {
+                    continue;
                 }
                 // The envelope is mean-zero: above it, something was struck.
                 boolean attacked = strongestNear(envelope, dip[0] - level.offsetSeconds()) > 0;
@@ -1108,12 +1115,14 @@ public final class MelodyEstimator {
 
     /**
      * Whether a dip where the pitch moved is echoed on its far side from
-     * {@code dip}: a tremolo's dips run on through a change of pitch, and an
-     * articulation's does not.
+     * {@code dip} by one where it did not: a tremolo's dips run on through a
+     * change of pitch, and an articulation's do not. Two repeats either side of
+     * a change at a tremolo's spacing read as a tremolo too (#885).
      */
     private static boolean hasEchoBeyond(List<double[]> dips, double[] boundary, double[] dip) {
         for (double[] beyond : dips) {
-            if (Math.signum(beyond[0] - boundary[0]) == Math.signum(boundary[0] - dip[0])
+            if (beyond[2] == 0
+                    && Math.signum(beyond[0] - boundary[0]) == Math.signum(boundary[0] - dip[0])
                     && echoes(beyond, boundary)) {
                 return true;
             }
