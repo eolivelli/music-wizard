@@ -23,6 +23,7 @@ import dev.olivelli.musicwizard.core.ml.SeparationProvider;
 import dev.olivelli.musicwizard.core.model.Note;
 import dev.olivelli.musicwizard.core.model.NoteTrack;
 import dev.olivelli.musicwizard.dsp.Chroma;
+import dev.olivelli.musicwizard.dsp.LevelContour;
 import dev.olivelli.musicwizard.dsp.MelodyEstimator;
 import dev.olivelli.musicwizard.dsp.NnlsChroma;
 import dev.olivelli.musicwizard.dsp.OnsetEnvelope;
@@ -162,7 +163,8 @@ public final class OctaveSweep {
     private record Span(double onset, double end, int pitch) {}
 
     /** What the segmenter reads, cached: everything upstream of it. */
-    private record Front(PitchTrack track, OnsetEnvelope envelope, double tuning) {}
+    private record Front(PitchTrack track, OnsetEnvelope envelope, LevelContour level,
+                         double tuning) {}
 
     public static void main(String[] commandLine) throws Exception {
         List<String> rest = new ArrayList<>();
@@ -553,7 +555,8 @@ public final class OctaveSweep {
 
     private static List<Span> estimate(Front front, double[] band, boolean separated) {
         NoteTrack track = MelodyEstimator.estimate(
-                front.track(), front.envelope(), front.tuning(), STEADY, band[0], band[1],
+                front.track(), front.envelope(), front.level(), front.tuning(), STEADY,
+                band[0], band[1],
                 (int) band[2], band[3], separated);
         List<Span> notes = new ArrayList<>(track.size());
         for (Note note : track.notes()) {
@@ -587,6 +590,7 @@ public final class OctaveSweep {
         AudioBuffer buffer = AudioDecoder.decode(audio);
         AudioBuffer tracked = separated ? vocalStem(audio, buffer.sampleRate()) : buffer;
         Front front = new Front(PitchTracker.track(tracked), OnsetEnvelope.fromAudio(tracked),
+                LevelContour.fromAudio(tracked),
                 Chroma.estimateTuning(NnlsChroma.transform(buffer)));
         Files.createDirectories(CACHE);
         Path partial = cached.resolveSibling(cached.getFileName() + ".partial");
@@ -644,7 +648,13 @@ public final class OctaveSweep {
         for (int frame = 0; frame < strength.length; frame++) {
             strength[frame] = in.readDouble();
         }
-        return new Front(track, new OnsetEnvelope(strength, in.readDouble()), in.readDouble());
+        OnsetEnvelope envelope = new OnsetEnvelope(strength, in.readDouble());
+        double[] decibels = new double[in.readInt()];
+        for (int frame = 0; frame < decibels.length; frame++) {
+            decibels[frame] = in.readDouble();
+        }
+        LevelContour level = new LevelContour(decibels, in.readDouble(), in.readDouble());
+        return new Front(track, envelope, level, in.readDouble());
     }
 
     private static void write(DataOutputStream out, Front front) throws IOException {
@@ -667,6 +677,12 @@ public final class OctaveSweep {
             out.writeDouble(strength);
         }
         out.writeDouble(front.envelope().frameRate());
+        out.writeInt(front.level().length());
+        for (double decibels : front.level().decibels()) {
+            out.writeDouble(decibels);
+        }
+        out.writeDouble(front.level().frameRate());
+        out.writeDouble(front.level().offsetSeconds());
         out.writeDouble(front.tuning());
     }
 

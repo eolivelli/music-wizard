@@ -42,6 +42,7 @@ import dev.olivelli.musicwizard.dsp.Chroma;
 import dev.olivelli.musicwizard.dsp.ChordEstimator;
 import dev.olivelli.musicwizard.dsp.DownbeatEstimator;
 import dev.olivelli.musicwizard.dsp.KeyEstimator;
+import dev.olivelli.musicwizard.dsp.LevelContour;
 import dev.olivelli.musicwizard.dsp.MelodyEstimator;
 import dev.olivelli.musicwizard.dsp.MeterEstimator;
 import dev.olivelli.musicwizard.dsp.HarmonicRhythm;
@@ -343,22 +344,28 @@ public final class AudioTranscriber {
         // the recording it speaks for is what tells the two apart.
         AudioBuffer melodyAudio = settings.trackMelody() ? melodySignal(audio, vocalStem) : null;
         MelodyEstimator.Segmented mixMelody = null;
+        NoteTrack line = null;
         boolean noteOnsets = false;
         OnsetEnvelope rhythm = envelope;
         if (melodyAudio == audio) {
             progress.accept("tracking the melody in the full mix");
             PitchTrack pitches = trackPitch(melodyAudio, settings);
-            mixMelody = MelodyEstimator.explain(pitches, envelope, tuning);
+            mixMelody = MelodyEstimator.explain(pitches, envelope,
+                    LevelContour.fromAudio(melodyAudio), tuning, false);
+            // The grid, the meter and the key read the line without the cuts
+            // its level alone made: a dip inside a held note is a note, not a
+            // pulse, and one taken for an onset can halve a tempo (#882).
+            line = MelodyEstimator.explain(pitches, envelope, tuning).melody();
             noteOnsets = pitches.voicedShare() >= LINE_ALONE_VOICED_SHARE;
             if (noteOnsets) {
                 progress.accept("a line alone: its notes join the onsets the beat is tracked from");
-                rhythm = envelope.withNoteOnsets(mixMelody.melody());
+                rhythm = envelope.withNoteOnsets(line);
             }
         }
 
         progress.accept("tracking beats");
         BeatTracker.Result beats = BeatTracker.track(rhythm, harmonicRhythm, onsets.pulseRegister(),
-                noteOnsets ? envelope : null, noteOnsets ? mixMelody.melody() : null);
+                noteOnsets ? envelope : null, noteOnsets ? line : null);
         if (beats.isEmpty()) {
             progress.accept("no beats found; returning an empty score");
             runLog.stage(BeatTrace.STAGE).trace(beats.trace()).computed("no pulse was found");
@@ -444,7 +451,7 @@ public final class AudioTranscriber {
         // On a line alone, from its notes and behind the same gate as the key
         // and the beat, because its chroma changes with every note (#869).
         MeterEstimator.Estimate reading = noteOnsets
-                ? MeterEstimator.estimate(beatTimes, mixMelody.melody(), rhythm)
+                ? MeterEstimator.estimate(beatTimes, line, rhythm)
                 : MeterEstimator.estimate(beatTimes, chroma, rhythm);
         if (noteOnsets) {
             progress.accept("a line alone: the meter is read from its notes");
@@ -537,7 +544,7 @@ public final class AudioTranscriber {
         // they say whether a pickup is played on the pulse before the first
         // downbeat (#859).
         double firstSound = noteOnsets
-                ? mixMelody.melody().notes().stream()
+                ? line.notes().stream()
                         .mapToDouble(Note::onsetSeconds).min().orElse(Double.NaN)
                 : Double.NaN;
         TempoMap tempoMap;
@@ -602,7 +609,7 @@ public final class AudioTranscriber {
         // it, and behind the same gate as the beat: chords named over a single
         // line are a chord per note or two and lean to the dominant (#825).
         Optional<KeyEstimator.Estimate> key = noteOnsets
-                ? KeyEstimator.estimate(mixMelody.melody(), 0, audio.durationSeconds())
+                ? KeyEstimator.estimate(line, 0, audio.durationSeconds())
                 : Optional.empty();
         if (key.isPresent()) {
             progress.accept("a line alone: the key is read from its notes");
@@ -659,7 +666,7 @@ public final class AudioTranscriber {
             }
             MelodyEstimator.Segmented segmented = mixMelody != null ? mixMelody
                     : MelodyEstimator.explain(trackPitch(melodyAudio, settings), melodyEnvelope,
-                            tuning, separated);
+                            LevelContour.fromAudio(melodyAudio), tuning, separated);
             // Nothing on a line alone says a voice played it (#862).
             NoteTrack melody = noteOnsets
                     ? segmented.melody().withName(NoteTrack.LEAD) : segmented.melody();

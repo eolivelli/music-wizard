@@ -5,18 +5,18 @@ Melody, note by note against each package's own MIDI melody track
 (read through the separated vocal: what analyze --melody now does)
   blues-compound-e-126: no melody track; not scored
   blues-shuffle-e-84: no melody track; not scored
-  hiphop-m7vamp-bbm-90: notes=54/99  F1@50ms 6.5%  F1@100ms 7.8%  pitch 13.6%  voiced 17.4%
-  melody-level1-c-96: notes=88/96  F1@50ms 12.0%  F1@100ms 14.1%  pitch 18.2%  voiced 48.1%
-  melody-level2-g-84: notes=118/113  F1@50ms 14.7%  F1@100ms 20.8%  pitch 43.5%  voiced 70.0%
-  melody-level2pad-g-84: notes=113/113  F1@50ms 5.3%  F1@100ms 7.1%  pitch 21.4%  voiced 50.0%
-  melody-level3-am-108: notes=86/74  F1@50ms 40.0%  F1@100ms 47.5%  pitch 74.1%  voiced 93.0%
-  melody-level4-f-126: notes=81/95  F1@50ms 23.9%  F1@100ms 29.5%  pitch 33.6%  voiced 63.6%
+  hiphop-m7vamp-bbm-90: notes=56/99  F1@50ms 6.5%  F1@100ms 7.7%  pitch 13.6%  voiced 17.4%
+  melody-level1-c-96: notes=98/96  F1@50ms 11.3%  F1@100ms 13.4%  pitch 18.2%  voiced 48.1%
+  melody-level2-g-84: notes=135/113  F1@50ms 13.7%  F1@100ms 19.4%  pitch 43.5%  voiced 70.0%
+  melody-level2pad-g-84: notes=123/113  F1@50ms 5.1%  F1@100ms 6.8%  pitch 21.4%  voiced 50.0%
+  melody-level3-am-108: notes=94/74  F1@50ms 38.1%  F1@100ms 45.2%  pitch 74.1%  voiced 93.0%
+  melody-level4-f-126: notes=86/95  F1@50ms 23.2%  F1@100ms 28.7%  pitch 33.6%  voiced 63.6%
   pop-68-threebar-am-144: no melody track; not scored
   pop-68-twobar-am-144: no melody track; not scored
   pop-68-vamp-am-144: no melody track; not scored
   pop-add9-g-96: no melody track; not scored
   pop-add9-triads-g-96: no melody track; not scored
-  pop-axis-g-116: notes=116/135  F1@50ms 13.5%  F1@100ms 23.9%  pitch 32.4%  voiced 52.2%
+  pop-axis-g-116: notes=128/135  F1@50ms 12.9%  F1@100ms 23.6%  pitch 32.4%  voiced 52.2%
   pop-borrowed-iv-c-100: no melody track; not scored
   pop-deceptive-f-72: no melody track; not scored
   pop-m6-m7b5-gm-100: no melody track; not scored
@@ -24,16 +24,16 @@ Melody, note by note against each package's own MIDI melody track
   pop-maj7-sixth-c-92: no melody track; not scored
   pop-sus-a-104: no melody track; not scored
   pop-sus-triads-a-104: no melody track; not scored
-  pop-threechord-c-108: notes=58/88  F1@50ms 11.0%  F1@100ms 15.1%  pitch 32.3%  voiced 45.4%
+  pop-threechord-c-108: notes=66/88  F1@50ms 13.0%  F1@100ms 16.9%  pitch 32.3%  voiced 45.4%
   pop-waltz-d-108: no melody track; not scored
   rocknroll-12bar-a-168: notes=8/180  F1@50ms 0.0%  F1@100ms 0.0%  pitch 0.8%  voiced 2.4%
-  solo-flute-level1-d-100: notes=122/128  F1@50ms 4.0%  F1@100ms 8.8%  pitch 14.7%  voiced 58.8%
-  solo-flute-level2-bb-112: notes=85/112  F1@50ms 4.1%  F1@100ms 9.1%  pitch 14.0%  voiced 38.0%
-  solo-flute-level2-eb-66: notes=102/87  F1@50ms 24.3%  F1@100ms 34.9%  pitch 61.2%  voiced 85.9%
-  solo-flute-level3-em-92: notes=95/78  F1@50ms 40.5%  F1@100ms 57.8%  pitch 79.2%  voiced 93.0%
-  solo-flute-level4-a-138: notes=91/96  F1@50ms 9.6%  F1@100ms 15.0%  pitch 29.8%  voiced 64.1%
+  solo-flute-level1-d-100: notes=131/128  F1@50ms 3.9%  F1@100ms 8.5%  pitch 14.7%  voiced 58.8%
+  solo-flute-level2-bb-112: notes=91/112  F1@50ms 3.9%  F1@100ms 8.9%  pitch 14.0%  voiced 38.0%
+  solo-flute-level2-eb-66: notes=115/87  F1@50ms 22.8%  F1@100ms 32.7%  pitch 61.2%  voiced 85.9%
+  solo-flute-level3-em-92: notes=107/78  F1@50ms 37.8%  F1@100ms 54.1%  pitch 79.2%  voiced 93.0%
+  solo-flute-level4-a-138: notes=94/96  F1@50ms 9.5%  F1@100ms 14.7%  pitch 29.8%  voiced 64.1%
   solo-flute-waltz-level2-g-120: notes=57/64  F1@50ms 14.9%  F1@100ms 16.5%  pitch 22.7%  voiced 48.4%
-  solo-flute-waltz-level3-em-132: notes=63/52  F1@50ms 47.0%  F1@100ms 69.6%  pitch 80.5%  voiced 94.4%
+  solo-flute-waltz-level3-em-132: notes=66/52  F1@50ms 45.8%  F1@100ms 67.8%  pitch 80.5%  voiced 94.4%
   solo-piano-level1-ab-104: notes=14/128  F1@50ms 0.0%  F1@100ms 0.0%  pitch 0.0%  voiced 3.8%
   solo-piano-level2-dm-63: notes=5/82  F1@50ms 0.0%  F1@100ms 0.0%  pitch 0.2%  voiced 0.7%
   solo-piano-level2-f-120: notes=11/116  F1@50ms 0.0%  F1@100ms 0.0%  pitch 0.0%  voiced 2.2%
