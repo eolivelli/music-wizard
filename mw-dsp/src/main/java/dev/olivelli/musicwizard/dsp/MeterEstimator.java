@@ -446,9 +446,9 @@ public final class MeterEstimator {
      * {@link #MARGIN}: a line in three leaves its rivals at the null, and a
      * ratio over the null is a ratio of noise.
      *
-     * <p>Failing three, a line that divides its pulse long-short more often
-     * than any other way is barred in two pulses, which is 6/8 counted on the
-     * tracked pulse (#871), unless its held notes state a three. A swung line
+     * <p>Failing three, a line whose commonest division of a pulse is compound
+     * is barred in two pulses, which is 6/8 counted on the tracked pulse
+     * (#871), unless its held notes state a three. A swung line
      * divides it the same way (#896). Six would be a tracker below the beat,
      * and is not read from a line.
      */
@@ -479,44 +479,48 @@ public final class MeterEstimator {
                 divisions.onThePulse(), held.usableBeats());
     }
 
-    /** Fewer notes inside a pulse than this, and a share of them is a handful's. */
-    private static final int DIVIDING_NOTES = 8;
-
-    /** The ways a note that starts inside a pulse divides it. */
-    private enum Division { LONG_SHORT, DUPLE, ACROSS, OTHER }
+    /** Fewer divided pulses than this, and a share of them is a handful's. */
+    private static final int DIVIDED_PULSES = 8;
 
     /**
-     * How a note starting at a fraction of a pulse divides it, by the nearest
-     * of its half, quarters and thirds. Long-short is a lone note nearer two
-     * thirds in a pulse struck at both ends, the 6/8 quarter and eighth;
-     * across is any note in a pulse whose beat is not struck, as quarters
-     * tracked at their dotted quarter tie over every other beat.
+     * How the notes inside a pulse divide it. Compound is a lone note nearer a
+     * third than a half or a quarter, the 6/8 quarter and eighth, or more
+     * notes at thirds where the line divides most of its pulses; triplet is
+     * the latter where it does not, as a 4/4 line divides its beats in three
+     * only now and then. Across is a pulse not struck at both ends, as
+     * quarters tracked at their dotted quarter tie over every other beat.
      */
-    private static Division division(double fraction, boolean struck, boolean endsStruck,
-                                     boolean alone) {
+    private enum Division { COMPOUND, TRIPLET, DUPLE, ACROSS }
+
+    private static Division division(List<Double> fractions, boolean struck,
+                                     boolean nextStruck, boolean mostPulsesDivided) {
         if (!struck) {
             return Division.ACROSS;
         }
-        double third = Math.min(Math.abs(fraction - 1.0 / 3), Math.abs(fraction - 2.0 / 3));
-        double duple = Math.min(Math.abs(fraction - 0.5),
-                Math.min(Math.abs(fraction - 0.25), Math.abs(fraction - 0.75)));
-        if (duple <= third) {
-            return Division.DUPLE;
+        for (double fraction : fractions) {
+            double third = Math.min(Math.abs(fraction - 1.0 / 3), Math.abs(fraction - 2.0 / 3));
+            double duple = Math.min(Math.abs(fraction - 0.5),
+                    Math.min(Math.abs(fraction - 0.25), Math.abs(fraction - 0.75)));
+            if (duple <= third) {
+                return Division.DUPLE;
+            }
         }
-        return alone && endsStruck && fraction > 0.5 ? Division.LONG_SHORT : Division.OTHER;
+        if (!nextStruck) {
+            return Division.ACROSS;
+        }
+        return fractions.size() == 1 || mostPulsesDivided ? Division.COMPOUND : Division.TRIPLET;
     }
 
     /**
-     * How a line divides the tracked pulse, from the notes that start inside
-     * one: {@code inThree} is the share of them that divide it long-short,
+     * How a line divides the tracked pulse, from the pulses its notes start
+     * inside: {@code inThree} is the share of them divided compound,
      * {@code inTwo} the share of the commonest other {@link Division}, and
-     * {@code onThePulse} the share of pulses they divide.
+     * {@code onThePulse} the share of all pulses they are.
      */
     private static Divisions divisionsByTheLine(List<Double> beatTimes, NoteTrack line) {
         int pulses = beatTimes.size() - 1;
         Set<Long> struck = new HashSet<>();
         Map<Long, List<Double>> inside = new HashMap<>();
-        int dividing = 0;
         for (Note note : line.notes()) {
             double at = beatPosition(beatTimes, note.onsetSeconds());
             if (at < 0 || at >= pulses) {
@@ -528,29 +532,25 @@ public final class MeterEstimator {
             } else {
                 inside.computeIfAbsent((long) Math.floor(at), pulse -> new ArrayList<>())
                         .add(at - Math.floor(at));
-                dividing++;
             }
         }
         double divided = (double) inside.size() / pulses;
-        if (dividing < DIVIDING_NOTES) {
+        if (inside.size() < DIVIDED_PULSES) {
             return new Divisions(0, 0, divided);
         }
         Map<Division, Integer> counts = new HashMap<>();
-        inside.forEach((pulse, fractions) -> {
-            for (double fraction : fractions) {
-                counts.merge(division(fraction, struck.contains(pulse),
-                        struck.contains(pulse + 1), fractions.size() == 1), 1, Integer::sum);
-            }
-        });
-        int longShort = counts.getOrDefault(Division.LONG_SHORT, 0);
+        inside.forEach((pulse, fractions) -> counts.merge(division(fractions,
+                struck.contains(pulse), struck.contains(pulse + 1), divided > 0.5),
+                1, Integer::sum));
         int otherwise = 0;
         for (Division other : Division.values()) {
-            if (other != Division.LONG_SHORT) {
+            if (other != Division.COMPOUND) {
                 otherwise = Math.max(otherwise, counts.getOrDefault(other, 0));
             }
         }
-        return new Divisions((double) longShort / dividing, (double) otherwise / dividing,
-                divided);
+        return new Divisions(
+                (double) counts.getOrDefault(Division.COMPOUND, 0) / inside.size(),
+                (double) otherwise / inside.size(), divided);
     }
 
     /**
