@@ -586,16 +586,30 @@ public final class AudioTranscriber {
                     + " to fall on; ignoring them");
             changes = List.of();
         }
-        DownbeatEstimator.Estimate downbeat = settings.firstDownbeatSeconds() != null
-                ? forcedDownbeat(beatTimes, settings.firstDownbeatSeconds(), pulsesPerBar,
-                        "the requested downbeat")
-                : !changes.isEmpty()
-                ? forcedDownbeat(beatTimes, changes.get(0).seconds(), pulsesPerBar,
-                        "the meter change")
-                : DownbeatEstimator.estimate(beatTimes, chroma, rhythm, pulsesPerBar);
-        List<HeldSection> sections = heldSections(beatTimes, meter,
-                pulseQuarters.orElse(meter.beatUnitQuarters()), pulsesPerBar,
-                downbeat.phase(), changes);
+        double openingPulse = pulseQuarters.orElse(meter.beatUnitQuarters());
+        List<String> placing = new java.util.ArrayList<>();
+        DownbeatEstimator.Estimate downbeat;
+        List<HeldSection> sections;
+        if (settings.firstDownbeatSeconds() != null) {
+            downbeat = forcedDownbeat(beatTimes, settings.firstDownbeatSeconds(), pulsesPerBar,
+                    "the requested downbeat");
+            sections = heldSections(beatTimes, meter, openingPulse, pulsesPerBar,
+                    downbeat.phase(), changes, placing);
+        } else {
+            // Only a change that is kept may place the bar lines before it.
+            sections = changes.isEmpty() ? List.of() : heldSections(beatTimes, meter,
+                    openingPulse, pulsesPerBar, Math.floorMod(nearestBeatIndex(beatTimes,
+                            changes.get(0).seconds()), pulsesPerBar), changes, placing);
+            downbeat = sections.size() > 1
+                    ? forcedDownbeat(beatTimes, changes.get(0).seconds(), pulsesPerBar,
+                            "the meter change")
+                    : DownbeatEstimator.estimate(beatTimes, chroma, rhythm, pulsesPerBar);
+            if (sections.size() < 2) {
+                sections = List.of(new HeldSection(
+                        downbeat.phase(), meter, openingPulse, pulsesPerBar));
+            }
+        }
+        placing.forEach(progress);
         BeatGrid tracked = relabelled(BeatTracker.toBeatGrid(beats, downbeat), sections);
         // Recorded on the grid rather than left to each reader, because the grid
         // is what a reader has: BeatGrid.steadyTempo and medianTempo convert a
@@ -1178,9 +1192,10 @@ public final class AudioTranscriber {
      * that cannot be placed is said and dropped with every one after it, since
      * those were counted from it.
      */
-    List<HeldSection> heldSections(List<Double> beatTimes, TimeSignature opening,
-                                   double openingPulse, int openingPerBar, int phase,
-                                   List<MeterChangeAt> changes) {
+    static List<HeldSection> heldSections(List<Double> beatTimes, TimeSignature opening,
+                                          double openingPulse, int openingPerBar, int phase,
+                                          List<MeterChangeAt> changes, List<String> said) {
+        Consumer<String> progress = said::add;
         List<HeldSection> sections = new java.util.ArrayList<>();
         sections.add(new HeldSection(phase, opening, openingPulse, openingPerBar));
         for (MeterChangeAt change : changes) {

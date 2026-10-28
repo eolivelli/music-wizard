@@ -29,7 +29,7 @@ import java.util.Optional;
 import java.util.OptionalDouble;
 
 /**
- * The one metronome mark a score is engraved with: how fast, in the beat the
+ * A metronome mark a score is engraved with: how fast, in the beat the
  * reader counts.
  *
  * <p>Three emitters print it — {@link ChordChart} on a chart,
@@ -38,9 +38,7 @@ import java.util.OptionalDouble;
  * itself, because every part of the decision has already been got wrong once on
  * this project. The beat unit is the one #4 is about: the map stores quarter
  * notes per minute, so an unqualified figure in 6/8 is a metronome marking 50%
- * fast. The figure itself has to be {@link #headline}'s, which is what the text
- * chart prints, or the page contradicts the two lines the user read before
- * looking at it. And how much to trust it is {@link #ESTIMATE}, once stated
+ * fast. And how much to trust it is {@link #ESTIMATE}, once stated
  * two ways in two goldens of one fixture.
  *
  * <p>How each emitter reaches it differs, and only the decision is shared. The
@@ -51,10 +49,7 @@ import java.util.OptionalDouble;
  * {@code <metronome>} beside {@link #ESTIMATE}.
  *
  * <p><b>Marked as an estimate, always.</b> The mark reads {@code ca. (♩ = 159)}
- * rather than {@code ♩ = 159}, because one figure for a whole piece is an
- * estimate even when every tempo in the map was stated: a file that changes
- * tempo states no single number, so one of them has to be picked and
- * {@link #headline} picks the one the page opens on. On the input this project
+ * rather than {@code ♩ = 159}. On the input this project
  * exists for — a recording — it is an estimate outright, from the least
  * reliable stage in the pipeline. The one case the qualifier understates is a constant tempo
  * read from a MIDI file or typed at {@code --tempo}, and that is the trade taken
@@ -133,16 +128,25 @@ record TempoMark(NoteValue unit, long perMinute) {
         TempoMap map = score.tempoMap();
         double to = Double.POSITIVE_INFINITY;
         for (TempoMap.MeterChange change : map.meterChanges()) {
-            double starts = map.beatsToSeconds(map.toBeat(
-                    new MusicalTime(change.startBar(), 0, change.timeSignature())));
+            double starts = startSeconds(map, change);
             if (starts > from + 1e-6) {
                 to = starts;
                 break;
             }
         }
+        return OptionalDouble.of(sectionTempo(score, from, to));
+    }
+
+    /**
+     * The tempo of the stretch between two meter changes, in quarter notes a
+     * minute: a stated one in force where it opens, else the grid's steady rate
+     * over its pulses in the quarters the map gives them.
+     */
+    private static double sectionTempo(Score score, double from, double to) {
+        TempoMap map = score.tempoMap();
         List<TempoMap.TempoSegment> stated = statedSegments(score);
         if (!stated.isEmpty()) {
-            return OptionalDouble.of(inForceAt(stated, from).beatsPerMinute());
+            return inForceAt(stated, from).beatsPerMinute();
         }
         List<Double> pulses = new ArrayList<>();
         for (double seconds : score.beatGrid().map(BeatGrid::beatTimes).orElse(List.of())) {
@@ -151,11 +155,11 @@ record TempoMark(NoteValue unit, long perMinute) {
             }
         }
         if (pulses.size() < 2) {
-            return OptionalDouble.of(map.tempoAtBeat(map.secondsToBeats(from)));
+            return map.tempoAtBeat(map.secondsToBeats(from));
         }
         double quartersPerPulse = (map.secondsToBeats(pulses.getLast())
                 - map.secondsToBeats(pulses.getFirst())) / (pulses.size() - 1);
-        return OptionalDouble.of(BeatGrid.steadyPulseRate(pulses) * quartersPerPulse);
+        return BeatGrid.steadyPulseRate(pulses) * quartersPerPulse;
     }
 
     /** {@link #atChange}'s tempo as a mark in the bar's meter. */
@@ -192,9 +196,29 @@ record TempoMark(NoteValue unit, long perMinute) {
      */
     static double headline(Score score, double opensAt) {
         List<TempoMap.TempoSegment> stated = statedSegments(score);
-        return changesAmong(stated) == 0
-                ? score.estimatedTempo()
-                : inForceAt(stated, opensAt).beatsPerMinute();
+        if (changesAmong(stated) != 0) {
+            return inForceAt(stated, opensAt).beatsPerMinute();
+        }
+        // A page opening after a recording's meter change is headed with the
+        // tempo of the stretch it opens in, not the opening's quarters (#888).
+        if (stated.isEmpty()) {
+            TempoMap map = score.tempoMap();
+            List<TempoMap.MeterChange> meters = map.meterChanges();
+            for (int k = meters.size() - 1; k > 0; k--) {
+                double starts = startSeconds(map, meters.get(k));
+                if (starts <= opensAt + 1e-6) {
+                    double ends = k + 1 < meters.size()
+                            ? startSeconds(map, meters.get(k + 1)) : Double.POSITIVE_INFINITY;
+                    return sectionTempo(score, starts, ends);
+                }
+            }
+        }
+        return score.estimatedTempo();
+    }
+
+    private static double startSeconds(TempoMap map, TempoMap.MeterChange change) {
+        return map.beatsToSeconds(map.toBeat(
+                new MusicalTime(change.startBar(), 0, change.timeSignature())));
     }
 
     /**

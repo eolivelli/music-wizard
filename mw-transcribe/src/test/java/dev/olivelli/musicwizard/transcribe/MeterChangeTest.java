@@ -170,4 +170,20 @@ class MeterChangeTest {
         assertThat(score.tempoMap().meterChanges()).hasSize(1);
         assertThat(messages).anyMatch(m -> m.contains("no whole bar of 3/4 before it"));
     }
+
+    @Test
+    @DisplayName("a change that is ignored does not place the bar lines either")
+    void anIgnoredChangeLeavesThePhaseToTheEstimator() {
+        List<Double> pulses = pulses();
+        BeatGrid plain = transcribe(new ArrayList<>(), null).beatGrid().orElseThrow();
+        for (int i = 0; i < 3; i++) {
+            List<String> messages = new ArrayList<>();
+            Score score = transcribe(messages, null,
+                    new AudioTranscriber.MeterChangeAt(pulses.get(i), TimeSignature.SIX_EIGHT));
+
+            assertThat(messages).as("pulse %d", i).anyMatch(m -> m.contains("is ignored"));
+            assertThat(score.beatGrid().orElseThrow().downbeatTimes()).as("pulse %d", i)
+                    .isEqualTo(plain.downbeatTimes());
+        }
+    }
 }

@@ -133,6 +133,23 @@ class MeterChangeRenderTest {
     }
 
     @Test
+    @DisplayName("a chart that opens after the change is headed in that stretch's tempo")
+    void aChartOpeningAfterTheChange() throws IOException {
+        Path root = workspace();
+        Workspace opened = Workspace.open(root);
+        opened.writeScore(opened.readScore().orElseThrow().withChords(new ChordProgression(
+                List.of(chord(NoteLetter.G, 6, 12)), Confidence.of(0.8))));
+
+        CliRunner.Result render = CliRunner.run("render", root.toString(),
+                "--parts", "chords", "--no-pdf");
+
+        assertThat(render.exitCode()).as(render.all()).isZero();
+        assertThat(Files.readString(root.resolve("out/chords.ly")))
+                .contains("\\tempo \\markup { \\italic \"ca.\" } 4. = 120");
+        assertThat(Files.readString(root.resolve("out/chords.txt"))).contains("Tempo  120");
+    }
+
+    @Test
     @DisplayName("analyze takes the change after the opening signature, and says where it fell")
     void analyzeTakesTheChange() {
         Path source = directory.resolve("line.wav");
@@ -156,6 +173,11 @@ class MeterChangeRenderTest {
         CliRunner.Result analyze = CliRunner.run("analyze", root.toString(),
                 "--melody", "--skip-separation", "--time-signature", "3/4,6/8@8");
 
+        CliRunner.Result opened = CliRunner.run("analyze", root.toString(),
+                "--time-signature", "6/8@3");
+        assertThat(opened.exitCode()).isNotZero();
+        assertThat(opened.all()).contains("takes no @SECONDS");
+
         assertThat(analyze.exitCode()).as(analyze.all()).isZero();
         assertThat(analyze.out()).contains("the counted beat held")
                 .containsPattern("Meter +3/4, 6/8 from [0-9.]+s");
@@ -172,6 +194,9 @@ class MeterChangeRenderTest {
                         .MeterChangeAt(17.4, TimeSignature.SIX_EIGHT));
         assertThat(AnalyzeCommand.parseMeter("3/4,6/8@17.4")).isEqualTo(TimeSignature.THREE_FOUR);
         assertThat(AnalyzeCommand.parseMeterChanges("6/8")).isEmpty();
+        org.assertj.core.api.Assertions.assertThatIllegalArgumentException()
+                .isThrownBy(() -> AnalyzeCommand.parseMeterChanges("6/8@3"))
+                .withMessageContaining("takes no @SECONDS");
         for (String typed : List.of("3/4,6/8", "6/8@3", "3/4,6/8@x", "3/4,")) {
             org.assertj.core.api.Assertions.assertThatIllegalArgumentException()
                     .as(typed).isThrownBy(() -> AnalyzeCommand.parseMeterChanges(typed));
