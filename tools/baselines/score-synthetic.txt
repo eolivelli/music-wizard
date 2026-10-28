@@ -29,6 +29,8 @@ Synthetic corpus, bar-by-bar against each package's own spec
   solo-flute-level2-eb-66.mp3: melody only; chords not scored
   solo-flute-level3-em-92.mp3: melody only; chords not scored
   solo-flute-level4-a-138.mp3: melody only; chords not scored
+  solo-flute-sixeight-level2-d-198.mp3: melody only; chords not scored
+  solo-flute-sixeight-level3-em-168.mp3: melody only; chords not scored
   solo-flute-waltz-level2-g-120.mp3: melody only; chords not scored
   solo-flute-waltz-level3-em-132.mp3: melody only; chords not scored
   solo-piano-level1-ab-104.mp3: melody only; chords not scored
@@ -36,4 +38,5 @@ Synthetic corpus, bar-by-bar against each package's own spec
   solo-piano-level2-f-120.mp3: melody only; chords not scored
   solo-piano-level3-e-88.mp3: melody only; chords not scored
   solo-piano-level4-cm-144.mp3: melody only; chords not scored
+  solo-piano-sixeight-level2-a-150.mp3: melody only; chords not scored
   solo-piano-waltz-level2-f-100.mp3: melody only; chords not scored
