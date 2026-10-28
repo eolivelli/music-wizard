@@ -766,8 +766,8 @@ final class StaffLayout {
      * dotted quarters — the same trap {@link ChordChart} documents, and the
      * reason the unit is carried rather than assumed to be a quarter.
      *
-     * <p><b>One mark for the whole staff</b>, and one more wherever a meter
-     * change changes the counted note value ({@link TempoMark#atChange}). A
+     * <p><b>One mark for the whole staff</b>, and one more at a meter
+     * change {@link TempoMark#atChange} marks. A
      * score whose tempo changes gets
      * only the one it opens on: 120 for four beats and then 60 is marked 120,
      * and the 60 is printed nowhere. {@link MidiExport} writes every segment at
