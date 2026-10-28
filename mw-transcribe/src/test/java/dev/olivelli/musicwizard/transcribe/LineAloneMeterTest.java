@@ -17,6 +17,7 @@
 package dev.olivelli.musicwizard.transcribe;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.within;
 
 import dev.olivelli.musicwizard.audio.AudioBuffer;
 import dev.olivelli.musicwizard.core.model.Score;
@@ -61,8 +62,19 @@ class LineAloneMeterTest {
     }
 
     private Score transcribe() {
+        return transcribe(null);
+    }
+
+    private Score transcribe(TimeSignature supplied) {
         return new AudioTranscriber(progress::add, log).transcribe(waltzLine(24),
-                new AudioTranscriber.Options(null, null, null, true));
+                new AudioTranscriber.Options(null, supplied, null, true));
+    }
+
+    /** Quarter beats between two instants well inside the line, two tracked pulses apart. */
+    private static double quartersInTwoPulses(Score score) {
+        double from = 10 * BEAT;
+        return score.tempoMap().secondsToBeats(from + 2 * BEAT)
+                - score.tempoMap().secondsToBeats(from);
     }
 
     @Test
@@ -80,5 +92,25 @@ class LineAloneMeterTest {
                 .findFirst().orElseThrow().facts().get("meter"))
                 .startsWith("3/4, read from the melody's notes at ");
     }
-}
 
+    @Test
+    @DisplayName("a supplied 6/8 on a line alone counts the tracked pulse as its dotted quarter (#887)")
+    void aSuppliedCompoundMeterCountsThePulseAsItsBeat() {
+        Score score = transcribe(TimeSignature.SIX_EIGHT);
+
+        assertThat(score.tempoMap().initialTimeSignature()).isEqualTo(TimeSignature.SIX_EIGHT);
+        assertThat(quartersInTwoPulses(score)).isCloseTo(3.0, within(0.1));
+        assertThat(score.beatGrid().orElseThrow().beats())
+                .as("two tracked pulses to a bar")
+                .extracting(beat -> beat.positionInBar())
+                .containsOnly(0, 1);
+    }
+
+    @Test
+    @DisplayName("a supplied 3/4 on the same line still counts the pulse as a quarter (#869)")
+    void aSuppliedSimpleMeterKeepsTheQuarterPulse() {
+        Score score = transcribe(TimeSignature.THREE_FOUR);
+
+        assertThat(quartersInTwoPulses(score)).isCloseTo(2.0, within(0.1));
+    }
+}
