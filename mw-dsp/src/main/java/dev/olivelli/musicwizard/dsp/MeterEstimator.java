@@ -337,12 +337,12 @@ public final class MeterEstimator {
      * may be read against each other, and beside them the one thing here that is
      * not read from the harmony at all: how the tracked pulse divides.
      *
+     * <p>On a line alone every field is read from its notes instead, by
+     * {@link #read(List, NoteTrack, OnsetEnvelope)}.
+     *
      * @param harmonic    harmonic periodicity at each of those lengths, keyed by
      *                    tracked pulses to a bar; the assumed length's entry is
      *                    the assumption's own score
-     * <p>On a line alone the three division fields are read from its notes
-     * instead, by {@link #read(List, NoteTrack, OnsetEnvelope)}.
-     *
      * @param inThree     the stronger of the onset envelope's periodicities at
      *                    the two lags a triple division of the pulse puts a peak
      *                    at, over its periodicity at the pulse itself; zero
@@ -448,14 +448,14 @@ public final class MeterEstimator {
      *
      * <p>Failing three, a line whose notes divide a struck pulse in three is
      * barred in two of them, which is 6/8 counted on the tracked pulse (#871),
-     * unless its held notes state a three. Six would be a tracker below the
-     * beat, and is not read from a line.
+     * unless its held notes state a three. A swung line divides it the same
+     * way (#896). Six would be a tracker below the beat, and is not read from
+     * a line.
      */
     public static Estimate decideLine(Reading reading) {
         Objects.requireNonNull(reading, "reading");
         if (reading.at(IN_THREE) < SUPPORTED
-                && reading.inThree() >= A_LINE_DIVIDES_IN_THREE
-                && reading.inThree() > reading.inTwo()) {
+                && reading.inThree() >= A_LINE_DIVIDES_IN_THREE) {
             return new Estimate(meterAt(reading, IN_TWO), IN_TWO, confidenceInTwo(reading));
         }
         boolean inThree = reading.at(IN_THREE) >= SUPPORTED
@@ -491,8 +491,10 @@ public final class MeterEstimator {
 
     /**
      * The share of a line's dividing notes that must divide a struck pulse
-     * unevenly before the pulse counts as dividing in three.
-     * {@code tools/MeterSweep.java} prints it for every line it sweeps.
+     * unevenly before the pulse counts as dividing in three: above the half
+     * that quarters tracked at their dotted quarter reach, striking every
+     * other pulse. {@code tools/MeterSweep.java} prints it as {@code in3} for
+     * every line it sweeps.
      */
     private static final double A_LINE_DIVIDES_IN_THREE = 0.6;
 
