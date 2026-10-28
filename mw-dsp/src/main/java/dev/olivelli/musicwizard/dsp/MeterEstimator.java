@@ -25,6 +25,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -108,14 +109,15 @@ public final class MeterEstimator {
      * The bar length the harmony alone may not choose, because two divides both
      * four and six and the statistic below cannot prefer a period to its own
      * divisors. It reaches {@link Estimate#pulsesPerBar()} only through
-     * {@link #barsInTwo}, and it is never a rival to a length it divides: a
+     * {@link #barsInTwo} and, on a line, through how its notes divide the
+     * pulse, and it is never a rival to a length it divides: a
      * four-pulse bar scores at period two both by that degeneracy and by the
      * ordinary comping that fills it, so neither reading is a hypothesis
      * competing with the four.
      */
     private static final int IN_TWO = 2;
 
-    /** The one bar length a line alone may leave the assumption for. */
+    /** The bar length a line alone leaves the assumption for on its held notes. */
     private static final int IN_THREE = 3;
 
     /** The bar length assumed when the evidence does not displace it. */
@@ -338,6 +340,9 @@ public final class MeterEstimator {
      * @param harmonic    harmonic periodicity at each of those lengths, keyed by
      *                    tracked pulses to a bar; the assumed length's entry is
      *                    the assumption's own score
+     * <p>On a line alone the three division fields are read from its notes
+     * instead, by {@link #read(List, NoteTrack, OnsetEnvelope)}.
+     *
      * @param inThree     the stronger of the onset envelope's periodicities at
      *                    the two lags a triple division of the pulse puts a peak
      *                    at, over its periodicity at the pulse itself; zero
@@ -432,18 +437,27 @@ public final class MeterEstimator {
     }
 
     /**
-     * The meter a line's reading names: three pulses or the assumed four.
+     * The meter a line's reading names: three pulses, two, or the assumed four.
      *
      * <p>A line in four states its half bar or its bar, and three divides
      * neither, so either supported is the prior's own evidence and keeps a
      * supported three out — the half bar unless six accounts for it, as it
      * does for a line in three that holds a note every other bar. Not
      * {@link #MARGIN}: a line in three leaves its rivals at the null, and a
-     * ratio over the null is a ratio of noise. Nothing else is read from a
-     * line: six would be a tracker below the beat, and two is #871.
+     * ratio over the null is a ratio of noise.
+     *
+     * <p>Failing three, a line whose notes divide a struck pulse in three is
+     * barred in two of them, which is 6/8 counted on the tracked pulse (#871),
+     * unless its held notes state a three. Six would be a tracker below the
+     * beat, and is not read from a line.
      */
     public static Estimate decideLine(Reading reading) {
         Objects.requireNonNull(reading, "reading");
+        if (reading.at(IN_THREE) < SUPPORTED
+                && reading.inThree() >= A_LINE_DIVIDES_IN_THREE
+                && reading.inThree() > reading.inTwo()) {
+            return new Estimate(meterAt(reading, IN_TWO), IN_TWO, confidenceInTwo(reading));
+        }
         boolean inThree = reading.at(IN_THREE) >= SUPPORTED
                 && reading.at(ASSUMED) < SUPPORTED
                 && (reading.at(IN_TWO) < SUPPORTED
@@ -460,7 +474,69 @@ public final class MeterEstimator {
         if (!usable(beatTimes) || line.isEmpty()) {
             return unreadable(beatTimes);
         }
-        return readSeries(beatTimes, heldNoteStarts(beatTimes, line), envelope);
+        Reading held = readSeries(beatTimes, heldNoteStarts(beatTimes, line), envelope);
+        Divisions divisions = divisionsByTheLine(beatTimes, line);
+        return new Reading(held.harmonic(), divisions.inThree(), divisions.inTwo(),
+                divisions.onThePulse(), held.usableBeats());
+    }
+
+    /**
+     * How far from the middle of a pulse a note may start and still divide it
+     * evenly: half the way to a third of it.
+     */
+    private static final double EVENLY = (0.5 - 1.0 / 3) / 2;
+
+    /** Fewer notes inside a pulse than this, and a share of them is a handful's. */
+    private static final int DIVIDING_NOTES = 8;
+
+    /**
+     * The share of a line's dividing notes that must divide a struck pulse
+     * unevenly before the pulse counts as dividing in three.
+     * {@code tools/MeterSweep.java} prints it for every line it sweeps.
+     */
+    private static final double A_LINE_DIVIDES_IN_THREE = 0.6;
+
+    /**
+     * How a line divides the tracked pulse, from the notes that start inside
+     * one: {@code inThree} is the share of them off its middle in a pulse whose
+     * beat is struck, {@code inTwo} the share at its middle, and
+     * {@code onThePulse} the share of pulses they divide. Struck, because a
+     * simple meter tracked at its dotted quarter divides the pulse in three
+     * too, but ties across every other beat.
+     */
+    private static Divisions divisionsByTheLine(List<Double> beatTimes, NoteTrack line) {
+        Set<Long> struck = new HashSet<>();
+        List<Double> positions = new ArrayList<>();
+        for (Note note : line.notes()) {
+            double at = beatPosition(beatTimes, note.onsetSeconds());
+            if (at < 0 || at >= beatTimes.size() - 1) {
+                continue;
+            }
+            long beat = Math.round(at);
+            if (Math.abs(at - beat) <= ON_THE_BEAT) {
+                struck.add(beat);
+            } else {
+                positions.add(at);
+            }
+        }
+        if (positions.size() < DIVIDING_NOTES) {
+            return new Divisions(0, 0, (double) positions.size() / (beatTimes.size() - 1));
+        }
+        int evenly = 0;
+        int unevenlyStruck = 0;
+        for (double at : positions) {
+            long pulse = (long) Math.floor(at);
+            if (Math.abs(at - pulse - 0.5) < EVENLY) {
+                evenly++;
+            } else if (struck.contains(pulse)) {
+                unevenlyStruck++;
+            }
+        }
+        Set<Long> divided = new HashSet<>();
+        positions.forEach(at -> divided.add((long) Math.floor(at)));
+        return new Divisions((double) unevenlyStruck / positions.size(),
+                (double) evenly / positions.size(),
+                (double) divided.size() / (beatTimes.size() - 1));
     }
 
     /**

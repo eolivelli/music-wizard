@@ -1081,9 +1081,9 @@ public final class AudioTranscriber {
      * that was measured and only the name on the page changes, which is the
      * pair the corpus cannot separate anyway (#728).
      *
-     * <p>Never from a line alone's reading into a compound signature: that
-     * reading counts quarters and has no compound beat to measure (#871), so
-     * the supplied signature's own beat is the tracked pulse (#887).
+     * <p>Never from a line alone's reading into a compound signature: on a
+     * line the compound beat is the tracked pulse (#887), whether supplied or
+     * read (#871).
      */
     static OptionalInt readPulsesPerBar(
             MeterEstimator.Estimate reading, TimeSignature meter, boolean fromLine) {
