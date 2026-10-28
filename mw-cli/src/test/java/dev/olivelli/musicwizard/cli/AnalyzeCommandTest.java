@@ -32,9 +32,13 @@ import dev.olivelli.musicwizard.core.model.PitchSpelling;
 import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.model.TempoMap;
 import dev.olivelli.musicwizard.core.model.TimeSignature;
+import dev.olivelli.musicwizard.core.workspace.BeatTrace;
+import dev.olivelli.musicwizard.core.workspace.RunManifest;
+import dev.olivelli.musicwizard.transcribe.AudioTranscriber;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -138,6 +142,32 @@ class AnalyzeCommandTest {
             } finally {
                 Locale.setDefault(original);
             }
+        }
+    }
+
+    @Nested
+    @DisplayName("the meter line")
+    class MeterLine {
+
+        @Test
+        @DisplayName("is followed by the change the run proposed, as it would be typed (#895)")
+        void showsTheProposal() {
+            String proposal = "--time-signature 6/8,3/4@31.20=8,6/8@33.94=8";
+            List<RunManifest.StageRun> stages = List.of(new RunManifest.StageRun(BeatTrace.STAGE,
+                    RunManifest.Outcome.COMPUTED, null,
+                    Map.of(AudioTranscriber.PROPOSED_METER, proposal)));
+
+            assertThat(AnalyzeCommand.summary(SourceKind.AUDIO,
+                    trackedAt(0.5, TimeSignature.SIX_EIGHT), stages))
+                    .containsSubsequence("Meter   6/8", "        proposed, not applied: " + proposal);
+        }
+
+        @Test
+        @DisplayName("is alone where nothing was proposed")
+        void saysNothingElse() {
+            assertThat(AnalyzeCommand.summary(SourceKind.AUDIO,
+                    trackedAt(0.5, TimeSignature.SIX_EIGHT), List.of()))
+                    .noneSatisfy(line -> assertThat(line).contains("proposed"));
         }
     }
 

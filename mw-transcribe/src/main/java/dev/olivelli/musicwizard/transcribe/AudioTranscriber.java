@@ -297,6 +297,9 @@ public final class AudioTranscriber {
         }
     }
 
+    /** The beat stage's fact naming a change a user may supply, never one applied (#895). */
+    public static final String PROPOSED_METER = "proposed meter";
+
     private final Consumer<String> progress;
     private final RunLog runLog;
 
@@ -618,6 +621,17 @@ public final class AudioTranscriber {
             }
         }
         placing.forEach(progress);
+        String proposal = null;
+        // Not beside a typed tempo, which a supplied change refuses (#890).
+        if (noteOnsets && settings.tempoOverride() == null) {
+            List<MeterChangeAt> proposed = EighthHeldRuns.propose(beatTimes, sections, line);
+            if (!proposed.isEmpty()) {
+                proposal = "--time-signature "
+                        + EighthHeldRuns.timeSignatureValue(beatTimes, sections, proposed);
+                progress.accept("a line alone: an even run at two thirds of the pulse fills"
+                        + " whole bars; proposed, not applied: " + proposal);
+            }
+        }
         BeatGrid tracked = relabelled(BeatTracker.toBeatGrid(beats, downbeat), sections);
         // Recorded on the grid rather than left to each reader, because the grid
         // is what a reader has: BeatGrid.steadyTempo and medianTempo convert a
@@ -673,7 +687,7 @@ public final class AudioTranscriber {
                 meterOrigin(meter, suppliedMeter, suppliedMeter ? null : reading));
 
         recordBeats(beats, meter, pulsesPerBar, suppliedMeter ? null : reading, noteOnsets,
-                changesSaid(beatTimes, sections));
+                changesSaid(beatTimes, sections), proposal);
 
         progress.accept("estimating chords");
         ChordEstimator.Decoded decoded =
@@ -879,7 +893,7 @@ public final class AudioTranscriber {
      */
     private void recordBeats(BeatTracker.Result beats, TimeSignature meter, int pulsesPerBar,
                              MeterEstimator.Estimate detected, boolean noteOnsets,
-                             String changes) {
+                             String changes, String proposal) {
         BeatTrace trace = beats.trace();
         RunLog.Stage stage = runLog.stage(BeatTrace.STAGE).trace(trace);
         stage.fact("onsets", noteOnsets
@@ -894,6 +908,7 @@ public final class AudioTranscriber {
             stage.fact("tracked pulses in a bar", pulsesPerBar);
         }
         stage.fact("meter changes", changes);
+        stage.fact(PROPOSED_METER, proposal);
         if (trace == null) {
             stage.computed();
             return;

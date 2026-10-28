@@ -237,6 +237,10 @@ length hung on the phase the downbeats agree on (#233).
   second, `6/8@17.4,3/4@31.2=8`, holds the eighth instead: the pulse keeps
   its length in quarters, as an unmarked change is read, so the page prints
   no tempo mark there (#883). Not with `--tempo` yet (#890).
+- On a line alone in 6/8 at the tracked pulse, whole bars of even notes two
+  thirds of a pulse apart are bars of 3/4 with the eighth held. `analyze`
+  proposes them as the whole `--time-signature` value to type, in its
+  summary and the report's beat stage, and applies nothing (#895).
 
 `--tempo` is read in the meter's *counted* beats per minute — what a
 metronome shows — which differs from quarter notes in compound time, and which
