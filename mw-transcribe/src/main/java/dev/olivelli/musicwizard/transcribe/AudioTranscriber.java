@@ -479,7 +479,7 @@ public final class AudioTranscriber {
                         pulsesPerBar, pulsesPerBar == 1 ? "" : "s", meter.beatsPerBar()));
             }
         } else {
-            OptionalInt readCount = readPulsesPerBar(reading, meter);
+            OptionalInt readCount = readPulsesPerBar(reading, meter, noteOnsets);
             if (readCount.isEmpty() && !reading.pulseIsCountedBeat()) {
                 // Said rather than silent where the reading put the tracker
                 // below the counted beat and the typed bar cannot hold what it
@@ -982,8 +982,16 @@ public final class AudioTranscriber {
      * triplets. Where they do hold the same music the pulse is the very one
      * that was measured and only the name on the page changes, which is the
      * pair the corpus cannot separate anyway (#728).
+     *
+     * <p>Never from a line alone's reading into a compound signature: that
+     * reading counts quarters and has no compound beat to measure (#871), so
+     * the supplied signature's own beat is the tracked pulse (#887).
      */
-    static OptionalInt readPulsesPerBar(MeterEstimator.Estimate reading, TimeSignature meter) {
+    static OptionalInt readPulsesPerBar(
+            MeterEstimator.Estimate reading, TimeSignature meter, boolean fromLine) {
+        if (fromLine && meter.isCompound()) {
+            return OptionalInt.empty();
+        }
         // Compared exactly: a small numerator over a power of two is a dyadic
         // rational a double holds without rounding, which is the same fact
         // TimeSignature.beatUnitQuarters rests on.
