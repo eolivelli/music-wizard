@@ -483,10 +483,18 @@ public final class MeterEstimator {
     private static final int DIVIDED_PULSES = 8;
 
     /**
+     * The share of a line's pulses that must be divided in thirds before
+     * several notes at thirds are compound rather than a triplet. Clear of a
+     * half, where a 4/4 line with triplets on every other beat sits and where
+     * the pulse a line starts or ends on decides.
+     */
+    private static final double MOSTLY = 2.0 / 3;
+
+    /**
      * How the notes inside a pulse divide it. Compound is a lone note nearer a
      * third than a half or a quarter, the 6/8 quarter and eighth, or more
-     * notes at thirds where most of the pulses the line sounds in are divided
-     * in thirds;
+     * notes at thirds where most pulses from the line's first note to the end
+     * of its last are divided in thirds;
      * triplet is the latter where they are not, as a 4/4 line divides its
      * beats in three only now and then. Across is a pulse whose beat is not
      * struck, or whose thirds run over an unstruck next beat, as quarters
@@ -531,11 +539,15 @@ public final class MeterEstimator {
         int pulses = beatTimes.size() - 1;
         Set<Long> struck = new HashSet<>();
         Map<Long, List<Double>> inside = new HashMap<>();
+        double first = pulses;
+        double last = 0;
         for (Note note : line.notes()) {
             double at = beatPosition(beatTimes, note.onsetSeconds());
             if (at < 0 || at >= pulses) {
                 continue;
             }
+            first = Math.min(first, at);
+            last = Math.max(last, Math.min(pulses, beatPosition(beatTimes, note.offsetSeconds())));
             long beat = Math.round(at);
             if (Math.abs(at - beat) <= ON_THE_BEAT) {
                 struck.add(beat);
@@ -548,10 +560,9 @@ public final class MeterEstimator {
         if (inside.size() < DIVIDED_PULSES) {
             return new Divisions(0, 0, divided);
         }
-        Set<Long> sounding = new HashSet<>(inside.keySet());
-        struck.stream().filter(beat -> beat < pulses).forEach(sounding::add);
+        double span = Math.ceil(last) - Math.floor(first);
         boolean mostlyInThirds = inside.values().stream()
-                .filter(MeterEstimator::inThirds).count() * 2 > sounding.size();
+                .filter(MeterEstimator::inThirds).count() > MOSTLY * span;
         Map<Division, Integer> counts = new HashMap<>();
         inside.forEach((pulse, fractions) -> counts.merge(division(fractions,
                 struck.contains(pulse), struck.contains(pulse + 1), mostlyInThirds),
