@@ -18,6 +18,7 @@ package dev.olivelli.musicwizard.notation;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import dev.olivelli.musicwizard.core.model.Provenance;
 import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.model.TempoMap;
 import dev.olivelli.musicwizard.core.model.TimeSignature;
@@ -53,21 +54,36 @@ class TempoMarkTest {
     }
 
     @Test
-    @DisplayName("marks a meter change only where the counted note value changes (#888)")
-    void marksAChangeOfCountedNoteValue() {
+    @DisplayName("marks a meter change only where it does not hold the quarter (#888, #883)")
+    void marksAChangeThatMovesTheQuarter() {
         // A file stating one tempo and changing 3/4 to 6/8 holds the eighth,
-        // so its dotted quarter is two thirds of its quarter.
+        // which is how an unmarked change is read.
         Score file = Score.empty(TempoMap.constant(120, TimeSignature.THREE_FOUR,
-                dev.olivelli.musicwizard.core.model.Provenance.DECLARED)
-                .withMeterChange(1, TimeSignature.SIX_EIGHT), 60.0);
+                Provenance.DECLARED).withMeterChange(1, TimeSignature.SIX_EIGHT), 60.0);
         double opens = file.tempoMap().beatsToSeconds(3);
         assertThat(TempoMark.atChange(file, TimeSignature.THREE_FOUR, TimeSignature.SIX_EIGHT,
-                opens)).hasValue(120.0);
-        assertThat(TempoMark.of(TimeSignature.SIX_EIGHT, 120.0))
-                .contains(new TempoMark(new NoteValue(4, true), 80));
-        // 4/4 to 3/4 keeps the quarter, and an unmarked change already says so.
-        assertThat(TempoMark.atChange(file, TimeSignature.FOUR_FOUR, TimeSignature.THREE_FOUR,
                 opens)).isEmpty();
+        // The dotted quarter taking the quarter's length is what needs saying.
+        Score held = Score.empty(new TempoMap(
+                List.of(new TempoMap.TempoSegment(0, 0, 120, Provenance.DECLARED),
+                        new TempoMap.TempoSegment(3, 1.5, 180, Provenance.DECLARED)),
+                List.of(new TempoMap.MeterChange(0, TimeSignature.THREE_FOUR, Provenance.DECLARED),
+                        new TempoMap.MeterChange(1, TimeSignature.SIX_EIGHT,
+                                Provenance.DECLARED))), 60.0);
+        assertThat(TempoMark.atChange(held, TimeSignature.THREE_FOUR, TimeSignature.SIX_EIGHT,
+                1.5)).hasValue(180.0);
+        assertThat(TempoMark.of(TimeSignature.SIX_EIGHT, 180.0))
+                .contains(new TempoMark(new NoteValue(4, true), 120));
+        // A stated tempo changing with the meter is marked whichever way it goes.
+        Score slower = Score.empty(new TempoMap(
+                List.of(new TempoMap.TempoSegment(0, 0, 120, Provenance.DECLARED),
+                        new TempoMap.TempoSegment(3, 1.5, 100, Provenance.DECLARED)),
+                held.tempoMap().meterChanges()), 60.0);
+        assertThat(TempoMark.atChange(slower, TimeSignature.THREE_FOUR, TimeSignature.SIX_EIGHT,
+                1.5)).hasValue(100.0);
+        // 4/4 to 3/4 keeps the quarter, and an unmarked change already says so.
+        assertThat(TempoMark.atChange(held, TimeSignature.FOUR_FOUR, TimeSignature.THREE_FOUR,
+                1.5)).isEmpty();
     }
 
     @Test

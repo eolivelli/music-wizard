@@ -969,6 +969,34 @@ class QuantizerTest {
         }
 
         @Test
+        @DisplayName("6/8 eighths into 3/4 eighths across a change that holds them is no change (#883)")
+        void anEighthHeldChangeKeepsTheEighthGrid() {
+            // Two bars of 6/8, three of 3/4 in plain quarters, then 6/8 again
+            // with a note let go an eighth before a bar line, which only the
+            // eighth grid can say.
+            TempoMap map = TempoMap.constant(180, TimeSignature.SIX_EIGHT)
+                    .withMeterChange(2, TimeSignature.THREE_FOUR)
+                    .withMeterChange(5, TimeSignature.SIX_EIGHT);
+            Performance performance = new Performance(map, 3, 0);
+            performance.exact(60, 0, 1.4).exact(62, 1.5, 0.95).exact(64, 2.5, 0.45)
+                    .exact(65, 3, 1.4).exact(67, 4.5, 1.4);
+            for (int i = 0; i < 9; i++) {
+                performance.exact(69, 6 + i, 0.95);
+            }
+            performance.exact(71, 15, 5.2).exact(72, 21, 2.8);
+
+            QuantizedScore quantized =
+                    Quantizer.quantize(performance.score(), QuantizationSettings.READING);
+
+            for (int bar = 2; bar < 5; bar++) {
+                assertThat(quantized.gridAtBar(bar).orElseThrow().resolution())
+                        .as("bar %d", bar).isEqualTo(GridResolution.HALF_BEAT);
+            }
+            Note held = quantized.score().tracks().get(0).notes().get(14);
+            assertThat(held.offsetBeat()).contains(20.5);
+        }
+
+        @Test
         @DisplayName("a bar with no onsets of its own is still divided its own meter's way")
         void aBarATieOnlyPassesThroughKeepsItsOwnMetersDivisions() {
             // The case the per-bar charge exists for. Bar 2 holds no onset, so
