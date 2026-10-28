@@ -30,7 +30,7 @@ Solo instrument, the playable part against each package's own MIDI, on the grid
   solo-flute-level3-em-92: bars=33/32  meter 4/4 OK  tempo 91.8/92 (x1.00)  shift +0.00  notes=78/78  placed 98.7%  held 87.0%  key OK
   solo-flute-level4-a-138: bars=23/32  meter 4/4 OK  tempo 93.8/138 (x0.68)  shift -1.50  notes=87/96  placed 5.5%  held 80.0%  key OK
   solo-flute-sixeight-level2-d-198: bars=34/32  meter 6/8 OK  tempo 198.7/198 (x1.00)  shift +0.00  notes=88/92  placed 97.8%  held 89.8%  key (3, 'major') WRONG
-  solo-flute-sixeight-level3-em-168: bars=40/32  meter 6/8 OK  tempo 242.7/168 (x1.44)  shift +0.00  notes=64/65  placed 60.5%  held 79.5%  key OK
+  solo-flute-sixeight-level3-em-168: bars=20/32  meter 4/4 WRONG  tempo 161.8/168 (x0.96)  shift -5.50  notes=59/65  placed 9.7%  held 16.7%  key OK
   solo-flute-waltz-level2-g-120: bars=29/28  meter 3/4 OK  tempo 119.9/120 (x1.00)  shift +0.00  notes=63/64  placed 97.6%  held 85.5%  key OK
   solo-flute-waltz-level3-em-132: bars=17/32  meter 4/4 WRONG  tempo 89.2/132 (x0.68)  shift -4.50  notes=50/52  placed 7.8%  held 0.0%  key (1, 'major') WRONG
   solo-piano-level1-ab-104: bars=33/32  meter 4/4 OK  tempo 104.1/104 (x1.00)  shift +0.00  notes=128/128  placed 100.0%  held 99.2%  key OK
