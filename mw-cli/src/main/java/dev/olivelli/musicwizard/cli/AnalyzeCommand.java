@@ -120,7 +120,8 @@ final class AnalyzeCommand implements Callable<Integer> {
                     + "Later signatures follow with the second each starts at, e.g. "
                     + "3/4,6/8@17.4: each takes effect at the bar line nearest that second "
                     + "and holds the counted beat, so a quarter becomes a dotted quarter "
-                    + "at the same rate. A change also places the bar lines before it, "
+                    + "at the same rate; =8 after the second, as in 3/4@31.2=8, holds the "
+                    + "eighth instead. A change also places the bar lines before it, "
                     + "unless --first-downbeat does. Audio only: a MIDI file states its "
                     + "own meter.")
     String timeSignature;
@@ -1790,7 +1791,12 @@ final class AnalyzeCommand implements Callable<Integer> {
         return parseSignature(text.split(",", -1)[0]);
     }
 
-    /** The changes typed after the opening meter, each as SIGNATURE@SECONDS (#888). */
+    private static final String EIGHTH_HELD = "=8";
+
+    /**
+     * The changes typed after the opening meter, each as SIGNATURE@SECONDS
+     * (#888), or SIGNATURE@SECONDS=8 for one that holds the eighth (#883).
+     */
     static List<AudioTranscriber.MeterChangeAt> parseMeterChanges(String text) {
         if (text == null || text.isBlank()) {
             return List.of();
@@ -1806,16 +1812,24 @@ final class AnalyzeCommand implements Callable<Integer> {
             String[] change = entries[i].split("@", -1);
             if (change.length != 2) {
                 throw new IllegalArgumentException(
-                        "a later time signature must look like 6/8@17.4, got: " + entries[i]);
+                        "a later time signature must look like 6/8@17.4 or 6/8@17.4=8, got: "
+                                + entries[i]);
+            }
+            String when = change[1].trim();
+            boolean eighthHeld = when.endsWith(EIGHTH_HELD);
+            if (eighthHeld) {
+                when = when.substring(0, when.length() - EIGHTH_HELD.length()).trim();
             }
             double seconds;
             try {
-                seconds = Double.parseDouble(change[1].trim());
+                seconds = Double.parseDouble(when);
             } catch (NumberFormatException e) {
                 throw new IllegalArgumentException(
-                        "a later time signature must look like 6/8@17.4, got: " + entries[i], e);
+                        "a later time signature must look like 6/8@17.4 or 6/8@17.4=8, got: "
+                                + entries[i], e);
             }
-            changes.add(new AudioTranscriber.MeterChangeAt(seconds, parseSignature(change[0])));
+            changes.add(new AudioTranscriber.MeterChangeAt(
+                    seconds, parseSignature(change[0]), eighthHeld));
         }
         return changes;
     }

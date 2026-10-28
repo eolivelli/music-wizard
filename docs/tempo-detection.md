@@ -233,8 +233,10 @@ length hung on the phase the downbeats agree on (#233).
   starts at, `--time-signature 3/4,6/8@17.4`. The change holds the counted
   beat (the quarter of 3/4 becomes the dotted quarter of 6/8 at the same
   rate), takes effect at the bar line nearest that second, and places the bar
-  lines before it unless `--first-downbeat` does (#888). Not with `--tempo`
-  yet (#890).
+  lines before it unless `--first-downbeat` does (#888). `=8` after the
+  second, `6/8@17.4,3/4@31.2=8`, holds the eighth instead: the pulse keeps
+  its length in quarters, as an unmarked change is read, so the page prints
+  no tempo mark there (#883). Not with `--tempo` yet (#890).
 
 `--tempo` is read in the meter's *counted* beats per minute — what a
 metronome shows — which differs from quarter notes in compound time, and which
