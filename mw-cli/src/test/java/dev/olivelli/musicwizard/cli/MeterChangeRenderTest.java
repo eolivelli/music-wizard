@@ -133,6 +133,59 @@ class MeterChangeRenderTest {
     }
 
     @Test
+    @DisplayName("a 3/4 reprise inside 6/8 with the eighth held is barred in quarters and unmarked (#883)")
+    void anEighthHeldReprise() throws IOException {
+        Path source = directory.resolve("reprise.wav");
+        SignalFactory.writeWav(source, SignalFactory.chord(
+                SignalFactory.majorTriad(60), 0.2, SignalFactory.DEFAULT_SAMPLE_RATE),
+                SignalFactory.DEFAULT_SAMPLE_RATE);
+        Path root = directory.resolve("reprise.mwz");
+        assertThat(CliRunner.run("init", source.toString(), "-w", root.toString()).exitCode())
+                .isZero();
+        TempoMap map = new TempoMap(
+                List.of(new TempoMap.TempoSegment(0, 0, 180, Provenance.MEASURED)),
+                List.of(new TempoMap.MeterChange(0, TimeSignature.SIX_EIGHT, Provenance.SUPPLIED),
+                        new TempoMap.MeterChange(2, TimeSignature.THREE_FOUR, Provenance.SUPPLIED),
+                        new TempoMap.MeterChange(5, TimeSignature.SIX_EIGHT,
+                                Provenance.SUPPLIED)));
+        List<BeatGrid.Beat> beats = new ArrayList<>();
+        for (int i = 0; i < 16; i++) {
+            beats.add(new BeatGrid.Beat(i * PULSE, i % 2 == 0, i % 2));
+        }
+        List<Note> notes = new ArrayList<>();
+        notes.add(quarters(map, 0, 1.5, 67));
+        notes.add(quarters(map, 1.5, 1.5, 69));
+        notes.add(quarters(map, 3, 3, 71));
+        int[] reprise = {60, 62, 64, 65, 64, 62, 60, 59, 60};
+        for (int i = 0; i < reprise.length; i++) {
+            notes.add(quarters(map, 6 + i, 1, reprise[i]));
+        }
+        notes.add(quarters(map, 15, 6, 64));
+        Workspace.open(root).writeScore(Score.empty(map, 12.0)
+                .withBeatGrid(new BeatGrid(beats, Confidence.of(0.9), Confidence.of(0.9)))
+                .withTrack(new NoteTrack(PartRole.LEAD_VOCAL, "Voice", notes,
+                        Confidence.CERTAIN)));
+
+        CliRunner.Result render = CliRunner.run("render", root.toString(),
+                "--parts", "playable", "--no-pdf");
+
+        assertThat(render.exitCode()).as(render.all()).isZero();
+        String ly = Files.readString(root.resolve("out/lead-playable.ly"));
+        assertThat(ly).containsSubsequence("6/8", "4. = 120", "g'4. a'4. |", "b'2. |",
+                "3/4", "c'4 d'4 e'4 |", "f'4 e'4 d'4 |", "c'4 b4 c'4 |", "6/8", "e'2.~ |");
+        assertThat(ly.split("\\\\tempo", -1)).hasSize(2);
+        String xml = Files.readString(root.resolve("out/lead-playable.musicxml"));
+        assertThat(xml.split("<sound tempo", -1)).hasSize(2);
+    }
+
+    /** A note at a position in quarters, played for nearly all of its length. */
+    private static Note quarters(TempoMap map, double beat, double length, int midi) {
+        double onset = map.beatsToSeconds(beat);
+        return Note.ofSeconds(onset, map.beatsToSeconds(beat + 0.95 * length) - onset, midi,
+                Confidence.CERTAIN);
+    }
+
+    @Test
     @DisplayName("a chart that opens after the change is headed in that stretch's tempo")
     void aChartOpeningAfterTheChange() throws IOException {
         Path root = workspace();
@@ -193,11 +246,17 @@ class MeterChangeRenderTest {
                 .containsExactly(new dev.olivelli.musicwizard.transcribe.AudioTranscriber
                         .MeterChangeAt(17.4, TimeSignature.SIX_EIGHT));
         assertThat(AnalyzeCommand.parseMeter("3/4,6/8@17.4")).isEqualTo(TimeSignature.THREE_FOUR);
+        assertThat(AnalyzeCommand.parseMeterChanges("3/4,6/8@17.4,3/4@31.2=8"))
+                .containsExactly(new dev.olivelli.musicwizard.transcribe.AudioTranscriber
+                                .MeterChangeAt(17.4, TimeSignature.SIX_EIGHT),
+                        new dev.olivelli.musicwizard.transcribe.AudioTranscriber
+                                .MeterChangeAt(31.2, TimeSignature.THREE_FOUR, true));
         assertThat(AnalyzeCommand.parseMeterChanges("6/8")).isEmpty();
         org.assertj.core.api.Assertions.assertThatIllegalArgumentException()
                 .isThrownBy(() -> AnalyzeCommand.parseMeterChanges("6/8@3"))
                 .withMessageContaining("takes no @SECONDS");
-        for (String typed : List.of("3/4,6/8", "6/8@3", "3/4,6/8@x", "3/4,")) {
+        for (String typed : List.of("3/4,6/8", "6/8@3", "3/4,6/8@x", "3/4,", "3/4,6/8@3=4",
+                "3/4,6/8@=8")) {
             org.assertj.core.api.Assertions.assertThatIllegalArgumentException()
                     .as(typed).isThrownBy(() -> AnalyzeCommand.parseMeterChanges(typed));
         }

@@ -275,10 +275,18 @@ public final class AudioTranscriber {
     /**
      * A signature from a moment in the recording onwards, the counted beat
      * held across it: 3/4 to 6/8 makes the pulse that was a quarter a dotted
-     * quarter. In seconds because that is what a listener has; the change
-     * takes effect at the bar line nearest it.
+     * quarter. With {@code eighthHeld} the note values are held instead and
+     * the pulse keeps its length in quarters (#883). In seconds because that
+     * is what a listener has; the change takes effect at the bar line nearest
+     * it.
      */
-    public record MeterChangeAt(double seconds, TimeSignature timeSignature) {
+    public record MeterChangeAt(double seconds, TimeSignature timeSignature, boolean eighthHeld) {
+
+        /** A change that holds the counted beat. */
+        public MeterChangeAt(double seconds, TimeSignature timeSignature) {
+            this(seconds, timeSignature, false);
+        }
+
         public MeterChangeAt {
             Objects.requireNonNull(timeSignature, "timeSignature");
             if (!Double.isFinite(seconds) || seconds <= 0) {
@@ -1183,7 +1191,11 @@ public final class AudioTranscriber {
      * {@code startPulse}, each pulse spanning {@code pulseQuarters}.
      */
     record HeldSection(int startPulse, TimeSignature meter, double pulseQuarters,
-                       int pulsesPerBar) {
+                       int pulsesPerBar, boolean eighthHeld) {
+
+        HeldSection(int startPulse, TimeSignature meter, double pulseQuarters, int pulsesPerBar) {
+            this(startPulse, meter, pulseQuarters, pulsesPerBar, false);
+        }
     }
 
     /**
@@ -1201,8 +1213,8 @@ public final class AudioTranscriber {
         for (MeterChangeAt change : changes) {
             HeldSection in = sections.getLast();
             TimeSignature next = change.timeSignature();
-            double pulse = in.pulseQuarters() * next.beatUnitQuarters()
-                    / in.meter().beatUnitQuarters();
+            double pulse = change.eighthHeld() ? in.pulseQuarters()
+                    : in.pulseQuarters() * next.beatUnitQuarters() / in.meter().beatUnitQuarters();
             double perBar = next.quarterBeatsPerBar() / pulse;
             long whole = Math.round(perBar);
             if (whole < 1 || Math.abs(perBar - whole) > 1e-9 * perBar) {
@@ -1230,7 +1242,7 @@ public final class AudioTranscriber {
                                 + " effect at the nearest one, at %.2fs",
                         next, change.seconds(), in.meter(), beatTimes.get(at)));
             }
-            sections.add(new HeldSection(at, next, pulse, (int) whole));
+            sections.add(new HeldSection(at, next, pulse, (int) whole, change.eighthHeld()));
         }
         return sections;
     }
@@ -1321,7 +1333,8 @@ public final class AudioTranscriber {
                     section.meter(), beatTimes.get(section.startPulse()));
             facts.add(fact);
             progress.accept(String.format(Locale.ROOT,
-                    "meter %s as supplied, the counted beat held, %.1f beats/min", fact,
+                    "meter %s as supplied, the %s held, %.1f beats/min", fact,
+                    section.eighthHeld() ? "eighth" : "counted beat",
                     BeatGrid.steadyPulseRate(beatTimes.subList(section.startPulse(), end + 1))
                             * section.pulseQuarters() / section.meter().beatUnitQuarters()));
         }

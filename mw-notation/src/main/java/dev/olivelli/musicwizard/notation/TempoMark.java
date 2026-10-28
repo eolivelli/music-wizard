@@ -16,6 +16,7 @@
 
 package dev.olivelli.musicwizard.notation;
 
+import dev.olivelli.musicwizard.arrange.MeterHold;
 import dev.olivelli.musicwizard.core.model.BeatGrid;
 import dev.olivelli.musicwizard.core.model.MusicalTime;
 import dev.olivelli.musicwizard.core.model.Provenance;
@@ -111,13 +112,13 @@ record TempoMark(NoteValue unit, long perMinute) {
 
     /**
      * The tempo a bar opening a new meter is marked with, in quarter notes a
-     * minute, or empty where the new meter counts the same note value as the
-     * one before: a reader holds the note value across an unmarked change,
-     * so only a change of it needs a mark (#888).
+     * minute, or empty where the change holds the quarter: a reader holds the
+     * note value across an unmarked change, so only a change that does not
+     * needs a mark (#888, #883).
      *
      * <p>A stated tempo is the one in force at the bar. A tracked one is the
-     * grid's steady rate over the stretch in this meter, as the opening mark is
-     * over the whole grid, and in the quarters the map gives that stretch's
+     * grid's steady rate over the stretch the mark governs, as the opening mark
+     * is over the whole grid, and in the quarters the map gives that stretch's
      * pulse.
      */
     static OptionalDouble atChange(Score score, TimeSignature previous, TimeSignature meter,
@@ -126,15 +127,32 @@ record TempoMark(NoteValue unit, long perMinute) {
             return OptionalDouble.empty();
         }
         TempoMap map = score.tempoMap();
-        double to = Double.POSITIVE_INFINITY;
-        for (TempoMap.MeterChange change : map.meterChanges()) {
-            double starts = startSeconds(map, change);
-            if (starts > from + 1e-6) {
-                to = starts;
-                break;
+        int k = changeAt(map, from);
+        if (k > 0 && MeterHold.holdsTheQuarter(map, map.meterChanges().get(k).startBar())) {
+            return OptionalDouble.empty();
+        }
+        return OptionalDouble.of(sectionTempo(score, from, markedAfter(map, k)));
+    }
+
+    /** The last meter change starting at or before {@code seconds}. */
+    private static int changeAt(TempoMap map, double seconds) {
+        List<TempoMap.MeterChange> meters = map.meterChanges();
+        int k = 0;
+        while (k + 1 < meters.size() && startSeconds(map, meters.get(k + 1)) <= seconds + 1e-6) {
+            k++;
+        }
+        return k;
+    }
+
+    /** Where the next change after the {@code k}th that needs a mark starts. */
+    private static double markedAfter(TempoMap map, int k) {
+        List<TempoMap.MeterChange> meters = map.meterChanges();
+        for (int j = k + 1; j < meters.size(); j++) {
+            if (!MeterHold.holdsTheQuarter(map, meters.get(j).startBar())) {
+                return startSeconds(map, meters.get(j));
             }
         }
-        return OptionalDouble.of(sectionTempo(score, from, to));
+        return Double.POSITIVE_INFINITY;
     }
 
     /**
@@ -205,13 +223,12 @@ record TempoMark(NoteValue unit, long perMinute) {
         if (stated.isEmpty()) {
             TempoMap map = score.tempoMap();
             List<TempoMap.MeterChange> meters = map.meterChanges();
-            for (int k = meters.size() - 1; k > 0; k--) {
-                double starts = startSeconds(map, meters.get(k));
-                if (starts <= opensAt + 1e-6) {
-                    double ends = k + 1 < meters.size()
-                            ? startSeconds(map, meters.get(k + 1)) : Double.POSITIVE_INFINITY;
-                    return sectionTempo(score, starts, ends);
-                }
+            int k = changeAt(map, opensAt);
+            while (k > 0 && MeterHold.holdsTheQuarter(map, meters.get(k).startBar())) {
+                k--;
+            }
+            if (k > 0) {
+                return sectionTempo(score, startSeconds(map, meters.get(k)), markedAfter(map, k));
             }
         }
         return score.estimatedTempo();
