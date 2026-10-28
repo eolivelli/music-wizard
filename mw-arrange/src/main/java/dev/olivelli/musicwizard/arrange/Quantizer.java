@@ -278,7 +278,7 @@ public final class Quantizer {
                                                 QuantizationSettings settings) {
         GridResolution[] candidates = GridResolution.values();
         return decode(costs(notes, bars, swing, settings, candidates), candidates,
-                sectionStarts(sections, bars), settings.gridChangePenalty());
+                sectionStarts(sections, bars), settings.gridChangePenalty(), bars);
     }
 
     /**
@@ -335,10 +335,13 @@ public final class Quantizer {
      * Viterbi over the bars, where the only structure is a reluctance to
      * change subdivision inside a section. Ties go to staying on the current
      * grid, then to the simplest one, so the result does not turn on
-     * comparison order.
+     * comparison order. Across a change of meter that holds the quarter, the
+     * same grid is the one with the same step, so 6/8 eighths into 3/4
+     * eighths is no change (#883).
      */
     private static GridResolution[] decode(double[][] cost, GridResolution[] candidates,
-                                           boolean[] sectionStart, double changePenalty) {
+                                           boolean[] sectionStart, double changePenalty,
+                                           BarTable bars) {
         int barCount = cost.length;
         int states = candidates.length;
         double[][] best = new double[barCount][states];
@@ -348,11 +351,16 @@ public final class Quantizer {
 
         for (int bar = 1; bar < barCount; bar++) {
             double penalty = sectionStart[bar] ? 0.0 : changePenalty;
+            TimeSignature before = bars.meterOf(bar - 1);
+            TimeSignature meter = bars.meterOf(bar);
+            boolean byStep = !meter.equals(before) && MeterHold.holdsTheQuarter(bars.tempoMap, bar);
             for (int g = 0; g < states; g++) {
-                double bestValue = best[bar - 1][g];
-                int bestFrom = g;
+                int stay = byStep ? sameStep(candidates, before, candidates[g].stepQuarters(meter))
+                        : g;
+                double bestValue = stay >= 0 ? best[bar - 1][stay] : Double.POSITIVE_INFINITY;
+                int bestFrom = Math.max(stay, 0);
                 for (int from = 0; from < states; from++) {
-                    if (from == g) {
+                    if (from == stay) {
                         continue;
                     }
                     double value = best[bar - 1][from] + penalty;
@@ -379,6 +387,16 @@ public final class Quantizer {
             state = previous[bar][state];
         }
         return chosen;
+    }
+
+    /** The grid whose step in {@code meter} is {@code step}, or -1 for none. */
+    private static int sameStep(GridResolution[] candidates, TimeSignature meter, double step) {
+        for (int g = 0; g < candidates.length; g++) {
+            if (candidates[g].stepQuarters(meter) == step) {
+                return g;
+            }
+        }
+        return -1;
     }
 
     /**

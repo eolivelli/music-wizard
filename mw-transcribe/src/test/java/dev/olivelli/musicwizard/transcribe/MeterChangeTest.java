@@ -32,7 +32,7 @@ import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-/** A supplied meter change that holds the counted beat (#888). */
+/** A supplied meter change that holds the counted beat (#888) or the eighth (#883). */
 class MeterChangeTest {
 
     private static final int SAMPLE_RATE = 22050;
@@ -135,6 +135,51 @@ class MeterChangeTest {
         assertThat(map.secondsToBeats(pulses.get(20)) - map.secondsToBeats(pulses.get(10)))
                 .isCloseTo(15.0, within(1e-9));
         assertThat(messages).filteredOn(m -> m.contains("the counted beat held")).hasSize(2);
+    }
+
+    @Test
+    @DisplayName("6/8 then 3/4 with the eighth held: the pulse keeps its quarters, bars of two (#883)")
+    void holdsTheEighth() {
+        List<Double> pulses = pulses();
+        List<String> messages = new ArrayList<>();
+        Score score = transcribe(messages, null,
+                new AudioTranscriber.MeterChangeAt(pulses.get(4), TimeSignature.SIX_EIGHT),
+                new AudioTranscriber.MeterChangeAt(pulses.get(10), TimeSignature.THREE_FOUR, true),
+                new AudioTranscriber.MeterChangeAt(pulses.get(16), TimeSignature.SIX_EIGHT, true));
+        TempoMap map = score.tempoMap();
+
+        assertThat(map.meterChanges()).extracting(TempoMap.MeterChange::timeSignature)
+                .containsExactly(TimeSignature.THREE_FOUR, TimeSignature.SIX_EIGHT,
+                        TimeSignature.THREE_FOUR, TimeSignature.SIX_EIGHT);
+        for (int i = 4; i + 1 < pulses.size(); i++) {
+            assertThat(map.secondsToBeats(pulses.get(i + 1)) - map.secondsToBeats(pulses.get(i)))
+                    .as("pulse %d", i).isCloseTo(1.5, within(1e-9));
+        }
+        // The 3/4 bars hold two pulses each, so the second change is three bars on.
+        assertThat(map.meterChanges().get(3).startBar() - map.meterChanges().get(2).startBar())
+                .isEqualTo(3);
+        BeatGrid grid = score.beatGrid().orElseThrow();
+        for (int i = 4; i < pulses.size(); i++) {
+            boolean downbeat = (i - 4) % 2 == 0;
+            assertThat(grid.beats().get(i).downbeat()).as("pulse %d", i).isEqualTo(downbeat);
+            assertThat(map.toMusicalTime(map.secondsToBeats(pulses.get(i))).beatInBar() == 0)
+                    .as("pulse %d on the map", i).isEqualTo(downbeat);
+        }
+        assertThat(messages).filteredOn(m -> m.contains("the eighth held")).hasSize(2);
+        assertThat(messages).filteredOn(m -> m.contains("the counted beat held")).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("an eighth held into a bar the pulse does not divide is refused")
+    void refusesAnEighthHeldIntoAnUnevenBar() {
+        List<Double> pulses = pulses();
+        List<String> messages = new ArrayList<>();
+        Score score = transcribe(messages, null,
+                new AudioTranscriber.MeterChangeAt(pulses.get(4), TimeSignature.SIX_EIGHT),
+                new AudioTranscriber.MeterChangeAt(pulses.get(10), TimeSignature.FOUR_FOUR, true));
+
+        assertThat(score.tempoMap().meterChanges()).hasSize(2);
+        assertThat(messages).anyMatch(m -> m.contains("a bar of 4/4 is not a whole number"));
     }
 
     @Test
