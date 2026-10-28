@@ -61,6 +61,12 @@ class LineAloneMeterTest {
      */
     private static AudioBuffer line(int bars, double[][] phrase, int pulsesPerBar,
                                     double detached) {
+        return line(bars, phrase, pulsesPerBar, detached, false);
+    }
+
+    /** {@code ramped} fades each note in and out, so that its start is one onset. */
+    private static AudioBuffer line(int bars, double[][] phrase, int pulsesPerBar,
+                                    double detached, boolean ramped) {
         int[] scale = {72, 74, 76, 77, 79, 77, 76, 74, 72, 71};
         float[] samples = new float[(int) (bars * pulsesPerBar * BEAT * SAMPLE_RATE)];
         int at = 0;
@@ -72,6 +78,14 @@ class LineAloneMeterTest {
                         length * BEAT, SAMPLE_RATE);
                 Arrays.fill(tone,
                         Math.max(0, tone.length - (int) (detached * SAMPLE_RATE)), tone.length, 0f);
+                if (ramped) {
+                    int stop = Math.max(0, tone.length - (int) (detached * SAMPLE_RATE));
+                    int ramp = Math.min((int) (0.01 * SAMPLE_RATE), stop / 2);
+                    for (int i = 0; i < ramp; i++) {
+                        tone[i] *= i / (float) ramp;
+                        tone[stop - 1 - i] *= i / (float) ramp;
+                    }
+                }
                 System.arraycopy(tone, 0, samples, at, Math.min(tone.length, samples.length - at));
                 at += tone.length;
             }
@@ -149,6 +163,56 @@ class LineAloneMeterTest {
             assertThat(read.tempoMap().secondsToBeats(seconds))
                     .isEqualTo(supplied.tempoMap().secondsToBeats(seconds));
         }
+    }
+
+    /** Facts the beat stage recorded on the last run. */
+    private java.util.Map<String, String> beatFacts() {
+        return log.stages().stream()
+                .filter(stage -> stage.stage().equals(BeatTrace.STAGE))
+                .reduce((first, second) -> second).orElseThrow().facts();
+    }
+
+    @Test
+    @DisplayName("bars of 3/4 with the eighth held inside 6/8 are proposed as a change to paste (#895)")
+    void anEighthHeldRunIsProposed() {
+        double[][] phrase = new double[36][];
+        for (int bar = 0; bar < phrase.length; bar++) {
+            phrase[bar] = bar >= 16 && bar < 19
+                    ? new double[] {2.0 / 3, 2.0 / 3, 2.0 / 3}
+                    : COMPOUND_PHRASE[bar % COMPOUND_PHRASE.length];
+        }
+        AudioBuffer audio = line(36, phrase, 2, 0.02, true);
+
+        Score supplied = transcribe(audio, TimeSignature.SIX_EIGHT);
+        String proposal = beatFacts().get(AudioTranscriber.PROPOSED_METER);
+
+        assertThat(proposal).matches("--time-signature 6/8,3/4@\\d+\\.\\d\\d=8,6/8@\\d+\\.\\d\\d=8");
+        String[] changes = proposal.substring("--time-signature ".length()).split(",");
+        double into = Double.parseDouble(changes[1].substring(4, changes[1].length() - 2));
+        double back = Double.parseDouble(changes[2].substring(4, changes[2].length() - 2));
+        assertThat(into).isCloseTo(16 * 2 * BEAT, within(BEAT / 4));
+        assertThat(back).isCloseTo(19 * 2 * BEAT, within(BEAT / 4));
+        assertThat(supplied.tempoMap().meterChanges()).hasSize(1);
+
+        Score pasted = new AudioTranscriber(progress::add, log).transcribe(audio,
+                new AudioTranscriber.Options(null, TimeSignature.SIX_EIGHT, null, true, null,
+                        List.of(new AudioTranscriber.MeterChangeAt(into, TimeSignature.THREE_FOUR, true),
+                                new AudioTranscriber.MeterChangeAt(back, TimeSignature.SIX_EIGHT, true))));
+
+        assertThat(pasted.tempoMap().meterChanges())
+                .extracting(change -> change.timeSignature())
+                .containsExactly(TimeSignature.SIX_EIGHT, TimeSignature.THREE_FOUR,
+                        TimeSignature.SIX_EIGHT);
+        assertThat(beatFacts()).doesNotContainKey(AudioTranscriber.PROPOSED_METER);
+    }
+
+    @Test
+    @DisplayName("nothing is proposed on a 6/8 line without such a run, nor on a waltz")
+    void nothingIsProposedWithoutTheRun() {
+        transcribe(line(36, COMPOUND_PHRASE, 2, 0.02, true), TimeSignature.SIX_EIGHT);
+        assertThat(beatFacts()).doesNotContainKey(AudioTranscriber.PROPOSED_METER);
+        transcribe();
+        assertThat(beatFacts()).doesNotContainKey(AudioTranscriber.PROPOSED_METER);
     }
 
     @Test
