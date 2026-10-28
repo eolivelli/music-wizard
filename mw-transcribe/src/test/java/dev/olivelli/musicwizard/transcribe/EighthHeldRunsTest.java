@@ -130,24 +130,74 @@ class EighthHeldRunsTest {
     }
 
     @Test
-    @DisplayName("ends the run at the next supplied change without proposing a way back")
-    void stopsAtTheNextSection() {
+    @DisplayName("ends the run into a later change that holds the eighth without a way back")
+    void runsIntoAnEighthHeldChange() {
         List<Double> beats = beats(PULSES);
         List<HeldSection> sections = List.of(SIX_EIGHT.get(0),
-                new HeldSection(16, new TimeSignature(9, 8), 1.5, 3));
+                new HeldSection(16, new TimeSignature(9, 8), 1.5, 3, true));
 
         assertThat(EighthHeldRuns.propose(beats, sections, line(withRun(3, 0))))
                 .containsExactly(new MeterChangeAt(beats.get(10), TimeSignature.THREE_FOUR, true));
     }
 
     @Test
-    @DisplayName("proposes nothing that runs into a supplied 3/4, which would state it twice")
-    void leavesARunIntoASupplied34() {
-        List<HeldSection> sections = List.of(SIX_EIGHT.get(0),
-                new HeldSection(16, TimeSignature.THREE_FOUR, 1.5, 2, true));
+    @DisplayName("hands back to 6/8 a bar early before a change counted from the beat, or a 3/4")
+    void handsBackBeforeAnyOtherChange() {
+        List<Double> beats = beats(PULSES);
+        for (HeldSection next : List.of(new HeldSection(16, new TimeSignature(9, 8), 1.5, 3),
+                new HeldSection(16, TimeSignature.THREE_FOUR, 1.5, 2, true))) {
+            assertThat(EighthHeldRuns.propose(beats, List.of(SIX_EIGHT.get(0), next),
+                    line(withRun(3, 0))))
+                    .as("before %s", next)
+                    .containsExactly(
+                            new MeterChangeAt(beats.get(10), TimeSignature.THREE_FOUR, true),
+                            new MeterChangeAt(beats.get(14), TimeSignature.SIX_EIGHT, true));
+        }
+    }
 
-        assertThat(EighthHeldRuns.propose(beats(PULSES), sections, line(withRun(3, 0))))
+    @Test
+    @DisplayName("proposes nothing for a run of two bars that runs into a change counted from the beat")
+    void leavesAShortRunIntoAChange() {
+        List<HeldSection> sections = List.of(SIX_EIGHT.get(0),
+                new HeldSection(14, new TimeSignature(9, 8), 1.5, 3));
+
+        assertThat(EighthHeldRuns.propose(beats(PULSES), sections, line(withRun(2, 0))))
                 .isEmpty();
+    }
+
+    @Test
+    @DisplayName("pasted beside a later change, leaves that change barred as it was supplied")
+    void pastingKeepsTheSuppliedChange() {
+        List<Double> beats = beats(PULSES);
+        for (MeterChangeAt supplied : List.of(
+                new MeterChangeAt(beats.get(16), new TimeSignature(9, 8)),
+                new MeterChangeAt(beats.get(16), new TimeSignature(9, 8), true),
+                new MeterChangeAt(beats.get(16), new TimeSignature(2, 4)),
+                new MeterChangeAt(beats.get(16), TimeSignature.THREE_FOUR, true))) {
+            List<HeldSection> sections = AudioTranscriber.heldSections(beats,
+                    TimeSignature.SIX_EIGHT, 1.5, 2, 0, List.of(supplied), new ArrayList<>());
+            List<MeterChangeAt> pasted = new ArrayList<>(
+                    EighthHeldRuns.propose(beats, sections, line(withRun(3, 0))));
+            assertThat(pasted).as("before %s", supplied).isNotEmpty();
+            pasted.add(supplied);
+            pasted.sort(java.util.Comparator.comparingDouble(MeterChangeAt::seconds));
+
+            assertThat(AudioTranscriber.heldSections(beats, TimeSignature.SIX_EIGHT, 1.5, 2, 0,
+                    pasted, new ArrayList<>()).getLast())
+                    .as("before %s", supplied)
+                    .isEqualTo(sections.getLast());
+        }
+    }
+
+    @Test
+    @DisplayName("proposes nothing for a run of eighths in threes (#902)")
+    void leavesTripletEighthsAlone() {
+        List<Double> positions = new ArrayList<>();
+        for (int third = 0; third < 3 * (PULSES - 1); third++) {
+            positions.add(third / 3.0);
+        }
+
+        assertThat(EighthHeldRuns.propose(beats(PULSES), SIX_EIGHT, line(positions))).isEmpty();
     }
 
     @Test
