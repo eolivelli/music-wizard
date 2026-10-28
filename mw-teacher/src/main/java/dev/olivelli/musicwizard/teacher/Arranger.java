@@ -85,7 +85,7 @@ public final class Arranger {
                 && !(spec.melodyLevel() != null && MelodyGenerator.isGraded(spec.meter()))) {
             throw new IllegalArgumentException(
                     "the melody generator writes a style's bars in 4/4 and a graded"
-                            + " melody in 4/4 or 3/4, so " + spec.meter()
+                            + " melody in 4/4, 3/4 or 6/8, so " + spec.meter()
                             + " needs 'melody: none' or a 'melody-level' it is graded in (#715)");
         }
         this.spec = spec;

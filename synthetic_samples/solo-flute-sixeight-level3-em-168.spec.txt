@@ -1,0 +1,24 @@
+title: Solo flute in 6/8, level three - notes held across the bar line, two dotted quarters to a bar in E minor
+genre: folk-pop
+style: pop-ballad
+tempo: 168
+meter: 6/8
+key: E minor
+seed: 61
+melody: flute
+melody-level: 3
+accompaniment: none
+bars:
+# A line alone in six-eight (#871): nothing but the notes says the beat divides in three.
+# Verse: the minor loop i-VI-III-VII, twice
+Em C G D
+Em C G D
+# Bridge: the Andalusian descent i-VII-VI-V, twice
+Em D C B
+Em D C B
+# Chorus: one loop pass, then iv-V turned aside onto VI
+Em C G D
+Am B C C
+# Close: iv-V-i twice, the tonic held
+Am B Em Em
+Am B Em Em

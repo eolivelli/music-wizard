@@ -163,7 +163,10 @@ public final class MeterSweep {
             new Job("synthetic_samples", "melody-level4-f-126.mp3", "4/4"),
             new Job("synthetic_samples", "solo-flute-waltz-level2-g-120.mp3", "3/4"),
             new Job("synthetic_samples", "solo-flute-waltz-level3-em-132.mp3", "3/4"),
-            new Job("synthetic_samples", "solo-piano-waltz-level2-f-100.mp3", "3/4"));
+            new Job("synthetic_samples", "solo-piano-waltz-level2-f-100.mp3", "3/4"),
+            new Job("synthetic_samples", "solo-flute-sixeight-level2-d-198.mp3", "6/8"),
+            new Job("synthetic_samples", "solo-flute-sixeight-level3-em-168.mp3", "6/8"),
+            new Job("synthetic_samples", "solo-piano-sixeight-level2-a-150.mp3", "6/8"));
 
     /**
      * The meters a musician has confirmed by ear for local-only recordings,

@@ -53,8 +53,8 @@ two packages meant to be counted at the same rate do not carry the same number.
 A style is a set of patterns of a particular bar length and feel rather than a
 parameter, so only the pairs listed above are written and the arranger refuses
 any other outright. It refuses a melody outside 4/4 too, except a graded one
-in 3/4: `MelodyGenerator`'s style templates are bars of four (#715), and the
-`melody-level` ramp is written in bars of four and of three.
+in 3/4 or 6/8: `MelodyGenerator`'s style templates are bars of four (#715), and
+the `melody-level` ramp is written in 4/4, 3/4 and 6/8.
 
 Grids draw from the shared harmonic vocabulary of mainstream Western popular
 music: I–V–vi–IV and its rotations, I–IV–V, the 50s doo-wop I–vi–IV–V, the

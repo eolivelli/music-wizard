@@ -1,0 +1,23 @@
+title: Solo flute in 6/8, level two - the beat divides in three, two dotted quarters to a bar in D
+genre: folk-pop
+style: pop-ballad
+tempo: 198
+meter: 6/8
+key: D major
+seed: 53
+melody: flute
+melody-level: 2
+accompaniment: none
+bars:
+# A line alone in six-eight (#871): nothing but the notes says the beat divides in three.
+# I-IV-V-I, twice, the second closing on the tonic
+D G A D
+D G A D
+# vi-IV-I-V, then I-ii-V-I
+Bm G D A
+D Em A D
+# Again, with a plagal close
+D G A D
+Bm G D A
+G A D D
+G G D D

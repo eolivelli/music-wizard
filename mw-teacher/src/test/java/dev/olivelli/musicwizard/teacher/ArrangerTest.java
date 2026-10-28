@@ -241,11 +241,18 @@ class ArrangerTest {
     }
 
     @Test
-    void aGradedMelodyInSixEightIsRefused() {
-        assertThatThrownBy(() -> Arranger.arrange(SpecParser.parse(
-                METER_GRID.formatted("pop-ballad", "6/8", "melody: flute\nmelody-level: 2"))))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("melody");
+    void aGradedMelodyInSixEightDividesItsBeatInThree() {
+        // #871: level two keeps inside bars of two dotted quarters, every note
+        // on an eighth, and some on the third eighth of a beat.
+        long eighth = THREE_QUARTER_BAR / 6;
+        List<long[]> level2 = spans(Arranger.arrange(SpecParser.parse(
+                GRADED_WALTZ.replace("3/4", "6/8").formatted(2))).getTracks()[1]);
+        assertThat(level2).isNotEmpty().allSatisfy(span -> {
+            assertThat((span[1] - 1) / THREE_QUARTER_BAR).isEqualTo(span[0] / THREE_QUARTER_BAR);
+            assertThat(span[0] % eighth).isZero();
+        });
+        assertThat(level2).anySatisfy(span ->
+                assertThat(span[0] % (3 * eighth)).isEqualTo(2 * eighth));
     }
 
     @Test
