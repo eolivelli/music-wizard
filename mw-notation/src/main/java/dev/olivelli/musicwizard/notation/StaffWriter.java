@@ -98,8 +98,9 @@ interface StaffWriter {
      *
      * @param unit      the note value the count is in
      * @param perMinute how many of them a minute holds
+     * @param quarterBeatsPerMinute the same tempo unrounded, in quarter notes
      */
-    void tempo(NoteValue unit, long perMinute);
+    void tempo(NoteValue unit, long perMinute, double quarterBeatsPerMinute);
 
     /**
      * The opening bar is short: the music begins this far before the bar line.

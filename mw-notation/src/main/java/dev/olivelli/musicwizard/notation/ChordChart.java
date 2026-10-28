@@ -454,6 +454,13 @@ public final class ChordChart {
             ChartLayout.Bar bar = bars.get(index);
             if (bar.meterChanged()) {
                 out.append("      ").append(LilyPondMeter.time(bar.meter())).append('\n');
+                if (carriesMarks && index > 0) {
+                    TimeSignature previous = bars.get(index - 1).meter();
+                    TempoMark.atChange(score, previous, bar.meter(), bar.startSeconds())
+                            .ifPresent(quarters -> TempoMark.of(bar.meter(), quarters)
+                                    .ifPresent(mark -> out.append("      ")
+                                            .append(mark.lilyPond()).append('\n')));
+                }
             }
             out.append("      ");
             List<String> written = index == 0 && pickup.isPresent()

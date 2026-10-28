@@ -16,6 +16,8 @@
 
 package dev.olivelli.musicwizard.notation;
 
+import dev.olivelli.musicwizard.core.model.BeatGrid;
+import dev.olivelli.musicwizard.core.model.MusicalTime;
 import dev.olivelli.musicwizard.core.model.Provenance;
 import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.model.TempoMap;
@@ -24,6 +26,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.OptionalDouble;
 
 /**
  * The one metronome mark a score is engraved with: how fast, in the beat the
@@ -96,15 +99,68 @@ record TempoMark(NoteValue unit, long perMinute) {
      * @param opensAt where that bar falls, in seconds, for the same reason
      */
     static Optional<TempoMark> of(Score score, TimeSignature meter, double opensAt) {
+        return counted(meter, headline(score, opensAt));
+    }
+
+    private static Optional<TempoMark> counted(TimeSignature meter, double quarterBeatsPerMinute) {
         Optional<NoteValue> unit = LilyPondDuration.valueOf(meter.beatUnitQuarters());
         if (unit.isEmpty()) {
             return Optional.empty();
         }
-        double counted = meter.countedTempo(headline(score, opensAt));
+        double counted = meter.countedTempo(quarterBeatsPerMinute);
         if (!Double.isFinite(counted) || counted < 1) {
             return Optional.empty();
         }
         return Optional.of(new TempoMark(unit.get(), Math.round(counted)));
+    }
+
+    /**
+     * The tempo a bar opening a new meter is marked with, in quarter notes a
+     * minute, or empty where the new meter counts the same note value as the
+     * one before: a reader holds the note value across an unmarked change,
+     * so only a change of it needs a mark (#888).
+     *
+     * <p>A stated tempo is the one in force at the bar. A tracked one is the
+     * grid's steady rate over the stretch in this meter, as the opening mark is
+     * over the whole grid, and in the quarters the map gives that stretch's
+     * pulse.
+     */
+    static OptionalDouble atChange(Score score, TimeSignature previous, TimeSignature meter,
+                                   double from) {
+        if (meter.beatUnitQuarters() == previous.beatUnitQuarters()) {
+            return OptionalDouble.empty();
+        }
+        TempoMap map = score.tempoMap();
+        double to = Double.POSITIVE_INFINITY;
+        for (TempoMap.MeterChange change : map.meterChanges()) {
+            double starts = map.beatsToSeconds(map.toBeat(
+                    new MusicalTime(change.startBar(), 0, change.timeSignature())));
+            if (starts > from + 1e-6) {
+                to = starts;
+                break;
+            }
+        }
+        List<TempoMap.TempoSegment> stated = statedSegments(score);
+        if (!stated.isEmpty()) {
+            return OptionalDouble.of(inForceAt(stated, from).beatsPerMinute());
+        }
+        List<Double> pulses = new ArrayList<>();
+        for (double seconds : score.beatGrid().map(BeatGrid::beatTimes).orElse(List.of())) {
+            if (seconds >= from - 1e-6 && seconds < to - 1e-6) {
+                pulses.add(seconds);
+            }
+        }
+        if (pulses.size() < 2) {
+            return OptionalDouble.of(map.tempoAtBeat(map.secondsToBeats(from)));
+        }
+        double quartersPerPulse = (map.secondsToBeats(pulses.getLast())
+                - map.secondsToBeats(pulses.getFirst())) / (pulses.size() - 1);
+        return OptionalDouble.of(BeatGrid.steadyPulseRate(pulses) * quartersPerPulse);
+    }
+
+    /** {@link #atChange}'s tempo as a mark in the bar's meter. */
+    static Optional<TempoMark> of(TimeSignature meter, double quarterBeatsPerMinute) {
+        return counted(meter, quarterBeatsPerMinute);
     }
 
     /**

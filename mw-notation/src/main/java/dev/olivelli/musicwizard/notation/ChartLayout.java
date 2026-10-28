@@ -165,9 +165,26 @@ final class ChartLayout {
         if (chords.isEmpty()) {
             return List.of();
         }
-        return score.chords().isQuantized()
-                ? fromBeats(score, chords)
+        if (score.chords().isQuantized()) {
+            return fromBeats(score, chords);
+        }
+        // The seconds route bars in one meter; a recording whose meter changes
+        // is barred where the map bars it, as its staff is (#888).
+        return score.tempoMap().meterChanges().size() > 1
+                ? fromBeats(score, placedByMap(score.tempoMap(), chords))
                 : fromSeconds(score, quarterNoteSeconds(score, harmonyStarts(score)));
+    }
+
+    private static List<Chord> placedByMap(TempoMap map, List<Chord> chords) {
+        List<Chord> placed = new ArrayList<>(chords.size());
+        for (Chord chord : chords) {
+            double start = map.secondsToBeats(chord.startSeconds());
+            double end = map.secondsToBeats(chord.endSeconds());
+            if (end > start) {
+                placed.add(chord.quantizedTo(start, end));
+            }
+        }
+        return placed;
     }
 
     /**
@@ -996,7 +1013,8 @@ final class ChartLayout {
     }
 
     static Optional<Axis> axis(Score score) {
-        if (score.chords().chords().isEmpty() || score.chords().isQuantized()) {
+        if (score.chords().chords().isEmpty() || score.chords().isQuantized()
+                || score.tempoMap().meterChanges().size() > 1) {
             return Optional.empty();
         }
         double quarterSeconds = quarterNoteSeconds(score, harmonyStarts(score));

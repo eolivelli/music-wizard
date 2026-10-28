@@ -275,7 +275,7 @@ public final class StaffNotation {
         }
 
         @Override
-        public void tempo(NoteValue unit, long perMinute) {
+        public void tempo(NoteValue unit, long perMinute, double quarterBeatsPerMinute) {
             // Written by TempoMark, which is also where the chart's mark comes
             // from: the figure is an estimate and says so, and one page saying
             // "ca." while the other does not would be the same fact stated two
