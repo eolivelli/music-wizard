@@ -54,7 +54,11 @@ class LineAloneMeterTest {
         return line(bars, PHRASE, 3, 0);
     }
 
-    /** {@code detached} seconds of silence end each note, so a pitch change is an onset. */
+    /**
+     * {@code detached} seconds of silence end each note: the melody stage places
+     * the note after a legato change late, where a 6/8 eighth reads as a dotted
+     * sixteenth (#900).
+     */
     private static AudioBuffer line(int bars, double[][] phrase, int pulsesPerBar,
                                     double detached) {
         int[] scale = {72, 74, 76, 77, 79, 77, 76, 74, 72, 71};

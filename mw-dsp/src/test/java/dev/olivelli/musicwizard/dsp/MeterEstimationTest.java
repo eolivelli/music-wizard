@@ -327,10 +327,24 @@ class MeterEstimationTest {
         }
 
         @Test
+        @DisplayName("running eighths, and an eighth and a quarter, are 6/8 too")
+        void otherCompoundDivisions() {
+            NoteTrack[] lines = {
+                    jittered(line(1.0 / 3, 1.0 / 3, 1.0 / 3)),
+                    jittered(line(1.0 / 3, 2.0 / 3, 1))};
+            for (NoteTrack line : lines) {
+                assertThat(MeterEstimator.decideLine(
+                        MeterEstimator.read(beats(BEATS), line, clicks(1))).meter())
+                        .isEqualTo(TimeSignature.SIX_EIGHT);
+            }
+        }
+
+        @Test
         @DisplayName("a 4/4 line with triplets, dotted rhythms or snaps stays in four")
         void otherUnevenDivisions() {
             NoteTrack[] lines = {
                     line(1, 1, 1, 1.0 / 3, 1.0 / 3, 1.0 / 3),
+                    jittered(line(1, 1.0 / 3, 1.0 / 3, 1.0 / 3, 1, 1)),
                     jittered(line(0.75, 0.25, 0.75, 0.25, 1, 1)),
                     jittered(line(0.25, 0.75, 0.25, 0.75, 1, 1))};
             for (NoteTrack line : lines) {
