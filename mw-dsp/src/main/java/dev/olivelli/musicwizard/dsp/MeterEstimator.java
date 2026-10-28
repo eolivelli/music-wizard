@@ -485,30 +485,39 @@ public final class MeterEstimator {
     /**
      * How the notes inside a pulse divide it. Compound is a lone note nearer a
      * third than a half or a quarter, the 6/8 quarter and eighth, or more
-     * notes at thirds where the line divides most of its pulses; triplet is
-     * the latter where it does not, as a 4/4 line divides its beats in three
-     * only now and then. Across is a pulse not struck at both ends, as
-     * quarters tracked at their dotted quarter tie over every other beat.
+     * notes at thirds where most of the line's pulses are divided in thirds;
+     * triplet is the latter where they are not, as a 4/4 line divides its
+     * beats in three only now and then. Across is a pulse whose beat is not
+     * struck, or whose thirds run over an unstruck next beat, as quarters
+     * tracked at their dotted quarter do.
      */
     private enum Division { COMPOUND, TRIPLET, DUPLE, ACROSS }
 
     private static Division division(List<Double> fractions, boolean struck,
-                                     boolean nextStruck, boolean mostPulsesDivided) {
+                                     boolean nextStruck, boolean mostlyInThirds) {
         if (!struck) {
             return Division.ACROSS;
         }
+        if (!inThirds(fractions)) {
+            return Division.DUPLE;
+        }
+        if (!nextStruck) {
+            return Division.ACROSS;
+        }
+        return fractions.size() == 1 || mostlyInThirds ? Division.COMPOUND : Division.TRIPLET;
+    }
+
+    /** Whether every note inside a pulse is nearer a third of it than a half or a quarter. */
+    private static boolean inThirds(List<Double> fractions) {
         for (double fraction : fractions) {
             double third = Math.min(Math.abs(fraction - 1.0 / 3), Math.abs(fraction - 2.0 / 3));
             double duple = Math.min(Math.abs(fraction - 0.5),
                     Math.min(Math.abs(fraction - 0.25), Math.abs(fraction - 0.75)));
             if (duple <= third) {
-                return Division.DUPLE;
+                return false;
             }
         }
-        if (!nextStruck) {
-            return Division.ACROSS;
-        }
-        return fractions.size() == 1 || mostPulsesDivided ? Division.COMPOUND : Division.TRIPLET;
+        return true;
     }
 
     /**
@@ -538,9 +547,11 @@ public final class MeterEstimator {
         if (inside.size() < DIVIDED_PULSES) {
             return new Divisions(0, 0, divided);
         }
+        boolean mostlyInThirds = inside.values().stream()
+                .filter(MeterEstimator::inThirds).count() * 2 > pulses;
         Map<Division, Integer> counts = new HashMap<>();
         inside.forEach((pulse, fractions) -> counts.merge(division(fractions,
-                struck.contains(pulse), struck.contains(pulse + 1), divided > 0.5),
+                struck.contains(pulse), struck.contains(pulse + 1), mostlyInThirds),
                 1, Integer::sum));
         int otherwise = 0;
         for (Division other : Division.values()) {
