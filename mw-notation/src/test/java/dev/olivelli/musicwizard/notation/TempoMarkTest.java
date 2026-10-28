@@ -53,6 +53,24 @@ class TempoMarkTest {
     }
 
     @Test
+    @DisplayName("marks a meter change only where the counted note value changes (#888)")
+    void marksAChangeOfCountedNoteValue() {
+        // A file stating one tempo and changing 3/4 to 6/8 holds the eighth,
+        // so its dotted quarter is two thirds of its quarter.
+        Score file = Score.empty(TempoMap.constant(120, TimeSignature.THREE_FOUR,
+                dev.olivelli.musicwizard.core.model.Provenance.DECLARED)
+                .withMeterChange(1, TimeSignature.SIX_EIGHT), 60.0);
+        double opens = file.tempoMap().beatsToSeconds(3);
+        assertThat(TempoMark.atChange(file, TimeSignature.THREE_FOUR, TimeSignature.SIX_EIGHT,
+                opens)).hasValue(120.0);
+        assertThat(TempoMark.of(TimeSignature.SIX_EIGHT, 120.0))
+                .contains(new TempoMark(new NoteValue(4, true), 80));
+        // 4/4 to 3/4 keeps the quarter, and an unmarked change already says so.
+        assertThat(TempoMark.atChange(file, TimeSignature.FOUR_FOUR, TimeSignature.THREE_FOUR,
+                opens)).isEmpty();
+    }
+
+    @Test
     @DisplayName("rounds to a whole count, because a metronome has no fractions")
     void roundsTheCount() {
         assertThat(TempoMark.of(at(119.6, TimeSignature.FOUR_FOUR), TimeSignature.FOUR_FOUR, 0)

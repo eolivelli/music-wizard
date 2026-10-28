@@ -141,15 +141,50 @@ public final class AudioTranscriber {
      *                            {@link #transcribe(Path, Options, Supplier)},
      *                            which is what {@code analyze --melody} does
      *                            wherever a separation provider can be had.
+     * @param meterChanges        later signatures, each from a moment in the
+     *                            recording, with the counted beat held across
+     *                            the change (#888); see {@link MeterChangeAt}
      */
     public record Options(
             Double tempoOverride,
             TimeSignature timeSignature,
             Double firstDownbeatSeconds,
             boolean trackMelody,
-            Double melodyFloorHz) {
+            Double melodyFloorHz,
+            List<MeterChangeAt> meterChanges) {
 
         public Options {
+            meterChanges = List.copyOf(Objects.requireNonNull(meterChanges, "meterChanges"));
+            if (!meterChanges.isEmpty()) {
+                // The meter reader hears the whole recording, the part after
+                // a change included, so it cannot be asked for the opening.
+                if (timeSignature == null) {
+                    throw new IllegalArgumentException(
+                            "a meter change needs the opening signature stated too");
+                }
+                // A typed tempo is one figure in counted beats for a map whose
+                // quarter tempo the change itself moves (#890).
+                if (tempoOverride != null) {
+                    throw new IllegalArgumentException(
+                            "a meter change cannot be combined with a supplied tempo yet");
+                }
+                TimeSignature previous = timeSignature;
+                double after = 0;
+                for (MeterChangeAt change : meterChanges) {
+                    if (!(change.seconds() > after)) {
+                        throw new IllegalArgumentException(
+                                "meter changes must follow one another in time, got "
+                                        + change.timeSignature() + " at " + change.seconds()
+                                        + " s");
+                    }
+                    if (change.timeSignature().equals(previous)) {
+                        throw new IllegalArgumentException("the change at " + change.seconds()
+                                + " s states " + previous + ", which is already in force");
+                    }
+                    previous = change.timeSignature();
+                    after = change.seconds();
+                }
+            }
             // Checked here rather than where they are used, so that a mistyped
             // command line is rejected before a minute of decoding rather than
             // after it -- and named as the option the user typed. A negative
@@ -188,6 +223,13 @@ public final class AudioTranscriber {
             this(tempoOverride, timeSignature, firstDownbeatSeconds, false, null);
         }
 
+        /** The same with no meter change. */
+        public Options(Double tempoOverride, TimeSignature timeSignature,
+                       Double firstDownbeatSeconds, boolean trackMelody, Double melodyFloorHz) {
+            this(tempoOverride, timeSignature, firstDownbeatSeconds, trackMelody, melodyFloorHz,
+                    List.of());
+        }
+
         /** The same with the melody stage chosen and no floor under it. */
         public Options(Double tempoOverride, TimeSignature timeSignature,
                        Double firstDownbeatSeconds, boolean trackMelody) {
@@ -195,7 +237,7 @@ public final class AudioTranscriber {
         }
 
         public static Options defaults() {
-            return new Options(null, null, null, false, null);
+            return new Options(null, null, null, false, null, List.of());
         }
 
         /**
@@ -227,6 +269,23 @@ public final class AudioTranscriber {
          */
         public TimeSignature timeSignatureOrDefault() {
             return timeSignature != null ? timeSignature : TimeSignature.FOUR_FOUR;
+        }
+    }
+
+    /**
+     * A signature from a moment in the recording onwards, the counted beat
+     * held across it: 3/4 to 6/8 makes the pulse that was a quarter a dotted
+     * quarter. In seconds because that is what a listener has; the change
+     * takes effect at the bar line nearest it.
+     */
+    public record MeterChangeAt(double seconds, TimeSignature timeSignature) {
+        public MeterChangeAt {
+            Objects.requireNonNull(timeSignature, "timeSignature");
+            if (!Double.isFinite(seconds) || seconds <= 0) {
+                throw new IllegalArgumentException(
+                        "a meter change must be at a finite, positive number of seconds,"
+                                + " got: " + seconds);
+            }
         }
     }
 
@@ -519,10 +578,39 @@ public final class AudioTranscriber {
         // assumed bar length in beats", and the beats it means are the tracked
         // ones it is phasing. 6/8 counts two of them to a bar rather than six,
         // and a corrected pulse counts its own.
-        DownbeatEstimator.Estimate downbeat = settings.firstDownbeatSeconds() != null
-                ? forcedDownbeat(beatTimes, settings.firstDownbeatSeconds(), pulsesPerBar)
-                : DownbeatEstimator.estimate(beatTimes, chroma, rhythm, pulsesPerBar);
-        BeatGrid tracked = BeatTracker.toBeatGrid(beats, downbeat);
+        // A meter change begins a bar, so where no downbeat was typed the
+        // first change is the one: an instruction rather than an estimate.
+        List<MeterChangeAt> changes = settings.meterChanges();
+        if (!changes.isEmpty() && beatTimes.size() < 2) {
+            progress.accept("only one beat was tracked, so the meter changes have no pulse"
+                    + " to fall on; ignoring them");
+            changes = List.of();
+        }
+        double openingPulse = pulseQuarters.orElse(meter.beatUnitQuarters());
+        List<String> placing = new java.util.ArrayList<>();
+        DownbeatEstimator.Estimate downbeat;
+        List<HeldSection> sections;
+        if (settings.firstDownbeatSeconds() != null) {
+            downbeat = forcedDownbeat(beatTimes, settings.firstDownbeatSeconds(), pulsesPerBar,
+                    "the requested downbeat");
+            sections = heldSections(beatTimes, meter, openingPulse, pulsesPerBar,
+                    downbeat.phase(), changes, placing);
+        } else {
+            // Only a change that is kept may place the bar lines before it.
+            sections = changes.isEmpty() ? List.of() : heldSections(beatTimes, meter,
+                    openingPulse, pulsesPerBar, Math.floorMod(nearestBeatIndex(beatTimes,
+                            changes.get(0).seconds()), pulsesPerBar), changes, placing);
+            downbeat = sections.size() > 1
+                    ? forcedDownbeat(beatTimes, changes.get(0).seconds(), pulsesPerBar,
+                            "the meter change")
+                    : DownbeatEstimator.estimate(beatTimes, chroma, rhythm, pulsesPerBar);
+            if (sections.size() < 2) {
+                sections = List.of(new HeldSection(
+                        downbeat.phase(), meter, openingPulse, pulsesPerBar));
+            }
+        }
+        placing.forEach(progress);
+        BeatGrid tracked = relabelled(BeatTracker.toBeatGrid(beats, downbeat), sections);
         // Recorded on the grid rather than left to each reader, because the grid
         // is what a reader has: BeatGrid.steadyTempo and medianTempo convert a
         // pulse rate to quarter notes, and before this the only figure they could
@@ -551,9 +639,9 @@ public final class AudioTranscriber {
             // The pulse the bars were counted in, not the meter's counted beat:
             // where the two differ, TempoMap.requireBarPhase refuses the pair
             // outright rather than tiling a bar with pulses that do not fill it.
-            tempoMap = TempoMap.fromBeatTimes(beatTimes, meter,
+            tempoMap = heldPulse(TempoMap.fromBeatTimes(beatTimes, meter,
                     pulseQuarters.orElse(meter.beatUnitQuarters()),
-                    downbeat.phase(), pulsesPerBar, firstSound);
+                    downbeat.phase(), pulsesPerBar, firstSound), beatTimes, sections);
         } else {
             // A typed tempo, or a clip with no interval to infer one from —
             // both take the figure and its origin from one place, so a tempo
@@ -576,7 +664,8 @@ public final class AudioTranscriber {
         tempoMap = tempoMap.withMeterChange(
                 meterOrigin(meter, suppliedMeter, suppliedMeter ? null : reading));
 
-        recordBeats(beats, meter, pulsesPerBar, suppliedMeter ? null : reading, noteOnsets);
+        recordBeats(beats, meter, pulsesPerBar, suppliedMeter ? null : reading, noteOnsets,
+                changesSaid(beatTimes, sections));
 
         progress.accept("estimating chords");
         ChordEstimator.Decoded decoded =
@@ -781,7 +870,8 @@ public final class AudioTranscriber {
      *                 typed
      */
     private void recordBeats(BeatTracker.Result beats, TimeSignature meter, int pulsesPerBar,
-                             MeterEstimator.Estimate detected, boolean noteOnsets) {
+                             MeterEstimator.Estimate detected, boolean noteOnsets,
+                             String changes) {
         BeatTrace trace = beats.trace();
         RunLog.Stage stage = runLog.stage(BeatTrace.STAGE).trace(trace);
         stage.fact("onsets", noteOnsets
@@ -795,6 +885,7 @@ public final class AudioTranscriber {
         if (pulsesPerBar != meter.beatsPerBar()) {
             stage.fact("tracked pulses in a bar", pulsesPerBar);
         }
+        stage.fact("meter changes", changes);
         if (trace == null) {
             stage.computed();
             return;
@@ -1088,6 +1179,156 @@ public final class AudioTranscriber {
     }
 
     /**
+     * A stretch of tracked pulses barred in one meter: from the downbeat at
+     * {@code startPulse}, each pulse spanning {@code pulseQuarters}.
+     */
+    record HeldSection(int startPulse, TimeSignature meter, double pulseQuarters,
+                       int pulsesPerBar) {
+    }
+
+    /**
+     * The opening section, then one per supplied change, each placed on the
+     * bar line of the section before it nearest the second it names. A change
+     * that cannot be placed is said and dropped with every one after it, since
+     * those were counted from it.
+     */
+    static List<HeldSection> heldSections(List<Double> beatTimes, TimeSignature opening,
+                                          double openingPulse, int openingPerBar, int phase,
+                                          List<MeterChangeAt> changes, List<String> said) {
+        Consumer<String> progress = said::add;
+        List<HeldSection> sections = new java.util.ArrayList<>();
+        sections.add(new HeldSection(phase, opening, openingPulse, openingPerBar));
+        for (MeterChangeAt change : changes) {
+            HeldSection in = sections.getLast();
+            TimeSignature next = change.timeSignature();
+            double pulse = in.pulseQuarters() * next.beatUnitQuarters()
+                    / in.meter().beatUnitQuarters();
+            double perBar = next.quarterBeatsPerBar() / pulse;
+            long whole = Math.round(perBar);
+            if (whole < 1 || Math.abs(perBar - whole) > 1e-9 * perBar) {
+                progress.accept(String.format(Locale.ROOT,
+                        "a bar of %s is not a whole number of the pulse %s is counted in,"
+                                + " so the change at %.2fs is ignored, with any after it",
+                        next, in.meter(), change.seconds()));
+                break;
+            }
+            int nearest = nearestBeatIndex(beatTimes, change.seconds());
+            int offset = Math.floorMod(nearest - in.startPulse(), in.pulsesPerBar());
+            int at = offset == 0 ? nearest
+                    : 2 * offset <= in.pulsesPerBar() ? nearest - offset
+                    : nearest + in.pulsesPerBar() - offset;
+            if (at <= in.startPulse() || at >= beatTimes.size() - 1) {
+                progress.accept(String.format(Locale.ROOT,
+                        "the change to %s at %.2fs has no whole bar of %s before it or no"
+                                + " tracked pulse after it, so it is ignored, with any after it",
+                        next, change.seconds(), in.meter()));
+                break;
+            }
+            if (at != nearest) {
+                progress.accept(String.format(Locale.ROOT,
+                        "the change to %s at %.2fs is not on a bar line of %s; it takes"
+                                + " effect at the nearest one, at %.2fs",
+                        next, change.seconds(), in.meter(), beatTimes.get(at)));
+            }
+            sections.add(new HeldSection(at, next, pulse, (int) whole));
+        }
+        return sections;
+    }
+
+    /** The grid with each section's pulses counted in its own bar. */
+    static BeatGrid relabelled(BeatGrid grid, List<HeldSection> sections) {
+        if (sections.size() < 2) {
+            return grid;
+        }
+        List<BeatGrid.Beat> beats = new java.util.ArrayList<>(grid.beats());
+        int k = 1;
+        for (int i = sections.get(1).startPulse(); i < beats.size(); i++) {
+            while (k + 1 < sections.size() && sections.get(k + 1).startPulse() <= i) {
+                k++;
+            }
+            HeldSection section = sections.get(k);
+            int position = Math.floorMod(i - section.startPulse(), section.pulsesPerBar());
+            beats.set(i, new BeatGrid.Beat(beats.get(i).seconds(), position == 0, position));
+        }
+        return new BeatGrid(beats, grid.beatConfidence(), grid.downbeatConfidence(),
+                grid.pulseQuarters());
+    }
+
+    /**
+     * The map with every section after the first counted in its own pulse:
+     * the seconds stay where they were tracked, and the beats each pulse
+     * spans change at the change, which is what holding the counted beat
+     * across a change of its note value means in quarter notes.
+     */
+    static TempoMap heldPulse(TempoMap base, List<Double> beatTimes,
+                              List<HeldSection> sections) {
+        if (sections.size() < 2) {
+            return base;
+        }
+        int n = sections.size();
+        double[] startBeat = new double[n];
+        int[] startBar = new int[n];
+        HeldSection first = sections.get(0);
+        startBeat[0] = base.secondsToBeats(beatTimes.get(first.startPulse()));
+        startBar[0] = (int) Math.round(startBeat[0] / first.meter().quarterBeatsPerBar());
+        for (int k = 1; k < n; k++) {
+            HeldSection previous = sections.get(k - 1);
+            int pulses = sections.get(k).startPulse() - previous.startPulse();
+            startBeat[k] = startBeat[k - 1] + pulses * previous.pulseQuarters();
+            startBar[k] = startBar[k - 1] + pulses / previous.pulsesPerBar();
+        }
+        double changeSeconds = beatTimes.get(sections.get(1).startPulse());
+        List<TempoMap.TempoSegment> segments = new java.util.ArrayList<>();
+        for (TempoMap.TempoSegment segment : base.segments()) {
+            if (segment.startSeconds() < changeSeconds) {
+                segments.add(segment);
+                continue;
+            }
+            int pulse = java.util.Collections.binarySearch(beatTimes, segment.startSeconds());
+            int k = n - 1;
+            while (sections.get(k).startPulse() > pulse) {
+                k--;
+            }
+            HeldSection section = sections.get(k);
+            segments.add(new TempoMap.TempoSegment(
+                    startBeat[k] + (pulse - section.startPulse()) * section.pulseQuarters(),
+                    segment.startSeconds(),
+                    segment.beatsPerMinute() * section.pulseQuarters() / first.pulseQuarters(),
+                    segment.provenance()));
+        }
+        List<TempoMap.MeterChange> meters = new java.util.ArrayList<>(base.meterChanges());
+        for (int k = 1; k < n; k++) {
+            meters.add(new TempoMap.MeterChange(
+                    startBar[k], sections.get(k).meter(), Provenance.SUPPLIED));
+        }
+        return new TempoMap(segments, meters);
+    }
+
+    /**
+     * Each change on the meter line's terms, the rate in the beat it is
+     * counted in, and what the run's record says of them, or null for none.
+     */
+    private String changesSaid(List<Double> beatTimes, List<HeldSection> sections) {
+        if (sections.size() < 2) {
+            return null;
+        }
+        List<String> facts = new java.util.ArrayList<>();
+        for (int k = 1; k < sections.size(); k++) {
+            HeldSection section = sections.get(k);
+            int end = k + 1 < sections.size()
+                    ? sections.get(k + 1).startPulse() : beatTimes.size() - 1;
+            String fact = String.format(Locale.ROOT, "%s from %.2fs",
+                    section.meter(), beatTimes.get(section.startPulse()));
+            facts.add(fact);
+            progress.accept(String.format(Locale.ROOT,
+                    "meter %s as supplied, the counted beat held, %.1f beats/min", fact,
+                    BeatGrid.steadyPulseRate(beatTimes.subList(section.startPulse(), end + 1))
+                            * section.pulseQuarters() / section.meter().beatUnitQuarters()));
+        }
+        return String.join("; ", facts);
+    }
+
+    /**
      * The bar phase a user asked for, in place of the estimated one.
      *
      * <p>Snapped to the nearest tracked pulse, because the grid can only mark a
@@ -1110,14 +1351,14 @@ public final class AudioTranscriber {
      * phase harmony ever backs.
      */
     private DownbeatEstimator.Estimate forcedDownbeat(
-            List<Double> beatTimes, double downbeatSeconds, int beatsPerBar) {
+            List<Double> beatTimes, double downbeatSeconds, int beatsPerBar, String what) {
         int index = nearestBeatIndex(beatTimes, downbeatSeconds);
         double distance = Math.abs(beatTimes.get(index) - downbeatSeconds);
         if (distance > DOWNBEAT_SNAP_TOLERANCE_SECONDS) {
             progress.accept(String.format(Locale.ROOT,
-                    "the requested downbeat at %.3fs is %.3fs from the nearest tracked beat"
+                    "%s at %.3fs is %.3fs from the nearest tracked beat"
                             + " at %.3fs; using that beat",
-                    downbeatSeconds, distance, beatTimes.get(index)));
+                    what, downbeatSeconds, distance, beatTimes.get(index)));
         }
         return new DownbeatEstimator.Estimate(
                 Math.floorMod(index, beatsPerBar), beatsPerBar,

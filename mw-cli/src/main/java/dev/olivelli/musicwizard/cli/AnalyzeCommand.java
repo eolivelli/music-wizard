@@ -32,6 +32,7 @@ import dev.olivelli.musicwizard.core.model.LyricWord;
 import dev.olivelli.musicwizard.core.model.Lyrics;
 import dev.olivelli.musicwizard.core.model.NoteTrack;
 import dev.olivelli.musicwizard.core.model.PitchSpelling;
+import dev.olivelli.musicwizard.core.model.MusicalTime;
 import dev.olivelli.musicwizard.core.model.Provenance;
 import dev.olivelli.musicwizard.core.model.PartRole;
 import dev.olivelli.musicwizard.core.model.Score;
@@ -116,7 +117,12 @@ final class AnalyzeCommand implements Callable<Integer> {
     @Option(names = "--time-signature", paramLabel = "N/D",
             description = "Force a time signature, e.g. 4/4 or 6/8, in place of the one "
                     + "MW reads off the recording. Also pins the beat --tempo is counted in. "
-                    + "Audio only: a MIDI file states its own meter.")
+                    + "Later signatures follow with the second each starts at, e.g. "
+                    + "3/4,6/8@17.4: each takes effect at the bar line nearest that second "
+                    + "and holds the counted beat, so a quarter becomes a dotted quarter "
+                    + "at the same rate. A change also places the bar lines before it, "
+                    + "unless --first-downbeat does. Audio only: a MIDI file states its "
+                    + "own meter.")
     String timeSignature;
 
     @Option(names = "--first-downbeat", paramLabel = "SECONDS",
@@ -1254,6 +1260,9 @@ final class AnalyzeCommand implements Callable<Integer> {
                     .with("melody", melodySignal)
                     .with("melodyFloor", options.melodyFloorHz())
                     .with("skipSeparation", skipSeparation);
+            if (!options.meterChanges().isEmpty()) {
+                key.with("meterChanges", options.meterChanges());
+            }
         }
         return key;
     }
@@ -1387,7 +1396,7 @@ final class AnalyzeCommand implements Callable<Integer> {
     private static List<String> audioSummary(Score score) {
         List<String> lines = new ArrayList<>();
         lines.add(tempoLine(score));
-        lines.add("Meter   " + score.tempoMap().initialTimeSignature());
+        lines.add("Meter   " + audioMeter(score.tempoMap()));
         score.primaryKey().ifPresent(key ->
                 lines.add("Key     " + key.displayNameWithConfidence()));
         lines.add("Chords  " + score.chords().size() + " spans");
@@ -1494,6 +1503,18 @@ final class AnalyzeCommand implements Callable<Integer> {
                 + midiDefault(map.segments().get(0).provenance());
         int changes = countChanges(map.segments(), TempoMap.TempoSegment::beatsPerMinute);
         return changes == 0 ? opening : opening + " at the start, " + changed(changes);
+    }
+
+    /** The opening meter, then each change and the second it takes effect. */
+    private static String audioMeter(TempoMap map) {
+        StringBuilder line = new StringBuilder(map.initialTimeSignature().toString());
+        for (TempoMap.MeterChange change : map.meterChanges().subList(1, map.meterChanges().size())) {
+            double seconds = map.beatsToSeconds(map.toBeat(
+                    new MusicalTime(change.startBar(), 0, change.timeSignature())));
+            line.append(String.format(Locale.ROOT, ", %s from %.2fs",
+                    change.timeSignature(), seconds));
+        }
+        return line.toString();
     }
 
     private static String statedMeter(Score score) {
@@ -1724,16 +1745,19 @@ final class AnalyzeCommand implements Callable<Integer> {
             return null;
         }
         var analysis = config.analysis();
-        TimeSignature meter = parseMeter(analysis != null ? analysis.timeSignatureOverride() : null);
+        String typed = analysis != null ? analysis.timeSignatureOverride() : null;
+        // The changes first, so a malformed opening gets their specific message.
+        List<AudioTranscriber.MeterChangeAt> changes = parseMeterChanges(typed);
         // The melody flag alone comes from the command line rather than from the
         // config: the other three are corrections a workspace keeps, and this one
         // is a statement about the recording handed in on the day.
         return new AudioTranscriber.Options(
                 analysis != null ? analysis.tempoOverride() : null,
-                meter,
+                parseMeter(typed),
                 analysis != null ? analysis.firstDownbeatSecondsOverride() : null,
                 melody,
-                melodyFloorHz());
+                melodyFloorHz(),
+                changes);
     }
 
     /** The typed floor as a frequency, or null for none. */
@@ -1758,11 +1782,45 @@ final class AnalyzeCommand implements Callable<Integer> {
         }
     }
 
-    /** The typed meter, or null for "read it off the recording" (#700). */
-    private static TimeSignature parseMeter(String text) {
+    /** The typed opening meter, or null for "read it off the recording" (#700). */
+    static TimeSignature parseMeter(String text) {
         if (text == null || text.isBlank()) {
             return null;
         }
+        return parseSignature(text.split(",", -1)[0]);
+    }
+
+    /** The changes typed after the opening meter, each as SIGNATURE@SECONDS (#888). */
+    static List<AudioTranscriber.MeterChangeAt> parseMeterChanges(String text) {
+        if (text == null || text.isBlank()) {
+            return List.of();
+        }
+        String[] entries = text.split(",", -1);
+        if (entries[0].contains("@")) {
+            throw new IllegalArgumentException(
+                    "the first time signature is the opening one and takes no @SECONDS, got: "
+                            + text);
+        }
+        List<AudioTranscriber.MeterChangeAt> changes = new ArrayList<>();
+        for (int i = 1; i < entries.length; i++) {
+            String[] change = entries[i].split("@", -1);
+            if (change.length != 2) {
+                throw new IllegalArgumentException(
+                        "a later time signature must look like 6/8@17.4, got: " + entries[i]);
+            }
+            double seconds;
+            try {
+                seconds = Double.parseDouble(change[1].trim());
+            } catch (NumberFormatException e) {
+                throw new IllegalArgumentException(
+                        "a later time signature must look like 6/8@17.4, got: " + entries[i], e);
+            }
+            changes.add(new AudioTranscriber.MeterChangeAt(seconds, parseSignature(change[0])));
+        }
+        return changes;
+    }
+
+    private static TimeSignature parseSignature(String text) {
         String[] parts = text.split("/");
         if (parts.length != 2) {
             throw new IllegalArgumentException(

@@ -229,6 +229,12 @@ length hung on the phase the downbeats agree on (#233).
   `--tempo` is what states the pulse where the reading has it wrong.
   `--time-signature` is also the only route to 12/8, 3/8 and the irregular
   meters.
+- A meter that changes is typed after the opening one with the second it
+  starts at, `--time-signature 3/4,6/8@17.4`. The change holds the counted
+  beat (the quarter of 3/4 becomes the dotted quarter of 6/8 at the same
+  rate), takes effect at the bar line nearest that second, and places the bar
+  lines before it unless `--first-downbeat` does (#888). Not with `--tempo`
+  yet (#890).
 
 `--tempo` is read in the meter's *counted* beats per minute — what a
 metronome shows — which differs from quarter notes in compound time, and which

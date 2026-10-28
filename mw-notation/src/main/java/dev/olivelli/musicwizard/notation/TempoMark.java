@@ -16,6 +16,8 @@
 
 package dev.olivelli.musicwizard.notation;
 
+import dev.olivelli.musicwizard.core.model.BeatGrid;
+import dev.olivelli.musicwizard.core.model.MusicalTime;
 import dev.olivelli.musicwizard.core.model.Provenance;
 import dev.olivelli.musicwizard.core.model.Score;
 import dev.olivelli.musicwizard.core.model.TempoMap;
@@ -24,9 +26,10 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.OptionalDouble;
 
 /**
- * The one metronome mark a score is engraved with: how fast, in the beat the
+ * A metronome mark a score is engraved with: how fast, in the beat the
  * reader counts.
  *
  * <p>Three emitters print it — {@link ChordChart} on a chart,
@@ -35,9 +38,7 @@ import java.util.Optional;
  * itself, because every part of the decision has already been got wrong once on
  * this project. The beat unit is the one #4 is about: the map stores quarter
  * notes per minute, so an unqualified figure in 6/8 is a metronome marking 50%
- * fast. The figure itself has to be {@link #headline}'s, which is what the text
- * chart prints, or the page contradicts the two lines the user read before
- * looking at it. And how much to trust it is {@link #ESTIMATE}, once stated
+ * fast. And how much to trust it is {@link #ESTIMATE}, once stated
  * two ways in two goldens of one fixture.
  *
  * <p>How each emitter reaches it differs, and only the decision is shared. The
@@ -48,10 +49,7 @@ import java.util.Optional;
  * {@code <metronome>} beside {@link #ESTIMATE}.
  *
  * <p><b>Marked as an estimate, always.</b> The mark reads {@code ca. (♩ = 159)}
- * rather than {@code ♩ = 159}, because one figure for a whole piece is an
- * estimate even when every tempo in the map was stated: a file that changes
- * tempo states no single number, so one of them has to be picked and
- * {@link #headline} picks the one the page opens on. On the input this project
+ * rather than {@code ♩ = 159}. On the input this project
  * exists for — a recording — it is an estimate outright, from the least
  * reliable stage in the pipeline. The one case the qualifier understates is a constant tempo
  * read from a MIDI file or typed at {@code --tempo}, and that is the trade taken
@@ -96,11 +94,15 @@ record TempoMark(NoteValue unit, long perMinute) {
      * @param opensAt where that bar falls, in seconds, for the same reason
      */
     static Optional<TempoMark> of(Score score, TimeSignature meter, double opensAt) {
+        return counted(meter, headline(score, opensAt));
+    }
+
+    private static Optional<TempoMark> counted(TimeSignature meter, double quarterBeatsPerMinute) {
         Optional<NoteValue> unit = LilyPondDuration.valueOf(meter.beatUnitQuarters());
         if (unit.isEmpty()) {
             return Optional.empty();
         }
-        double counted = meter.countedTempo(headline(score, opensAt));
+        double counted = meter.countedTempo(quarterBeatsPerMinute);
         if (!Double.isFinite(counted) || counted < 1) {
             return Optional.empty();
         }
@@ -108,19 +110,78 @@ record TempoMark(NoteValue unit, long perMinute) {
     }
 
     /**
+     * The tempo a bar opening a new meter is marked with, in quarter notes a
+     * minute, or empty where the new meter counts the same note value as the
+     * one before: a reader holds the note value across an unmarked change,
+     * so only a change of it needs a mark (#888).
+     *
+     * <p>A stated tempo is the one in force at the bar. A tracked one is the
+     * grid's steady rate over the stretch in this meter, as the opening mark is
+     * over the whole grid, and in the quarters the map gives that stretch's
+     * pulse.
+     */
+    static OptionalDouble atChange(Score score, TimeSignature previous, TimeSignature meter,
+                                   double from) {
+        if (meter.beatUnitQuarters() == previous.beatUnitQuarters()) {
+            return OptionalDouble.empty();
+        }
+        TempoMap map = score.tempoMap();
+        double to = Double.POSITIVE_INFINITY;
+        for (TempoMap.MeterChange change : map.meterChanges()) {
+            double starts = startSeconds(map, change);
+            if (starts > from + 1e-6) {
+                to = starts;
+                break;
+            }
+        }
+        return OptionalDouble.of(sectionTempo(score, from, to));
+    }
+
+    /**
+     * The tempo of the stretch between two meter changes, in quarter notes a
+     * minute: a stated one in force where it opens, else the grid's steady rate
+     * over its pulses in the quarters the map gives them.
+     */
+    private static double sectionTempo(Score score, double from, double to) {
+        TempoMap map = score.tempoMap();
+        List<TempoMap.TempoSegment> stated = statedSegments(score);
+        if (!stated.isEmpty()) {
+            return inForceAt(stated, from).beatsPerMinute();
+        }
+        List<Double> pulses = new ArrayList<>();
+        for (double seconds : score.beatGrid().map(BeatGrid::beatTimes).orElse(List.of())) {
+            if (seconds >= from - 1e-6 && seconds < to - 1e-6) {
+                pulses.add(seconds);
+            }
+        }
+        if (pulses.size() < 2) {
+            return map.tempoAtBeat(map.secondsToBeats(from));
+        }
+        double quartersPerPulse = (map.secondsToBeats(pulses.getLast())
+                - map.secondsToBeats(pulses.getFirst())) / (pulses.size() - 1);
+        return BeatGrid.steadyPulseRate(pulses) * quartersPerPulse;
+    }
+
+    /** {@link #atChange}'s tempo as a mark in the bar's meter. */
+    static Optional<TempoMark> of(TimeSignature meter, double quarterBeatsPerMinute) {
+        return counted(meter, quarterBeatsPerMinute);
+    }
+
+    /**
      * The one tempo a page opening at {@code opensAt} is headed with, in quarter
      * notes a minute.
      *
      * <p>{@link Score#estimatedTempo()}, except where the score <em>states</em>
-     * more than one tempo. That accessor answers such a map with a
+     * more than one tempo, or a recording's page opens after a meter change.
+     * That accessor answers such a map with a
      * duration-weighted average, and a file stating 120 BPM and then 60 makes
      * that an 80 the file never plays (#66); the stated tempo in force where the
      * page opens is printed instead, which is a tempo the piece has.
      *
      * <p>Only a stated tempo counts, which is what {@link Provenance#isStated()}
      * says. A tracked map carries one segment per beat, none of which anybody
-     * asserted, so a recording is headed with the accessor's answer as it always
-     * was. So is a supplied {@code --tempo}, which states exactly one tempo: the
+     * asserted. A supplied {@code --tempo} is headed with the accessor's answer,
+     * since it states exactly one tempo: the
      * map also holds a {@code DERIVED} lead-in carrying a rate nobody asked for
      * -- at a first tracked beat 0.05s in, 1200 BPM -- and reporting that as the
      * user's instruction is what {@code Provenance}'s own javadoc says must not
@@ -136,9 +197,29 @@ record TempoMark(NoteValue unit, long perMinute) {
      */
     static double headline(Score score, double opensAt) {
         List<TempoMap.TempoSegment> stated = statedSegments(score);
-        return changesAmong(stated) == 0
-                ? score.estimatedTempo()
-                : inForceAt(stated, opensAt).beatsPerMinute();
+        if (changesAmong(stated) != 0) {
+            return inForceAt(stated, opensAt).beatsPerMinute();
+        }
+        // A page opening after a recording's meter change is headed with the
+        // tempo of the stretch it opens in, not the opening's quarters (#888).
+        if (stated.isEmpty()) {
+            TempoMap map = score.tempoMap();
+            List<TempoMap.MeterChange> meters = map.meterChanges();
+            for (int k = meters.size() - 1; k > 0; k--) {
+                double starts = startSeconds(map, meters.get(k));
+                if (starts <= opensAt + 1e-6) {
+                    double ends = k + 1 < meters.size()
+                            ? startSeconds(map, meters.get(k + 1)) : Double.POSITIVE_INFINITY;
+                    return sectionTempo(score, starts, ends);
+                }
+            }
+        }
+        return score.estimatedTempo();
+    }
+
+    private static double startSeconds(TempoMap map, TempoMap.MeterChange change) {
+        return map.beatsToSeconds(map.toBeat(
+                new MusicalTime(change.startBar(), 0, change.timeSignature())));
     }
 
     /**

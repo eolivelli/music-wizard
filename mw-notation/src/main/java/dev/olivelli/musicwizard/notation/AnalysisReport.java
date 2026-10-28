@@ -24,6 +24,7 @@ import dev.olivelli.musicwizard.core.model.Key;
 import dev.olivelli.musicwizard.core.model.NoteTrack;
 import dev.olivelli.musicwizard.core.model.PartRole;
 import dev.olivelli.musicwizard.core.model.Score;
+import dev.olivelli.musicwizard.core.model.TempoMap;
 import dev.olivelli.musicwizard.core.workspace.RunManifest;
 import dev.olivelli.musicwizard.core.workspace.RunTraces;
 import java.io.IOException;
@@ -162,9 +163,18 @@ public final class AnalysisReport {
         summary.add(new String[] {"Length", ReportTimeline.clock(score.durationSeconds())});
         summary.add(new String[] {"Tempo",
                 ReportTimeline.bpm(score.estimatedTempo()) + " quarter notes a minute"});
+        int meterChanges = 0;
+        List<TempoMap.MeterChange> meters = score.tempoMap().meterChanges();
+        for (int i = 1; i < meters.size(); i++) {
+            if (!meters.get(i).timeSignature().equals(meters.get(i - 1).timeSignature())) {
+                meterChanges++;
+            }
+        }
         summary.add(new String[] {"Meter",
                 score.tempoMap().initialTimeSignature().numerator() + "/"
-                        + score.tempoMap().initialTimeSignature().denominator()});
+                        + score.tempoMap().initialTimeSignature().denominator()
+                        + (meterChanges == 0 ? "" : " at the start, changed " + meterChanges
+                                + (meterChanges == 1 ? " time" : " times") + " later")});
         score.primaryKey().ifPresent(key ->
                 summary.add(new String[] {"Key", key.displayName()}));
         summary.add(new String[] {"Chord spans", String.valueOf(score.chords().size())});
