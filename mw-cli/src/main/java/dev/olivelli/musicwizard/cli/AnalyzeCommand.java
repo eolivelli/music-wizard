@@ -1746,6 +1746,8 @@ final class AnalyzeCommand implements Callable<Integer> {
         }
         var analysis = config.analysis();
         String typed = analysis != null ? analysis.timeSignatureOverride() : null;
+        // The changes first, so a malformed opening gets their specific message.
+        List<AudioTranscriber.MeterChangeAt> changes = parseMeterChanges(typed);
         // The melody flag alone comes from the command line rather than from the
         // config: the other three are corrections a workspace keeps, and this one
         // is a statement about the recording handed in on the day.
@@ -1755,7 +1757,7 @@ final class AnalyzeCommand implements Callable<Integer> {
                 analysis != null ? analysis.firstDownbeatSecondsOverride() : null,
                 melody,
                 melodyFloorHz(),
-                parseMeterChanges(typed));
+                changes);
     }
 
     /** The typed floor as a frequency, or null for none. */
