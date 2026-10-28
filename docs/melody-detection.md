@@ -78,7 +78,12 @@ envelope peak inside a note cuts it in two, but only where the voice itself
 restarts (#495). Its strength is measured in standard deviations of that
 signal's own envelope, so on a stem run this is the stem's envelope and not
 the mix's — a mix envelope would rate the drums against the band's spread and
-cut vocal notes on them.
+cut vocal notes on them. The same signal's level cuts a note too, where it
+falls and comes back with something struck: a flute tongued legato stays
+periodic through the stroke, so the voice never stops for the pitch track to
+see (#882). A dip repeated as deep soon after is read as a tremolo and cuts
+nothing, and the beat is tracked from the line without these cuts, since a
+dip taken for an onset can halve a tempo.
 
 What the envelope deliberately does *not* do is move the boundaries: against
 exact MIDI truth that would close the onset lateness completely, but against

@@ -25,6 +25,7 @@ import dev.olivelli.musicwizard.core.model.NoteTrack;
 import dev.olivelli.musicwizard.core.model.PartRole;
 import dev.olivelli.musicwizard.core.workspace.MelodyTrace;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;
@@ -181,6 +182,265 @@ class MelodyEstimationTest {
         void twoPeaksCloserThanTheShortestNoteCutOnce() {
             NoteTrack melody = MelodyEstimator.estimate(
                     heldNote(100, 42, 58), peaksAt(1.3, 0.6, 5.0, 0.64, 5.0));
+
+            assertThat(melody.notes()).hasSize(2);
+            assertThat(melody.notes().get(1).onsetSeconds()).isCloseTo(0.6, within(0.01));
+        }
+
+        private static final double LEVEL_RATE = (double) RATE / OnsetEnvelope.ONSET_HOP;
+
+        /**
+         * A level steady over the note except for a fall of {@code depth}
+         * decibels to its lowest at {@code at}, and a recovery as quick, or
+         * none where {@code recovers} is false.
+         */
+        private LevelContour levelFalling(double totalSeconds, double at, double depth,
+                                          boolean recovers) {
+            double[] decibels = new double[(int) Math.ceil(totalSeconds * LEVEL_RATE)];
+            int lowest = (int) Math.round(at * LEVEL_RATE);
+            int edge = 5;
+            for (int i = 0; i < decibels.length; i++) {
+                int away = Math.abs(i - lowest);
+                decibels[i] = !recovers && i > lowest ? -10 - depth
+                        : away >= edge ? -10 : -10 - depth * (edge - away) / edge;
+            }
+            return new LevelContour(decibels, LEVEL_RATE, 0);
+        }
+
+        /** A steady level with a recovering dip of the given depth at each of the given times. */
+        private LevelContour strokesAt(double totalSeconds, double depth, double... times) {
+            double[] decibels = levelFalling(totalSeconds, times[0], depth, true).decibels();
+            for (int t = 1; t < times.length; t++) {
+                double[] next = levelFalling(totalSeconds, times[t], depth, true).decibels();
+                for (int i = 0; i < decibels.length; i++) {
+                    decibels[i] = Math.min(decibels[i], next[i]);
+                }
+            }
+            return new LevelContour(decibels, LEVEL_RATE, 0);
+        }
+
+        /** One voiced run held at (hertz, frames) pairs in turn. */
+        private PitchTrack steps(double... hertzAndFrames) {
+            List<Double> hz = new ArrayList<>();
+            for (int i = 0; i < hertzAndFrames.length; i += 2) {
+                for (int f = 0; f < (int) hertzAndFrames[i + 1]; f++) {
+                    hz.add(hertzAndFrames[i]);
+                }
+            }
+            return voicedAt(hz.stream().mapToDouble(Double::doubleValue).toArray());
+        }
+
+        private PitchTrack voicedAt(double[] hz) {
+            boolean[] voiced = new boolean[hz.length];
+            double[] voicedness = new double[hz.length];
+            Arrays.fill(voiced, true);
+            Arrays.fill(voicedness, 0.9);
+            return new PitchTrack(hz, voiced, voicedness, RATE,
+                    PitchTracker.WINDOW, PitchTracker.HOP);
+        }
+
+        private NoteTrack withLevel(PitchTrack pitches, OnsetEnvelope envelope,
+                                    LevelContour level) {
+            return MelodyEstimator.explain(pitches, envelope, level, 0, false).melody();
+        }
+
+        @Test
+        @DisplayName("a stroke the voice never stops for cuts the note at the stroke")
+        void aStrokeUnderAnUnbrokenVoiceCuts() {
+            // The tongued repeat of #882: no voicedness dip and no envelope
+            // peak to speak of, only the level falling and coming back.
+            NoteTrack melody = withLevel(heldNote(100, -1, -1), peakAt(0.6, 1.0, 1.3),
+                    levelFalling(1.3, 0.6, 14, true));
+
+            assertThat(pitches(melody)).containsExactly(69, 69);
+            assertThat(melody.notes().get(1).onsetSeconds()).isCloseTo(0.6, within(0.01));
+        }
+
+        @Test
+        @DisplayName("a shallow swell of the level, as vibrato makes, does not cut")
+        void aShallowDipDoesNotCut() {
+            NoteTrack melody = withLevel(heldNote(100, -1, -1), peakAt(0.6, 1.0, 1.3),
+                    levelFalling(1.3, 0.6, 3, true));
+
+            assertThat(melody.notes()).hasSize(1);
+        }
+
+        @Test
+        @DisplayName("a level that dips as deep again soon after is a tremolo")
+        void aTremoloDoesNotCut() {
+            NoteTrack melody = withLevel(heldNote(100, -1, -1),
+                    peaksAt(1.3, 0.45, 1.0, 0.6, 1.0, 0.75, 1.0),
+                    strokesAt(1.3, 14, 0.45, 0.6, 0.75));
+
+            assertThat(melody.notes()).hasSize(1);
+        }
+
+        @Test
+        @DisplayName("a note tongued three times prints as three")
+        void everyStrokeOfANoteCuts() {
+            NoteTrack melody = withLevel(heldNote(100, -1, -1),
+                    peaksAt(1.3, 0.4, 1.0, 0.8, 1.0), strokesAt(1.3, 14, 0.4, 0.8));
+
+            assertThat(pitches(melody)).containsExactly(69, 69, 69);
+            assertThat(melody.notes().get(2).onsetSeconds()).isCloseTo(0.8, within(0.01));
+        }
+
+        @Test
+        @DisplayName("a repeat soon after a tongued change of pitch still cuts")
+        void aRepeatAfterATonguedChangeCuts() {
+            // G, then an A tongued into and struck again soon after: the dip
+            // at the change is the A's own articulation.
+            NoteTrack melody = withLevel(steps(392, 38, 440, 62),
+                    peaksAt(1.3, 0.45, 1.0, 0.6, 1.0), strokesAt(1.3, 14, 0.45, 0.6));
+
+            assertThat(pitches(melody)).containsExactly(67, 69, 69);
+            assertThat(melody.notes().get(2).onsetSeconds()).isCloseTo(0.6, within(0.01));
+        }
+
+        @Test
+        @DisplayName("a repeat after a change of pitch crossed unsteadily still cuts")
+        void aRepeatAfterAnUnsteadyCrossingCuts() {
+            // The crossing is a piece of its own that holds no pitch and is
+            // dropped, so the A's onset lands past the articulation's dip.
+            double[] crossing = {68.2, 67.8, 68.6, 67.9, 68.5, 67.8, 68.6, 68.0};
+            double[] hz = new double[100];
+            for (int i = 0; i < hz.length; i++) {
+                double midi = i < 38 ? 67 : i < 46 ? crossing[i - 38] : 69;
+                hz[i] = 440 * Math.pow(2, (midi - 69) / 12);
+            }
+            NoteTrack melody = withLevel(voicedAt(hz),
+                    peaksAt(1.3, 0.49, 1.0, 0.65, 1.0), strokesAt(1.3, 14, 0.49, 0.65));
+
+            assertThat(pitches(melody)).containsExactly(67, 69, 69);
+            assertThat(melody.notes().get(2).onsetSeconds()).isCloseTo(0.65, within(0.01));
+        }
+
+        @Test
+        @DisplayName("an unsteady crossing's articulation does not repeat the note left")
+        void anUnsteadyCrossingDoesNotRepeatTheNoteLeft() {
+            double[] crossing = {68.2, 67.8, 68.6, 67.9, 68.5, 67.8, 68.6, 68.0};
+            double[] hz = new double[100];
+            for (int i = 0; i < hz.length; i++) {
+                double midi = i < 38 ? 67 : i < 46 ? crossing[i - 38] : 69;
+                hz[i] = 440 * Math.pow(2, (midi - 69) / 12);
+            }
+            NoteTrack melody = withLevel(voicedAt(hz), peaksAt(1.3, 0.49, 1.0),
+                    strokesAt(1.3, 14, 0.49));
+
+            assertThat(pitches(melody)).containsExactly(67, 69);
+        }
+
+        @Test
+        @DisplayName("a repeat whose attack scoops sharp before settling still cuts")
+        void aRepeatThatScoopsCuts() {
+            // The scoop is a piece of its own that rounds back to the note, so
+            // the cut it opens is joined away and is no change of pitch.
+            double[] hz = new double[100];
+            for (int i = 0; i < hz.length; i++) {
+                double midi = i < 50 ? 67 : i < 56 ? 67.65 : 67.1;
+                hz[i] = 440 * Math.pow(2, (midi - 69) / 12);
+            }
+            PitchTrack pitches = voicedAt(hz);
+            double struck = pitches.timeOf(50);
+            NoteTrack melody = withLevel(pitches, peaksAt(1.3, struck, 1.0),
+                    strokesAt(1.3, 14, struck));
+
+            assertThat(pitches(melody)).containsExactly(67, 67);
+        }
+
+        @Test
+        @DisplayName("a repeat in a run tongued at a tremolo's spacing still cuts")
+        void aRepeatInAFastTonguedRunCuts() {
+            // G A A C D, every note tongued at the same spacing.
+            double[] times = {0.45, 0.6, 0.75, 0.9};
+            NoteTrack melody = withLevel(steps(392, 38, 440, 25, 523.25, 13, 587.33, 24),
+                    peaksAt(1.3, 0.45, 1.0, 0.6, 1.0, 0.75, 1.0, 0.9, 1.0),
+                    strokesAt(1.3, 14, times));
+
+            assertThat(pitches(melody)).containsExactly(67, 69, 69, 72, 74);
+        }
+
+        @Test
+        @DisplayName("repeats either side of a change at a tremolo's spacing read as a tremolo")
+        void repeatsEitherSideOfAChangeReadAsATremolo() {
+            // G G A A: three equal dips with a change of pitch at the middle one
+            // are what a tremolo through that change looks like (#885).
+            NoteTrack melody = withLevel(steps(392, 50, 440, 50),
+                    peaksAt(1.3, 0.45, 1.0, 0.6, 1.0, 0.75, 1.0),
+                    strokesAt(1.3, 14, 0.45, 0.6, 0.75));
+
+            assertThat(pitches(melody)).containsExactly(67, 69);
+        }
+
+        @Test
+        @DisplayName("a tremolo running through changes of pitch cuts nothing")
+        void aTremoloThroughAChangeOfPitchDoesNotCut() {
+            double[] times = new double[8];
+            double[] peaks = new double[16];
+            for (int k = 0; k < times.length; k++) {
+                times[k] = 0.2 + 0.15 * k;
+                peaks[2 * k] = times[k];
+                peaks[2 * k + 1] = 1.0;
+            }
+            NoteTrack melody = withLevel(steps(392, 38, 440, 25, 392, 37),
+                    peaksAt(1.3, peaks), strokesAt(1.3, 14, times));
+
+            assertThat(pitches(melody)).containsExactly(67, 69, 67);
+        }
+
+        @Test
+        @DisplayName("a dip with nothing struck under it does not cut")
+        void aDipWithoutAnAttackDoesNotCut() {
+            NoteTrack melody = withLevel(heldNote(100, -1, -1), peakAt(0.2, 1.0, 1.3),
+                    levelFalling(1.3, 0.6, 14, true));
+
+            assertThat(melody.notes()).hasSize(1);
+        }
+
+        @Test
+        @DisplayName("a ripple at the bottom of a stroke leaves it one stroke")
+        void aRippleAtTheBottomIsOneStroke() {
+            double[] decibels = levelFalling(1.3, 0.6, 14, true).decibels();
+            int lowest = (int) Math.round(0.6 * LEVEL_RATE);
+            // Two minima a frame either side of a small bump.
+            decibels[lowest - 1] = decibels[lowest];
+            decibels[lowest + 1] = decibels[lowest];
+            decibels[lowest] += 0.2;
+            NoteTrack melody = withLevel(heldNote(100, -1, -1), peakAt(0.6, 1.0, 1.3),
+                    new LevelContour(decibels, LEVEL_RATE, 0));
+
+            assertThat(pitches(melody)).containsExactly(69, 69);
+        }
+
+        @Test
+        @DisplayName("a level that falls and stays down is a note fading, not a stroke")
+        void aFallWithoutRecoveryDoesNotCut() {
+            // A ripple on the low side, so that its minima are dips the
+            // recovery is asked of, rather than a plateau nothing is asked of.
+            double[] decibels = levelFalling(1.3, 0.6, 14, false).decibels();
+            for (int i = (int) Math.round(0.6 * LEVEL_RATE) + 1; i < decibels.length; i++) {
+                decibels[i] += i % 2 == 0 ? 0.1 : -0.1;
+            }
+            NoteTrack melody = withLevel(heldNote(100, -1, -1), peakAt(0.6, 1.0, 1.3),
+                    new LevelContour(decibels, LEVEL_RATE, 0));
+
+            assertThat(melody.notes()).hasSize(1);
+        }
+
+        @Test
+        @DisplayName("a stroke at the note's own attack does not cut")
+        void aStrokeAtTheAttackDoesNotCut() {
+            NoteTrack melody = withLevel(heldNote(100, -1, -1), peakAt(0.6, 1.0, 1.3),
+                    levelFalling(1.3, 0.09, 14, true));
+
+            assertThat(melody.notes()).hasSize(1);
+        }
+
+        @Test
+        @DisplayName("a peak and the stroke under it cut the note once")
+        void aPeakAndItsStrokeCutOnce() {
+            NoteTrack melody = withLevel(heldNote(100, 44, 52), peakAt(0.6, 5.0, 1.3),
+                    levelFalling(1.3, 0.62, 14, true));
 
             assertThat(melody.notes()).hasSize(2);
             assertThat(melody.notes().get(1).onsetSeconds()).isCloseTo(0.6, within(0.01));
@@ -1084,6 +1344,47 @@ class MelodyEstimationTest {
             assertThat(trace.runs().get(0).rearticulations()).isEqualTo(1);
             assertThat(trace.notes()).extracting(MelodyTrace.Note::startedBy)
                     .containsExactly(MelodyTrace.Note.RUN, MelodyTrace.Note.REARTICULATION);
+        }
+
+        @Test
+        @DisplayName("records what each test read where a note may have been struck again")
+        void recordsEveryStrikeConsidered() {
+            double[] strength = new double[(int) Math.ceil(1.3 * ENVELOPE_RATE)];
+            strength[(int) Math.round(0.3 * ENVELOPE_RATE)] = 5.0;
+            strength[(int) Math.round(0.8 * ENVELOPE_RATE)] = 1.0;
+            double[] hz = new double[100];
+            boolean[] voiced = new boolean[100];
+            double[] voicedness = new double[100];
+            Arrays.fill(hz, 440);
+            Arrays.fill(voiced, true);
+            Arrays.fill(voicedness, 0.9);
+            double rate = (double) RATE / OnsetEnvelope.ONSET_HOP;
+            double[] decibels = new double[(int) Math.ceil(1.3 * rate)];
+            Arrays.fill(decibels, -10);
+            int lowest = (int) Math.round(0.8 * rate);
+            for (int k = -4; k <= 4; k++) {
+                decibels[lowest + k] = -24 + 14 * Math.abs(k) / 5.0;
+            }
+            MelodyTrace trace = MelodyEstimator.explain(
+                    new PitchTrack(hz, voiced, voicedness, RATE,
+                            PitchTracker.WINDOW, PitchTracker.HOP),
+                    new OnsetEnvelope(strength, ENVELOPE_RATE),
+                    new LevelContour(decibels, rate, 0), 0, false).trace();
+
+            // The peak the voice held through, then the stroke that cut.
+            assertThat(trace.strikes()).extracting(MelodyTrace.Strike::read)
+                    .containsExactly(MelodyTrace.Strike.HELD, MelodyTrace.Strike.LEVEL);
+            MelodyTrace.Strike peak = trace.strikes().get(0);
+            assertThat(peak.seconds()).isCloseTo(0.3, within(0.01));
+            assertThat(peak.strength()).isEqualTo(5.0);
+            assertThat(peak.voicedness()).isEqualTo(1.0);
+            assertThat(peak.dipDecibels()).isZero();
+            MelodyTrace.Strike stroke = trace.strikes().get(1);
+            assertThat(stroke.seconds()).isCloseTo(0.8, within(0.01));
+            assertThat(stroke.dipDecibels()).isCloseTo(14, within(1e-9));
+            assertThat(trace.runs().get(0).rearticulations()).isEqualTo(1);
+            assertThat(trace.notes()).extracting(MelodyTrace.Note::startedBy)
+                    .containsExactly(MelodyTrace.Note.RUN, MelodyTrace.Note.STROKE);
         }
 
         @Test

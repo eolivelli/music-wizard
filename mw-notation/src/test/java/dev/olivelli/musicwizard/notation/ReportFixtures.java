@@ -718,7 +718,7 @@ final class ReportFixtures {
                                 12 * SECONDS_PER_BEAT, 2, 2, 0, 0, 2, 0)),
                 List.of(new MelodyTrace.Gesture(4 * SECONDS_PER_BEAT, 12 * SECONDS_PER_BEAT,
                         8, 71, 77, null, 0, MelodyTrace.Gesture.INSIDE)),
-                melodyNotes());
+                melodyNotes(), List.of());
     }
 
     /** One entry per note of {@link #melody()}, in the same order and at the same times. */
@@ -743,7 +743,7 @@ final class ReportFixtures {
     static MelodyTrace melodyRoundedOn(MelodyTrace.Tuning tuning) {
         MelodyTrace cuts = melodyCuts();
         return new MelodyTrace(cuts.signal(), cuts.track(), tuning, cuts.fold(),
-                cuts.runs(), cuts.gestures(), cuts.notes());
+                cuts.runs(), cuts.gestures(), cuts.notes(), cuts.strikes());
     }
 
     /**
@@ -780,7 +780,9 @@ final class ReportFixtures {
                 List.of(new MelodyTrace.Note(4 * SECONDS_PER_BEAT, 5 * SECONDS_PER_BEAT, 72,
                                 MelodyTrace.Note.RUN, 0, 0, 0),
                         new MelodyTrace.Note(5 * SECONDS_PER_BEAT, 6 * SECONDS_PER_BEAT, 72,
-                                MelodyTrace.Note.REARTICULATION, 0, 0, 0)));
+                                MelodyTrace.Note.REARTICULATION, 0, 0, 0)),
+                List.of(new MelodyTrace.Strike(5 * SECONDS_PER_BEAT, 5.2, 0.4, 0,
+                        MelodyTrace.Strike.ENVELOPE)));
     }
 
     /**

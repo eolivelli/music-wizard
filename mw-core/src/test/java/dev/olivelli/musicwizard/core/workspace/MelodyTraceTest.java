@@ -38,7 +38,9 @@ class MelodyTraceTest {
                 List.of(new MelodyTrace.Note(1.62, 2.1, 67, MelodyTrace.Note.RUN, 0, 0, -12),
                         new MelodyTrace.Note(2.1, 2.7, 69, MelodyTrace.Note.PITCH, 0, 0, -12),
                         new MelodyTrace.Note(2.7, 3.25, 69,
-                                MelodyTrace.Note.REARTICULATION, 0, 0, -12)));
+                                MelodyTrace.Note.REARTICULATION, 0, 0, -12)),
+                List.of(new MelodyTrace.Strike(2.4, 3.1, 0.98, 0, MelodyTrace.Strike.HELD),
+                        new MelodyTrace.Strike(2.7, 1.2, 0.97, 11.5, MelodyTrace.Strike.LEVEL)));
     }
 
     @Test
@@ -71,7 +73,7 @@ class MelodyTraceTest {
         MelodyTrace empty = new MelodyTrace(MelodyTrace.FULL_MIX,
                 new MelodyTrace.Track(22050, 2048, 256, 86.13, 800, 0, 9.29),
                 new MelodyTrace.Tuning(0.001, null, 0.2, 0, MelodyTrace.Tuning.CONCERT_PITCH),
-                null, List.of(), List.of(), List.of());
+                null, List.of(), List.of(), List.of(), List.of());
 
         MelodyTrace read = RunTraceJson.fromJson(
                         RunTraceJson.toJson(RunTraceJson.of(Map.of(MelodyTrace.STAGE, empty))))
@@ -90,7 +92,7 @@ class MelodyTraceTest {
     @DisplayName("the signal is added by the caller that knows which one it was")
     void theSignalIsTheCallersToName() {
         MelodyTrace unnamed = new MelodyTrace(null, null, null, null,
-                List.of(), List.of(), List.of());
+                List.of(), List.of(), List.of(), List.of());
 
         assertThat(unnamed.signal()).isNull();
         assertThat(unnamed.readFrom(MelodyTrace.FULL_MIX).signal())
@@ -108,6 +110,18 @@ class MelodyTraceTest {
                 .isInstanceOf(NullPointerException.class);
         assertThatThrownBy(() -> new MelodyTrace.Tuning(0, null, 0.2, 0, null))
                 .isInstanceOf(NullPointerException.class);
+        assertThatThrownBy(() -> new MelodyTrace.Strike(1, 4, 1, 0, null))
+                .isInstanceOf(NullPointerException.class);
+    }
+
+    @Test
+    @DisplayName("a trace written before strikes were recorded reads with none")
+    void aTraceWithoutStrikesReadsWithNone() {
+        RunTraces older = RunTraceJson.fromJson("{\"schemaVersion\":1,\"traces\":"
+                + "{\"melody\":{\"runs\":[],\"gestures\":[],\"notes\":[]}}}");
+
+        assertThat(older.trace(MelodyTrace.STAGE, MelodyTrace.class).orElseThrow().strikes())
+                .isEmpty();
     }
 
     @Test

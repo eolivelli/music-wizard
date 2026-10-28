@@ -1135,9 +1135,9 @@ final class ReportPhases {
         note("A run is cut wherever the pitch leaves the note it is in and stays away, and a"
                 + " piece becomes a note only where the pitch settles inside it — so a piece"
                 + " that held none is the path crossing an interval rather than a note that"
-                + " was sung. Two neighbouring pieces rounding to one semitone are joined. The"
-                + " onset envelope adds a boundary where the same pitch is struck again, which"
-                + " a pitch track cannot see. The last column is the head of the run before its"
+                + " was sung. Two neighbouring pieces rounding to one semitone are joined. A"
+                + " boundary is added where the same pitch is struck again, which a pitch"
+                + " track cannot see. The last column is the head of the run before its"
                 + " first note: a singer arriving at a pitch from below spends it gliding, and"
                 + " those frames belong to no note.");
     }
@@ -1221,6 +1221,7 @@ final class ReportPhases {
             case MelodyTrace.Note.RUN -> "the voice starting";
             case MelodyTrace.Note.PITCH -> "the pitch leaving the note before it";
             case MelodyTrace.Note.REARTICULATION -> "the envelope, striking the same pitch again";
+            case MelodyTrace.Note.STROKE -> "the level, striking the same pitch again";
             default -> startedBy;
         };
     }

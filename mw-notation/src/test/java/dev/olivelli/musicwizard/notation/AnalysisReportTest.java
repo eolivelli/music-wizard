@@ -907,6 +907,26 @@ class AnalysisReportTest {
     }
 
     @Test
+    @DisplayName("a note its level struck again is not credited to the envelope")
+    void aStrokeIsNamedForTheLevel() {
+        MelodyTrace envelope = ReportFixtures.melodyStruckAgain();
+        List<MelodyTrace.Note> notes = new ArrayList<>(envelope.notes());
+        MelodyTrace.Note second = notes.get(1);
+        notes.set(1, new MelodyTrace.Note(second.fromSeconds(), second.toSeconds(),
+                second.midiPitch(), MelodyTrace.Note.STROKE, second.run(), second.gesture(),
+                second.shiftSemitones()));
+        MelodyTrace stroke = new MelodyTrace(envelope.signal(), envelope.track(),
+                envelope.tuning(), envelope.fold(), envelope.runs(), envelope.gestures(), notes,
+                envelope.strikes());
+
+        String page = AnalysisReport.toHtml(ReportFixtures.struckAgain(), RECORDING,
+                ReportFixtures.run(), ReportFixtures.weighed(stroke));
+
+        assertThat(page).contains("the level, striking the same pitch again")
+                .doesNotContain("the envelope, striking the same pitch again");
+    }
+
+    @Test
     @DisplayName("a note the envelope struck again says so, and a run with no note is drawn")
     void aRearticulatedNoteAndASilentRunAreDrawn() {
         String page = AnalysisReport.toHtml(ReportFixtures.struckAgain(), RECORDING,
@@ -945,7 +965,7 @@ class AnalysisReportTest {
         MelodyTrace nothing = new MelodyTrace(MelodyTrace.SEPARATED_VOCAL,
                 new MelodyTrace.Track(22050, 2048, 256, 86.1328125, 689, 0, 8),
                 new MelodyTrace.Tuning(0.0375, null, 0.2, 0, MelodyTrace.Tuning.NOT_WEIGHED),
-                null, List.of(), List.of(), List.of());
+                null, List.of(), List.of(), List.of(), List.of());
 
         String page = AnalysisReport.toHtml(ReportFixtures.chordsOnly(), RECORDING,
                 ReportFixtures.run(), ReportFixtures.weighed(nothing));

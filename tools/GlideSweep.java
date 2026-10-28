@@ -19,6 +19,7 @@ import dev.olivelli.musicwizard.audio.AudioDecoder;
 import dev.olivelli.musicwizard.core.model.Note;
 import dev.olivelli.musicwizard.core.model.NoteTrack;
 import dev.olivelli.musicwizard.dsp.Chroma;
+import dev.olivelli.musicwizard.dsp.LevelContour;
 import dev.olivelli.musicwizard.dsp.MelodyEstimator;
 import dev.olivelli.musicwizard.dsp.NnlsChroma;
 import dev.olivelli.musicwizard.dsp.OnsetEnvelope;
@@ -110,7 +111,8 @@ public final class GlideSweep {
     private record Span(double onset, double end, int pitch) {}
 
     /** What the segmenter reads, cached: everything upstream of it. */
-    private record Front(PitchTrack track, OnsetEnvelope envelope, double tuning) {}
+    private record Front(PitchTrack track, OnsetEnvelope envelope, LevelContour level,
+                         double tuning) {}
 
     public static void main(String[] args) throws Exception {
         boolean rows = args.length > 0 && args[0].equals("rows");
@@ -316,7 +318,7 @@ public final class GlideSweep {
 
     private static List<Span> estimate(Front front, double steady) {
         NoteTrack track = MelodyEstimator.estimate(
-                front.track(), front.envelope(), front.tuning(), steady);
+                front.track(), front.envelope(), front.level(), front.tuning(), steady);
         List<Span> notes = new ArrayList<>(track.size());
         for (Note note : track.notes()) {
             notes.add(new Span(note.onsetSeconds(),
@@ -343,6 +345,7 @@ public final class GlideSweep {
         }
         AudioBuffer buffer = AudioDecoder.decode(audio);
         Front front = new Front(PitchTracker.track(buffer), OnsetEnvelope.fromAudio(buffer),
+                LevelContour.fromAudio(buffer),
                 Chroma.estimateTuning(NnlsChroma.transform(buffer)));
         Files.createDirectories(CACHE);
         Path partial = cached.resolveSibling(cached.getFileName() + ".partial");
@@ -374,7 +377,13 @@ public final class GlideSweep {
         for (int frame = 0; frame < strength.length; frame++) {
             strength[frame] = in.readDouble();
         }
-        return new Front(track, new OnsetEnvelope(strength, in.readDouble()), in.readDouble());
+        OnsetEnvelope envelope = new OnsetEnvelope(strength, in.readDouble());
+        double[] decibels = new double[in.readInt()];
+        for (int frame = 0; frame < decibels.length; frame++) {
+            decibels[frame] = in.readDouble();
+        }
+        LevelContour level = new LevelContour(decibels, in.readDouble(), in.readDouble());
+        return new Front(track, envelope, level, in.readDouble());
     }
 
     private static void write(DataOutputStream out, Front front) throws IOException {
@@ -397,6 +406,12 @@ public final class GlideSweep {
             out.writeDouble(strength);
         }
         out.writeDouble(front.envelope().frameRate());
+        out.writeInt(front.level().length());
+        for (double decibels : front.level().decibels()) {
+            out.writeDouble(decibels);
+        }
+        out.writeDouble(front.level().frameRate());
+        out.writeDouble(front.level().offsetSeconds());
         out.writeDouble(front.tuning());
     }
 
