@@ -38,7 +38,6 @@ final class EighthHeldRuns {
 
     private static final double STEP = 2.0 / 3;
 
-    /** A quarter of the step, in pulses: nearer the step than a duplet is. */
     private static final double OFF_STEP = STEP / 4;
 
     /** How far a pulse in the run may stray from the section's median, as a share of it. */
@@ -63,14 +62,19 @@ final class EighthHeldRuns {
                 continue;
             }
             int end = k + 1 < sections.size() ? sections.get(k + 1).startPulse() : last;
-            boolean threeFollows = k + 1 < sections.size()
-                    && sections.get(k + 1).meter().equals(TimeSignature.THREE_FOUR);
+            // A change after the run is counted from the run's pulse unless it holds the
+            // eighth, so the run must hand back to 6/8 before it; and 3/4 cannot follow 3/4.
+            boolean runsIntoNext = k + 1 < sections.size()
+                    && sections.get(k + 1).eighthHeld()
+                    && !sections.get(k + 1).meter().equals(TimeSignature.THREE_FOUR);
             double median = medianPulse(beatTimes, section.startPulse(), end);
             int bar = section.startPulse() + 2;
             while (bar + 2 * FEWEST_BARS <= end) {
                 int bars = wholeBars(positions, bar, end);
-                if (bars >= FEWEST_BARS && steady(beatTimes, bar, bar + 2 * bars, median)
-                        && !(threeFollows && bar + 2 * bars == end)) {
+                if (bar + 2 * bars == end && end < last && !runsIntoNext) {
+                    bars--;
+                }
+                if (bars >= FEWEST_BARS && steady(beatTimes, bar, bar + 2 * bars, median)) {
                     proposed.add(new MeterChangeAt(beatTimes.get(bar),
                             TimeSignature.THREE_FOUR, true));
                     int back = bar + 2 * bars;
