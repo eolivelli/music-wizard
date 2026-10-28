@@ -172,15 +172,16 @@ record TempoMark(NoteValue unit, long perMinute) {
      * notes a minute.
      *
      * <p>{@link Score#estimatedTempo()}, except where the score <em>states</em>
-     * more than one tempo. That accessor answers such a map with a
+     * more than one tempo, or a recording's page opens after a meter change.
+     * That accessor answers such a map with a
      * duration-weighted average, and a file stating 120 BPM and then 60 makes
      * that an 80 the file never plays (#66); the stated tempo in force where the
      * page opens is printed instead, which is a tempo the piece has.
      *
      * <p>Only a stated tempo counts, which is what {@link Provenance#isStated()}
      * says. A tracked map carries one segment per beat, none of which anybody
-     * asserted, so a recording is headed with the accessor's answer as it always
-     * was. So is a supplied {@code --tempo}, which states exactly one tempo: the
+     * asserted. A supplied {@code --tempo} is headed with the accessor's answer,
+     * since it states exactly one tempo: the
      * map also holds a {@code DERIVED} lead-in carrying a rate nobody asked for
      * -- at a first tracked beat 0.05s in, 1200 BPM -- and reporting that as the
      * user's instruction is what {@code Provenance}'s own javadoc says must not
