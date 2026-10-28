@@ -485,7 +485,8 @@ public final class MeterEstimator {
     /**
      * How the notes inside a pulse divide it. Compound is a lone note nearer a
      * third than a half or a quarter, the 6/8 quarter and eighth, or more
-     * notes at thirds where most of the line's pulses are divided in thirds;
+     * notes at thirds where most of the pulses the line sounds in are divided
+     * in thirds;
      * triplet is the latter where they are not, as a 4/4 line divides its
      * beats in three only now and then. Across is a pulse whose beat is not
      * struck, or whose thirds run over an unstruck next beat, as quarters
@@ -547,8 +548,10 @@ public final class MeterEstimator {
         if (inside.size() < DIVIDED_PULSES) {
             return new Divisions(0, 0, divided);
         }
+        Set<Long> sounding = new HashSet<>(inside.keySet());
+        struck.stream().filter(beat -> beat < pulses).forEach(sounding::add);
         boolean mostlyInThirds = inside.values().stream()
-                .filter(MeterEstimator::inThirds).count() * 2 > pulses;
+                .filter(MeterEstimator::inThirds).count() * 2 > sounding.size();
         Map<Division, Integer> counts = new HashMap<>();
         inside.forEach((pulse, fractions) -> counts.merge(division(fractions,
                 struck.contains(pulse), struck.contains(pulse + 1), mostlyInThirds),

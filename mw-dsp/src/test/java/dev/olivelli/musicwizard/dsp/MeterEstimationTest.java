@@ -329,9 +329,14 @@ class MeterEstimationTest {
         @Test
         @DisplayName("running eighths, and an eighth and a quarter, are 6/8 too")
         void otherCompoundDivisions() {
+            List<Note> afterARest = line(1.0 / 3, 1.0 / 3, 1.0 / 3).notes().stream()
+                    .filter(note -> note.onsetSeconds() >= BEATS * 3 / 5 * PULSE_SECONDS)
+                    .toList();
             NoteTrack[] lines = {
                     jittered(line(1.0 / 3, 1.0 / 3, 1.0 / 3)),
-                    jittered(line(1.0 / 3, 2.0 / 3, 1))};
+                    jittered(line(1.0 / 3, 2.0 / 3, 1)),
+                    // silence is not a pulse the line divides otherwise
+                    new NoteTrack(PartRole.LEAD_VOCAL, "line", afterARest, Confidence.of(0.9))};
             for (NoteTrack line : lines) {
                 assertThat(MeterEstimator.decideLine(
                         MeterEstimator.read(beats(BEATS), line, clicks(1))).meter())
