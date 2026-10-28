@@ -474,11 +474,16 @@ final class StaffLayout {
             TimeSignature meter = score.tempoMap().timeSignatureAtBar(bar);
             double barEnd = barStart + meter.quarterBeatsPerBar();
             writer.startBar(bar, meter, !meter.equals(previousMeter));
-            previousMeter = meter;
             if (!tempoWritten) {
                 writeTempo(writer, score, meter);
                 tempoWritten = true;
+            } else if (!meter.equals(previousMeter)) {
+                TempoMark.atChange(score, previousMeter, meter,
+                        score.tempoMap().beatsToSeconds(barStart)).ifPresent(quarters ->
+                        TempoMark.of(meter, quarters).ifPresent(mark ->
+                                writer.tempo(mark.unit(), mark.perMinute(), quarters)));
             }
+            previousMeter = meter;
             TupletBar tupletBar = tuplets.atBar(bar).orElse(null);
             double contentStart = Math.max(barStart, bar == 0 ? pickupStart : 0);
             if (bar == 0 && pickupStart > 0) {
@@ -761,7 +766,9 @@ final class StaffLayout {
      * dotted quarters — the same trap {@link ChordChart} documents, and the
      * reason the unit is carried rather than assumed to be a quarter.
      *
-     * <p><b>One mark for the whole staff.</b> A score whose tempo changes gets
+     * <p><b>One mark for the whole staff</b>, and one more wherever a meter
+     * change changes the counted note value ({@link TempoMark#atChange}). A
+     * score whose tempo changes gets
      * only the one it opens on: 120 for four beats and then 60 is marked 120,
      * and the 60 is printed nowhere. {@link MidiExport} writes every segment at
      * its own tick, so the two exports of such a score still disagree about
@@ -774,8 +781,8 @@ final class StaffLayout {
      * be able to count the same score differently.
      */
     private static void writeTempo(StaffWriter writer, Score score, TimeSignature meter) {
-        TempoMark.of(score, meter, 0)
-                .ifPresent(mark -> writer.tempo(mark.unit(), mark.perMinute()));
+        TempoMark.of(score, meter, 0).ifPresent(mark ->
+                writer.tempo(mark.unit(), mark.perMinute(), TempoMark.headline(score, 0)));
     }
 
     /**

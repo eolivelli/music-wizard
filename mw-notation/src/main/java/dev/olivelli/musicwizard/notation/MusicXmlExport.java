@@ -370,6 +370,11 @@ public final class MusicXmlExport {
                 TempoMark.of(score, counted, opensAt).ifPresent(mark ->
                         tempo(xml, mark.unit(), mark.perMinute(),
                                 TempoMark.headline(score, opensAt)));
+            } else if (bar.meterChanged()) {
+                TempoMark.atChange(score, bars.get(i - 1).meter(), bar.meter(), bar.startSeconds())
+                        .ifPresent(quarters -> TempoMark.of(bar.meter(), quarters)
+                                .ifPresent(mark -> tempo(xml, mark.unit(), mark.perMinute(),
+                                        quarters)));
             }
             // This bar's syllables, at their position in it in quarter beats.
             List<Sung> words = sungByBar.isEmpty() ? List.of() : sungByBar.get(i);
@@ -674,7 +679,6 @@ public final class MusicXmlExport {
 
         private final XmlWriter part;
         private final Score score;
-        private final double quarterBeatsPerMinute;
         private final List<ChartLayout.Bar> chart;
 
         /** Whether the chart's symbols are written at all, as {@link LeadSheet} decides. */
@@ -736,7 +740,6 @@ public final class MusicXmlExport {
         MusicXmlStaffWriter(XmlWriter part, Score score, List<ChartLayout.Bar> chart) {
             this.part = part;
             this.score = score;
-            this.quarterBeatsPerMinute = TempoMark.headline(score, 0);
             this.chart = chart;
             this.harmonic = ChartLayout.namesAChord(chart);
         }
@@ -776,7 +779,7 @@ public final class MusicXmlExport {
         }
 
         @Override
-        public void tempo(NoteValue unit, long perMinute) {
+        public void tempo(NoteValue unit, long perMinute, double quarterBeatsPerMinute) {
             MusicXmlExport.tempo(measure, unit, perMinute, quarterBeatsPerMinute);
         }
 
