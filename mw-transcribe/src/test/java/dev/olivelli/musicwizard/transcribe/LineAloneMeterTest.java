@@ -27,6 +27,7 @@ import dev.olivelli.musicwizard.core.workspace.KeyTrace;
 import dev.olivelli.musicwizard.core.workspace.RunLog;
 import dev.olivelli.musicwizard.testkit.SignalFactory;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -50,10 +51,12 @@ class LineAloneMeterTest {
             {2}};
 
     private static AudioBuffer waltzLine(int bars) {
-        return line(bars, PHRASE, 3);
+        return line(bars, PHRASE, 3, 0);
     }
 
-    private static AudioBuffer line(int bars, double[][] phrase, int pulsesPerBar) {
+    /** {@code detached} seconds of silence end each note, so a pitch change is an onset. */
+    private static AudioBuffer line(int bars, double[][] phrase, int pulsesPerBar,
+                                    double detached) {
         int[] scale = {72, 74, 76, 77, 79, 77, 76, 74, 72, 71};
         float[] samples = new float[(int) (bars * pulsesPerBar * BEAT * SAMPLE_RATE)];
         int at = 0;
@@ -63,6 +66,8 @@ class LineAloneMeterTest {
                 float[] tone = SignalFactory.sine(
                         SignalFactory.midiToHz(scale[note++ % scale.length]),
                         length * BEAT, SAMPLE_RATE);
+                Arrays.fill(tone,
+                        Math.max(0, tone.length - (int) (detached * SAMPLE_RATE)), tone.length, 0f);
                 System.arraycopy(tone, 0, samples, at, Math.min(tone.length, samples.length - at));
                 at += tone.length;
             }
@@ -122,7 +127,7 @@ class LineAloneMeterTest {
     @Test
     @DisplayName("a line in 6/8 is read as a supplied 6/8 bars it (#871)")
     void aCompoundLineIsReadAsSupplied() {
-        AudioBuffer audio = line(36, COMPOUND_PHRASE, 2);
+        AudioBuffer audio = line(36, COMPOUND_PHRASE, 2, 0.02);
         Score read = transcribe(audio, null);
         assertThat(log.stages().stream()
                 .filter(stage -> stage.stage().equals(BeatTrace.STAGE))

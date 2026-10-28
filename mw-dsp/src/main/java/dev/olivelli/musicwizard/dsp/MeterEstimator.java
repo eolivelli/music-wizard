@@ -446,16 +446,15 @@ public final class MeterEstimator {
      * {@link #MARGIN}: a line in three leaves its rivals at the null, and a
      * ratio over the null is a ratio of noise.
      *
-     * <p>Failing three, a line whose notes divide a struck pulse in three is
-     * barred in two of them, which is 6/8 counted on the tracked pulse (#871),
-     * unless its held notes state a three. A swung line divides it the same
-     * way (#896). Six would be a tracker below the beat, and is not read from
-     * a line.
+     * <p>Failing three, a line that divides its pulse long-short more often
+     * than any other way is barred in two pulses, which is 6/8 counted on the
+     * tracked pulse (#871), unless its held notes state a three. A swung line
+     * divides it the same way (#896). Six would be a tracker below the beat,
+     * and is not read from a line.
      */
     public static Estimate decideLine(Reading reading) {
         Objects.requireNonNull(reading, "reading");
-        if (reading.at(IN_THREE) < SUPPORTED
-                && reading.inThree() >= A_LINE_DIVIDES_IN_THREE) {
+        if (reading.at(IN_THREE) < SUPPORTED && reading.inThree() > reading.inTwo()) {
             return new Estimate(meterAt(reading, IN_TWO), IN_TWO, confidenceInTwo(reading));
         }
         boolean inThree = reading.at(IN_THREE) >= SUPPORTED
@@ -480,65 +479,78 @@ public final class MeterEstimator {
                 divisions.onThePulse(), held.usableBeats());
     }
 
-    /**
-     * How far from the middle of a pulse a note may start and still divide it
-     * evenly: half the way to a third of it.
-     */
-    private static final double EVENLY = (0.5 - 1.0 / 3) / 2;
-
     /** Fewer notes inside a pulse than this, and a share of them is a handful's. */
     private static final int DIVIDING_NOTES = 8;
 
+    /** The ways a note that starts inside a pulse divides it. */
+    private enum Division { LONG_SHORT, DUPLE, ACROSS, OTHER }
+
     /**
-     * The share of a line's dividing notes that must divide a struck pulse
-     * unevenly before the pulse counts as dividing in three: above the half
-     * that quarters tracked at their dotted quarter reach, striking every
-     * other pulse. {@code tools/MeterSweep.java} prints it as {@code in3} for
-     * every line it sweeps.
+     * How a note starting at a fraction of a pulse divides it, by the nearest
+     * of its half, quarters and thirds. Long-short is a lone note nearer two
+     * thirds in a pulse struck at both ends, the 6/8 quarter and eighth;
+     * across is any note in a pulse whose beat is not struck, as quarters
+     * tracked at their dotted quarter tie over every other beat.
      */
-    private static final double A_LINE_DIVIDES_IN_THREE = 0.6;
+    private static Division division(double fraction, boolean struck, boolean endsStruck,
+                                     boolean alone) {
+        if (!struck) {
+            return Division.ACROSS;
+        }
+        double third = Math.min(Math.abs(fraction - 1.0 / 3), Math.abs(fraction - 2.0 / 3));
+        double duple = Math.min(Math.abs(fraction - 0.5),
+                Math.min(Math.abs(fraction - 0.25), Math.abs(fraction - 0.75)));
+        if (duple <= third) {
+            return Division.DUPLE;
+        }
+        return alone && endsStruck && fraction > 0.5 ? Division.LONG_SHORT : Division.OTHER;
+    }
 
     /**
      * How a line divides the tracked pulse, from the notes that start inside
-     * one: {@code inThree} is the share of them off its middle in a pulse whose
-     * beat is struck, {@code inTwo} the share at its middle, and
-     * {@code onThePulse} the share of pulses they divide. Struck, because a
-     * simple meter tracked at its dotted quarter divides the pulse in three
-     * too, but ties across every other beat.
+     * one: {@code inThree} is the share of them that divide it long-short,
+     * {@code inTwo} the share of the commonest other {@link Division}, and
+     * {@code onThePulse} the share of pulses they divide.
      */
     private static Divisions divisionsByTheLine(List<Double> beatTimes, NoteTrack line) {
+        int pulses = beatTimes.size() - 1;
         Set<Long> struck = new HashSet<>();
-        List<Double> positions = new ArrayList<>();
+        Map<Long, List<Double>> inside = new HashMap<>();
+        int dividing = 0;
         for (Note note : line.notes()) {
             double at = beatPosition(beatTimes, note.onsetSeconds());
-            if (at < 0 || at >= beatTimes.size() - 1) {
+            if (at < 0 || at >= pulses) {
                 continue;
             }
             long beat = Math.round(at);
             if (Math.abs(at - beat) <= ON_THE_BEAT) {
                 struck.add(beat);
             } else {
-                positions.add(at);
+                inside.computeIfAbsent((long) Math.floor(at), pulse -> new ArrayList<>())
+                        .add(at - Math.floor(at));
+                dividing++;
             }
         }
-        if (positions.size() < DIVIDING_NOTES) {
-            return new Divisions(0, 0, (double) positions.size() / (beatTimes.size() - 1));
+        double divided = (double) inside.size() / pulses;
+        if (dividing < DIVIDING_NOTES) {
+            return new Divisions(0, 0, divided);
         }
-        int evenly = 0;
-        int unevenlyStruck = 0;
-        for (double at : positions) {
-            long pulse = (long) Math.floor(at);
-            if (Math.abs(at - pulse - 0.5) < EVENLY) {
-                evenly++;
-            } else if (struck.contains(pulse)) {
-                unevenlyStruck++;
+        Map<Division, Integer> counts = new HashMap<>();
+        inside.forEach((pulse, fractions) -> {
+            for (double fraction : fractions) {
+                counts.merge(division(fraction, struck.contains(pulse),
+                        struck.contains(pulse + 1), fractions.size() == 1), 1, Integer::sum);
+            }
+        });
+        int longShort = counts.getOrDefault(Division.LONG_SHORT, 0);
+        int otherwise = 0;
+        for (Division other : Division.values()) {
+            if (other != Division.LONG_SHORT) {
+                otherwise = Math.max(otherwise, counts.getOrDefault(other, 0));
             }
         }
-        Set<Long> divided = new HashSet<>();
-        positions.forEach(at -> divided.add((long) Math.floor(at)));
-        return new Divisions((double) unevenlyStruck / positions.size(),
-                (double) evenly / positions.size(),
-                (double) divided.size() / (beatTimes.size() - 1));
+        return new Divisions((double) longShort / dividing, (double) otherwise / dividing,
+                divided);
     }
 
     /**
