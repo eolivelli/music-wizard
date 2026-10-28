@@ -97,7 +97,9 @@ cost them is the lead-in bar of #824 where the first tracked beat moved. The syn
 #826 and the key column #825. The `solo-*-waltz-*` packages are the same in
 3/4, for the meter column: a line alone states its bar in its notes and
 nothing else (#869). The level-three flute waltz is tracked at the dotted
-quarter, so it is barred in four (#870). Its baseline is
+quarter, so it is barred in four (#870). The `solo-*-sixeight-*` packages are
+6/8 counted on the dotted quarter, which a line states only by dividing it in
+three (#871); the level-three flute one is tracked off that beat (#897). Its baseline is
 `tools/baselines/score-solo.txt`, diffed by premerge and CI like the others.
 
 A package with a `pad` is scored on chords like any other, and reads far worse
