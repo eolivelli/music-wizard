@@ -221,7 +221,9 @@ length hung on the phase the downbeats agree on (#233).
   The reading is still taken, for its other half: how many tracked pulses fill
   a bar is a measurement, and where the typed bar holds as much music as the
   read one it is kept, so the run bars exactly as it would have with nothing
-  typed and only the name on the page changes (#736). A typed bar of another
+  typed and only the name on the page changes (#736). Not on a line alone
+  under a compound signature: that reading counts quarters, so a typed 6/8
+  takes its dotted quarter for the pulse (#887). A typed bar of another
   length takes its own counted beat for the pulse, as before; where that drops
   a reading that had put the tracker below the counted beat, the run says so.
   `--tempo` is what states the pulse where the reading has it wrong.

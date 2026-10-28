@@ -115,10 +115,9 @@ public final class AudioTranscriber {
      * @param timeSignature       the meter to use, read from the recording when
      *                            null. Supplied, it decides the signature
      *                            outright, exactly as a supplied downbeat
-     *                            replaces the phase estimate (#700) -- but not
-     *                            how many tracked pulses fill a bar, which is
-     *                            read either way and kept where this signature
-     *                            bars as much music as the reading did (#736).
+     *                            replaces the phase estimate (#700), but how
+     *                            many tracked pulses fill its bar is decided
+     *                            separately (#736, #887).
      * @param firstDownbeatSeconds when a bar starts, in seconds. Chooses the
      *                            phase of the bar grid outright rather than
      *                            contributing to it: the estimator is not run at
