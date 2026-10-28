@@ -493,10 +493,10 @@ public final class MeterEstimator {
     /**
      * How the notes inside a pulse divide it. Compound is a lone note nearer a
      * third than a half or a quarter, the 6/8 quarter and eighth, or more
-     * notes at thirds where most pulses from the line's first note to the end
-     * of its last are divided in thirds;
-     * triplet is the latter where they are not, as a 4/4 line divides its
-     * beats in three only now and then. Across is a pulse whose beat is not
+     * notes at thirds where more than {@link #MOSTLY} of the pulses from the
+     * line's first note to the end of its last are divided in thirds; triplet
+     * is the latter where they are not, as a 4/4 line divides its beats in
+     * three only now and then. Across is a pulse whose beat is not
      * struck, or whose thirds run over an unstruck next beat, as quarters
      * tracked at their dotted quarter do.
      */
