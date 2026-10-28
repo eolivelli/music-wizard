@@ -484,9 +484,7 @@ public final class MeterEstimator {
 
     /**
      * The share of a line's pulses that must be divided in thirds before
-     * several notes at thirds are compound rather than a triplet. Clear of a
-     * half, where a 4/4 line with triplets on every other beat sits and where
-     * the pulse a line starts or ends on decides.
+     * several notes at thirds are compound rather than a triplet (#901, #902).
      */
     private static final double MOSTLY = 2.0 / 3;
 
