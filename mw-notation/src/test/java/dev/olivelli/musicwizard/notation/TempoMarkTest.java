@@ -74,6 +74,13 @@ class TempoMarkTest {
                 1.5)).hasValue(180.0);
         assertThat(TempoMark.of(TimeSignature.SIX_EIGHT, 180.0))
                 .contains(new TempoMark(new NoteValue(4, true), 120));
+        // A stated tempo changing with the meter is marked whichever way it goes.
+        Score slower = Score.empty(new TempoMap(
+                List.of(new TempoMap.TempoSegment(0, 0, 120, Provenance.DECLARED),
+                        new TempoMap.TempoSegment(3, 1.5, 100, Provenance.DECLARED)),
+                held.tempoMap().meterChanges()), 60.0);
+        assertThat(TempoMark.atChange(slower, TimeSignature.THREE_FOUR, TimeSignature.SIX_EIGHT,
+                1.5)).hasValue(100.0);
         // 4/4 to 3/4 keeps the quarter, and an unmarked change already says so.
         assertThat(TempoMark.atChange(held, TimeSignature.FOUR_FOUR, TimeSignature.THREE_FOUR,
                 1.5)).isEmpty();
