@@ -342,9 +342,12 @@ class MeterEstimationTest {
         @Test
         @DisplayName("a 4/4 line with triplets, dotted rhythms or snaps stays in four")
         void otherUnevenDivisions() {
+            double third = 1.0 / 3;
             NoteTrack[] lines = {
-                    line(1, 1, 1, 1.0 / 3, 1.0 / 3, 1.0 / 3),
-                    jittered(line(1, 1.0 / 3, 1.0 / 3, 1.0 / 3, 1, 1)),
+                    line(1, 1, 1, third, third, third),
+                    jittered(line(1, third, third, third, 1, 1)),
+                    // eighths do not make triplets common
+                    jittered(line(third, third, third, third, third, third, 0.5, 0.5, 1)),
                     jittered(line(0.75, 0.25, 0.75, 0.25, 1, 1)),
                     jittered(line(0.25, 0.75, 0.25, 0.75, 1, 1))};
             for (NoteTrack line : lines) {
