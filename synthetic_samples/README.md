@@ -53,8 +53,8 @@ two packages meant to be counted at the same rate do not carry the same number.
 A style is a set of patterns of a particular bar length and feel rather than a
 parameter, so only the pairs listed above are written and the arranger refuses
 any other outright. It refuses a melody outside 4/4 too, except a graded one
-in 3/4: `MelodyGenerator`'s style templates are bars of four (#715), and the
-`melody-level` ramp is written in bars of four and of three.
+in 3/4 or 6/8: `MelodyGenerator`'s style templates are bars of four (#715), and
+the `melody-level` ramp is written in 4/4, 3/4 and 6/8.
 
 Grids draw from the shared harmonic vocabulary of mainstream Western popular
 music: I–V–vi–IV and its rotations, I–IV–V, the 50s doo-wop I–vi–IV–V, the
@@ -97,7 +97,9 @@ cost them is the lead-in bar of #824 where the first tracked beat moved. The syn
 #826 and the key column #825. The `solo-*-waltz-*` packages are the same in
 3/4, for the meter column: a line alone states its bar in its notes and
 nothing else (#869). The level-three flute waltz is tracked at the dotted
-quarter, so it is barred in four (#870). Its baseline is
+quarter, so it is barred in four (#870). The `solo-*-sixeight-*` packages are
+6/8 counted on the dotted quarter, which a line states only by dividing it in
+three (#871); the level-three flute one is tracked off that beat (#897). Its baseline is
 `tools/baselines/score-solo.txt`, diffed by premerge and CI like the others.
 
 A package with a `pad` is scored on chords like any other, and reads far worse

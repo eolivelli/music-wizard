@@ -75,8 +75,8 @@ ordinary two-bar chord loop, built by construction (#702). What stays typed:
 shuffle in the corpus is barred in four by its confirmed cycle — measured
 against a constructed pair and closed on the measurement (#701) — and 3/8.
 A line playing alone has no harmony to read, so its bar is read from where
-its held notes start instead, and it may leave the 4/4 prior for three and
-nothing else (#869, #871). The meter column of
+its held notes start instead, and it may leave the 4/4 prior for three (#869);
+or for 6/8 on the tracked pulse, on how its notes divide the pulse (#871). A swung line divides it the same way (#896). The meter column of
 `tools/baselines/score-samples.txt`, `score-synthetic.txt` and
 `score-solo.txt` carries the readings; `tools/MeterSweep.java` the
 statistics behind them.

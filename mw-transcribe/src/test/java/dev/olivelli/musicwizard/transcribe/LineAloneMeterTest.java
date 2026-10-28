@@ -27,6 +27,7 @@ import dev.olivelli.musicwizard.core.workspace.KeyTrace;
 import dev.olivelli.musicwizard.core.workspace.RunLog;
 import dev.olivelli.musicwizard.testkit.SignalFactory;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -44,16 +45,33 @@ class LineAloneMeterTest {
     /** The flute take's phrase shape, a new pitch on every note. */
     private static final double[][] PHRASE = {{2, 1}, {1.5, 0.5, 1}, {2, 1}, {1, 1, 1}};
 
+    /** A line in 6/8, in tracked pulses: a dotted quarter's beat divided long-short. */
+    private static final double[][] COMPOUND_PHRASE = {
+            {2.0 / 3, 1.0 / 3, 1}, {2.0 / 3, 1.0 / 3, 2.0 / 3, 1.0 / 3}, {1, 2.0 / 3, 1.0 / 3},
+            {2}};
+
     private static AudioBuffer waltzLine(int bars) {
+        return line(bars, PHRASE, 3, 0);
+    }
+
+    /**
+     * {@code detached} seconds of silence end each note: the melody stage places
+     * the note after a legato change late, where a 6/8 eighth reads as a dotted
+     * sixteenth (#900).
+     */
+    private static AudioBuffer line(int bars, double[][] phrase, int pulsesPerBar,
+                                    double detached) {
         int[] scale = {72, 74, 76, 77, 79, 77, 76, 74, 72, 71};
-        float[] samples = new float[(int) (bars * 3 * BEAT * SAMPLE_RATE)];
+        float[] samples = new float[(int) (bars * pulsesPerBar * BEAT * SAMPLE_RATE)];
         int at = 0;
         int note = 0;
         for (int bar = 0; bar < bars; bar++) {
-            for (double length : PHRASE[bar % PHRASE.length]) {
+            for (double length : phrase[bar % phrase.length]) {
                 float[] tone = SignalFactory.sine(
                         SignalFactory.midiToHz(scale[note++ % scale.length]),
                         length * BEAT, SAMPLE_RATE);
+                Arrays.fill(tone,
+                        Math.max(0, tone.length - (int) (detached * SAMPLE_RATE)), tone.length, 0f);
                 System.arraycopy(tone, 0, samples, at, Math.min(tone.length, samples.length - at));
                 at += tone.length;
             }
@@ -66,7 +84,11 @@ class LineAloneMeterTest {
     }
 
     private Score transcribe(TimeSignature supplied) {
-        return new AudioTranscriber(progress::add, log).transcribe(waltzLine(24),
+        return transcribe(waltzLine(24), supplied);
+    }
+
+    private Score transcribe(AudioBuffer audio, TimeSignature supplied) {
+        return new AudioTranscriber(progress::add, log).transcribe(audio,
                 new AudioTranscriber.Options(null, supplied, null, true));
     }
 
@@ -104,6 +126,29 @@ class LineAloneMeterTest {
                 .as("two tracked pulses to a bar")
                 .extracting(beat -> beat.positionInBar())
                 .containsOnly(0, 1);
+    }
+
+    @Test
+    @DisplayName("a line in 6/8 is read as a supplied 6/8 bars it (#871)")
+    void aCompoundLineIsReadAsSupplied() {
+        AudioBuffer audio = line(36, COMPOUND_PHRASE, 2, 0.02);
+        Score read = transcribe(audio, null);
+        assertThat(log.stages().stream()
+                .filter(stage -> stage.stage().equals(BeatTrace.STAGE))
+                .findFirst().orElseThrow().facts().get("meter"))
+                .startsWith("6/8, read from the melody's notes at ");
+        Score supplied = transcribe(audio, TimeSignature.SIX_EIGHT);
+
+        assertThat(read.tempoMap().initialTimeSignature()).isEqualTo(TimeSignature.SIX_EIGHT);
+        assertThat(quartersInTwoPulses(read)).isCloseTo(3.0, within(0.1));
+        assertThat(read.beatGrid().orElseThrow().beats())
+                .extracting(beat -> beat.positionInBar())
+                .isEqualTo(supplied.beatGrid().orElseThrow().beats().stream()
+                        .map(beat -> beat.positionInBar()).toList());
+        for (double seconds = 1; seconds < 30; seconds += 1.7) {
+            assertThat(read.tempoMap().secondsToBeats(seconds))
+                    .isEqualTo(supplied.tempoMap().secondsToBeats(seconds));
+        }
     }
 
     @Test
