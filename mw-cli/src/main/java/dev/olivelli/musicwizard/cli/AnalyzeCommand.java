@@ -40,6 +40,7 @@ import dev.olivelli.musicwizard.core.model.ScoreJson;
 import dev.olivelli.musicwizard.core.text.Hyphenator;
 import dev.olivelli.musicwizard.core.model.TempoMap;
 import dev.olivelli.musicwizard.core.model.TimeSignature;
+import dev.olivelli.musicwizard.core.workspace.BeatTrace;
 import dev.olivelli.musicwizard.core.workspace.RunLog;
 import dev.olivelli.musicwizard.core.workspace.RunManifest;
 import dev.olivelli.musicwizard.core.workspace.RunManifestJson;
@@ -280,7 +281,7 @@ final class AnalyzeCommand implements Callable<Integer> {
         writeManifestQuietly(workspace, startedAt, kind, config);
 
         System.out.println();
-        for (String line : summary(kind, score)) {
+        for (String line : summary(kind, score, runLog.stages())) {
             System.out.println(line);
         }
         System.out.println("Saved   " + workspace.scoreFile());
@@ -1379,7 +1380,12 @@ final class AnalyzeCommand implements Callable<Integer> {
 
     /** The summary block for a finished analysis. */
     static List<String> summary(SourceKind kind, Score score) {
-        return kind == SourceKind.MIDI ? midiSummary(score) : audioSummary(score);
+        return summary(kind, score, List.of());
+    }
+
+    /** The summary, with what the run's stages proposed and did not apply (#895). */
+    static List<String> summary(SourceKind kind, Score score, List<RunManifest.StageRun> stages) {
+        return kind == SourceKind.MIDI ? midiSummary(score) : audioSummary(score, stages);
     }
 
     /**
@@ -1394,10 +1400,16 @@ final class AnalyzeCommand implements Callable<Integer> {
      * {@link Key#displayNameWithConfidence()}'s answer. The row is absent when
      * nothing sounded and no key was estimated.
      */
-    private static List<String> audioSummary(Score score) {
+    private static List<String> audioSummary(Score score, List<RunManifest.StageRun> stages) {
         List<String> lines = new ArrayList<>();
         lines.add(tempoLine(score));
         lines.add("Meter   " + audioMeter(score.tempoMap()));
+        stages.stream()
+                .filter(stage -> stage.stage().equals(BeatTrace.STAGE))
+                .map(stage -> stage.facts().get(AudioTranscriber.PROPOSED_METER))
+                .filter(java.util.Objects::nonNull)
+                .findFirst()
+                .ifPresent(proposal -> lines.add("        proposed, not applied: " + proposal));
         score.primaryKey().ifPresent(key ->
                 lines.add("Key     " + key.displayNameWithConfidence()));
         lines.add("Chords  " + score.chords().size() + " spans");
