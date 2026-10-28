@@ -2929,9 +2929,12 @@ class SoloMelodyText(unittest.TestCase):
             (solo.REPO / "samples" / "flute-solo-line-c-111.melody.txt").read_text())
         self.assertEqual("111", flute["headers"]["tempo"])
         self.assertEqual(5, flute["bars"])
-        self.assertEqual([76, 77, 79, 77, 76, 77, 79, 77, 76, 77, 76, 74, 72, 74, 72],
+        # Every repeat tongued (#882).
+        bar = [76, 77, 79, 79, 77, 76, 76]
+        self.assertEqual([76, 76] + bar + bar + [76, 77, 76, 76, 74, 72, 72, 72, 74, 72],
                          [n[2] for n in flute["notes"]])
-        self.assertEqual([1.5, 0.5] * 7 + [2.5], [n[1] for n in flute["notes"]])
+        self.assertEqual([0.5] * 2 + ([0.5, 0.5, 1.0] + [0.5] * 4) * 3 + [0.5, 0.5, 2.5],
+                         [n[1] for n in flute["notes"]])
         self.assertEqual(3.0, flute["notes"][0][0])
 
     def test_a_melody_file_without_its_recording_is_an_error_not_a_skip(self):
