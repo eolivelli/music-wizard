@@ -173,6 +173,17 @@ class MeterEstimationTest {
         return new NoteTrack(PartRole.LEAD_VOCAL, "line", notes, Confidence.of(0.9));
     }
 
+    /** The same notes, each onset moved by up to a few hundredths of a pulse. */
+    private static NoteTrack jittered(NoteTrack line) {
+        Random random = new Random(871);
+        List<Note> moved = line.notes().stream()
+                .map(note -> Note.ofSeconds(
+                        note.onsetSeconds() + (random.nextDouble() - 0.5) * 0.06 * PULSE_SECONDS,
+                        note.durationSeconds(), note.midiPitch(), note.confidence()))
+                .toList();
+        return new NoteTrack(PartRole.LEAD_VOCAL, "line", moved, Confidence.of(0.9));
+    }
+
     @Nested
     @DisplayName("what a line alone is barred in (#869)")
     class LineAlone {
@@ -271,15 +282,107 @@ class MeterEstimationTest {
         }
 
         @Test
-        @DisplayName("a line is never barred in two or in six")
-        void neitherTwoNorSix() {
-            // What decide would take for a six, and for a two-pulse bar.
+        @DisplayName("a line is never barred in six")
+        void neverSix() {
+            // What decide would take for a six.
             assertThat(MeterEstimator.decide(reading(1, 8, 1, 8)).pulsesPerBar()).isEqualTo(6);
             assertThat(MeterEstimator.decideLine(reading(1, 8, 1, 8)).pulsesPerBar())
                     .isEqualTo(3);
-            MeterEstimator.Reading compound = reading(2, 0.5, 1, 1, 0.9, 0.1);
-            assertThat(MeterEstimator.decide(compound).pulsesPerBar()).isEqualTo(2);
-            assertThat(MeterEstimator.decideLine(compound).pulsesPerBar()).isEqualTo(4);
+        }
+
+        @Test
+        @DisplayName("a quarter and an eighth in a struck pulse is 6/8 on that pulse (#871)")
+        void aSixEightLine() {
+            MeterEstimator.Reading reading =
+                    MeterEstimator.read(beats(BEATS), line(2.0 / 3, 1.0 / 3, 1), clicks(1));
+
+            assertThat(reading.inThree()).isEqualTo(1.0);
+            MeterEstimator.Estimate estimate = MeterEstimator.decideLine(reading);
+            assertThat(estimate.meter()).isEqualTo(TimeSignature.SIX_EIGHT);
+            assertThat(estimate.pulsesPerBar()).isEqualTo(2);
+            assertThat(estimate.pulseIsCountedBeat()).isTrue();
+        }
+
+        @Test
+        @DisplayName("quarters tracked at the dotted quarter tie across the beat and stay in four")
+        void quartersAtTheDottedQuarter() {
+            MeterEstimator.Reading reading =
+                    MeterEstimator.read(beats(BEATS), line(2.0 / 3), clicks(1));
+
+            assertThat(reading.inThree()).isZero();
+            assertThat(MeterEstimator.decideLine(reading).meter())
+                    .isEqualTo(TimeSignature.FOUR_FOUR);
+        }
+
+        @Test
+        @DisplayName("eighths divide the pulse evenly and stay in four")
+        void evenEighths() {
+            MeterEstimator.Reading reading =
+                    MeterEstimator.read(beats(BEATS), line(0.5, 0.5, 1), clicks(1));
+
+            assertThat(reading.inTwo()).isEqualTo(1.0);
+            assertThat(reading.inThree()).isZero();
+            assertThat(MeterEstimator.decideLine(reading).meter())
+                    .isEqualTo(TimeSignature.FOUR_FOUR);
+        }
+
+        @Test
+        @DisplayName("running eighths, and an eighth and a quarter, are 6/8 too")
+        void otherCompoundDivisions() {
+            List<Note> afterARest = line(1.0 / 3, 1.0 / 3, 1.0 / 3).notes().stream()
+                    .filter(note -> note.onsetSeconds() >= BEATS * 3 / 5 * PULSE_SECONDS)
+                    .toList();
+            NoteTrack[] lines = {
+                    jittered(line(1.0 / 3, 1.0 / 3, 1.0 / 3)),
+                    jittered(line(1.0 / 3, 2.0 / 3, 1)),
+                    // silence is not a pulse the line divides otherwise
+                    new NoteTrack(PartRole.LEAD_VOCAL, "line", afterARest, Confidence.of(0.9))};
+            for (NoteTrack line : lines) {
+                assertThat(MeterEstimator.decideLine(
+                        MeterEstimator.read(beats(BEATS), line, clicks(1))).meter())
+                        .isEqualTo(TimeSignature.SIX_EIGHT);
+            }
+        }
+
+        @Test
+        @DisplayName("a 4/4 line with triplets, dotted rhythms or snaps stays in four")
+        void otherUnevenDivisions() {
+            double third = 1.0 / 3;
+            NoteTrack[] lines = {
+                    line(1, 1, 1, third, third, third),
+                    jittered(line(1, third, third, third, 1, 1)),
+                    // eighths do not make triplets common, nor does a held note
+                    jittered(line(third, third, third, third, third, third, 0.5, 0.5, 1)),
+                    jittered(line(third, third, third, third, third, third, 2)),
+                    jittered(line(0.75, 0.25, 0.75, 0.25, 1, 1)),
+                    jittered(line(0.25, 0.75, 0.25, 0.75, 1, 1))};
+            for (NoteTrack line : lines) {
+                assertThat(MeterEstimator.decideLine(
+                        MeterEstimator.read(beats(BEATS), line, clicks(1))).meter())
+                        .isEqualTo(TimeSignature.FOUR_FOUR);
+            }
+        }
+
+        @Test
+        @DisplayName("held notes in three keep a divided pulse in 3/4")
+        void heldThreeOverADividedPulse() {
+            MeterEstimator.Reading reading = reading(1, 8, 1, 1, 1.0, 0);
+
+            assertThat(MeterEstimator.decideLine(reading).meter())
+                    .isEqualTo(TimeSignature.THREE_FOUR);
+        }
+
+        @Test
+        @DisplayName("a handful of dividing notes is no division")
+        void aHandful() {
+            List<Note> notes = new ArrayList<>(line(1).notes());
+            for (int beat = 0; beat < 3; beat++) {
+                notes.add(Note.ofSeconds((beat + 2.0 / 3) * PULSE_SECONDS, PULSE_SECONDS / 3,
+                        60, Confidence.of(0.9)));
+            }
+            NoteTrack few = new NoteTrack(PartRole.LEAD_VOCAL, "line", notes, Confidence.of(0.9));
+
+            assertThat(MeterEstimator.read(beats(BEATS), few, clicks(1)).inThree()).isZero();
         }
 
         @Test

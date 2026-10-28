@@ -29,6 +29,8 @@ Solo instrument, the playable part against each package's own MIDI, on the grid
   solo-flute-level2-eb-66: bars=25/24  meter 4/4 OK  tempo 66.1/66 (x1.00)  shift +0.00  notes=85/87  placed 97.7%  held 89.3%  key OK
   solo-flute-level3-em-92: bars=33/32  meter 4/4 OK  tempo 91.8/92 (x1.00)  shift +0.00  notes=78/78  placed 98.7%  held 87.0%  key OK
   solo-flute-level4-a-138: bars=23/32  meter 4/4 OK  tempo 93.8/138 (x0.68)  shift -1.50  notes=87/96  placed 5.5%  held 80.0%  key OK
+  solo-flute-sixeight-level2-d-198: bars=34/32  meter 6/8 OK  tempo 198.7/198 (x1.00)  shift +0.00  notes=88/92  placed 97.8%  held 89.8%  key (3, 'major') WRONG
+  solo-flute-sixeight-level3-em-168: bars=20/32  meter 4/4 WRONG  tempo 161.8/168 (x0.96)  shift -5.50  notes=59/65  placed 9.7%  held 16.7%  key OK
   solo-flute-waltz-level2-g-120: bars=29/28  meter 3/4 OK  tempo 119.9/120 (x1.00)  shift +0.00  notes=63/64  placed 97.6%  held 85.5%  key OK
   solo-flute-waltz-level3-em-132: bars=17/32  meter 4/4 WRONG  tempo 89.2/132 (x0.68)  shift -4.50  notes=50/52  placed 7.8%  held 0.0%  key (1, 'major') WRONG
   solo-piano-level1-ab-104: bars=33/32  meter 4/4 OK  tempo 104.1/104 (x1.00)  shift +0.00  notes=128/128  placed 100.0%  held 99.2%  key OK
@@ -36,4 +38,5 @@ Solo instrument, the playable part against each package's own MIDI, on the grid
   solo-piano-level2-f-120: bars=33/32  meter 4/4 OK  tempo 120.1/120 (x1.00)  shift +0.00  notes=111/116  placed 97.8%  held 90.1%  key OK
   solo-piano-level3-e-88: bars=33/32  meter 4/4 OK  tempo 87.9/88 (x1.00)  shift +0.00  notes=78/78  placed 100.0%  held 85.9%  key OK
   solo-piano-level4-cm-144: bars=32/32  meter 4/4 OK  tempo 143.8/144 (x1.00)  shift -0.50  notes=98/97  placed 60.5%  held 78.0%  key OK
+  solo-piano-sixeight-level2-a-150: bars=29/28  meter 6/8 OK  tempo 150.4/150 (x1.00)  shift +0.00  notes=82/82  placed 98.8%  held 93.8%  key OK
   solo-piano-waltz-level2-f-100: bars=25/24  meter 3/4 OK  tempo 100.2/100 (x1.00)  shift +0.00  notes=54/54  placed 98.1%  held 83.0%  key OK

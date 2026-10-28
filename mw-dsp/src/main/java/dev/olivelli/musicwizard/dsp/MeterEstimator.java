@@ -25,6 +25,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -108,14 +109,15 @@ public final class MeterEstimator {
      * The bar length the harmony alone may not choose, because two divides both
      * four and six and the statistic below cannot prefer a period to its own
      * divisors. It reaches {@link Estimate#pulsesPerBar()} only through
-     * {@link #barsInTwo}, and it is never a rival to a length it divides: a
+     * {@link #barsInTwo} and, on a line, through how its notes divide the
+     * pulse, and it is never a rival to a length it divides: a
      * four-pulse bar scores at period two both by that degeneracy and by the
      * ordinary comping that fills it, so neither reading is a hypothesis
      * competing with the four.
      */
     private static final int IN_TWO = 2;
 
-    /** The one bar length a line alone may leave the assumption for. */
+    /** The bar length a line alone leaves the assumption for on its held notes. */
     private static final int IN_THREE = 3;
 
     /** The bar length assumed when the evidence does not displace it. */
@@ -335,6 +337,9 @@ public final class MeterEstimator {
      * may be read against each other, and beside them the one thing here that is
      * not read from the harmony at all: how the tracked pulse divides.
      *
+     * <p>On a line alone every field is read from its notes instead, by
+     * {@link #read(List, NoteTrack, OnsetEnvelope)}.
+     *
      * @param harmonic    harmonic periodicity at each of those lengths, keyed by
      *                    tracked pulses to a bar; the assumed length's entry is
      *                    the assumption's own score
@@ -432,18 +437,26 @@ public final class MeterEstimator {
     }
 
     /**
-     * The meter a line's reading names: three pulses or the assumed four.
+     * The meter a line's reading names: three pulses, two, or the assumed four.
      *
      * <p>A line in four states its half bar or its bar, and three divides
      * neither, so either supported is the prior's own evidence and keeps a
      * supported three out — the half bar unless six accounts for it, as it
      * does for a line in three that holds a note every other bar. Not
      * {@link #MARGIN}: a line in three leaves its rivals at the null, and a
-     * ratio over the null is a ratio of noise. Nothing else is read from a
-     * line: six would be a tracker below the beat, and two is #871.
+     * ratio over the null is a ratio of noise.
+     *
+     * <p>Failing three, a line whose commonest division of a pulse is compound
+     * is barred in two pulses, which is 6/8 counted on the tracked pulse
+     * (#871), unless its held notes state a three. A swung line
+     * divides it the same way (#896). Six would be a tracker below the beat,
+     * and is not read from a line.
      */
     public static Estimate decideLine(Reading reading) {
         Objects.requireNonNull(reading, "reading");
+        if (reading.at(IN_THREE) < SUPPORTED && reading.inThree() > reading.inTwo()) {
+            return new Estimate(meterAt(reading, IN_TWO), IN_TWO, confidenceInTwo(reading));
+        }
         boolean inThree = reading.at(IN_THREE) >= SUPPORTED
                 && reading.at(ASSUMED) < SUPPORTED
                 && (reading.at(IN_TWO) < SUPPORTED
@@ -460,7 +473,107 @@ public final class MeterEstimator {
         if (!usable(beatTimes) || line.isEmpty()) {
             return unreadable(beatTimes);
         }
-        return readSeries(beatTimes, heldNoteStarts(beatTimes, line), envelope);
+        Reading held = readSeries(beatTimes, heldNoteStarts(beatTimes, line), envelope);
+        Divisions divisions = divisionsByTheLine(beatTimes, line);
+        return new Reading(held.harmonic(), divisions.inThree(), divisions.inTwo(),
+                divisions.onThePulse(), held.usableBeats());
+    }
+
+    /** Fewer divided pulses than this, and a share of them is a handful's. */
+    private static final int DIVIDED_PULSES = 8;
+
+    /**
+     * The share of a line's pulses that must be divided in thirds before
+     * several notes at thirds are compound rather than a triplet (#901, #902).
+     */
+    private static final double MOSTLY = 2.0 / 3;
+
+    /**
+     * How the notes inside a pulse divide it. Compound is a lone note nearer a
+     * third than a half or a quarter, the 6/8 quarter and eighth, or more
+     * notes at thirds where more than {@link #MOSTLY} of the pulses from the
+     * line's first note to the end of its last are divided in thirds; triplet
+     * is the latter where they are not, as a 4/4 line divides its beats in
+     * three only now and then. Across is a pulse whose beat is not
+     * struck, or whose thirds run over an unstruck next beat, as quarters
+     * tracked at their dotted quarter do.
+     */
+    private enum Division { COMPOUND, TRIPLET, DUPLE, ACROSS }
+
+    private static Division division(List<Double> fractions, boolean struck,
+                                     boolean nextStruck, boolean mostlyInThirds) {
+        if (!struck) {
+            return Division.ACROSS;
+        }
+        if (!inThirds(fractions)) {
+            return Division.DUPLE;
+        }
+        if (!nextStruck) {
+            return Division.ACROSS;
+        }
+        return fractions.size() == 1 || mostlyInThirds ? Division.COMPOUND : Division.TRIPLET;
+    }
+
+    /** Whether every note inside a pulse is nearer a third of it than a half or a quarter. */
+    private static boolean inThirds(List<Double> fractions) {
+        for (double fraction : fractions) {
+            double third = Math.min(Math.abs(fraction - 1.0 / 3), Math.abs(fraction - 2.0 / 3));
+            double duple = Math.min(Math.abs(fraction - 0.5),
+                    Math.min(Math.abs(fraction - 0.25), Math.abs(fraction - 0.75)));
+            if (duple <= third) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * How a line divides the tracked pulse, from the pulses its notes start
+     * inside: {@code inThree} is the share of them divided compound,
+     * {@code inTwo} the share of the commonest other {@link Division}, and
+     * {@code onThePulse} the share of all pulses they are.
+     */
+    private static Divisions divisionsByTheLine(List<Double> beatTimes, NoteTrack line) {
+        int pulses = beatTimes.size() - 1;
+        Set<Long> struck = new HashSet<>();
+        Map<Long, List<Double>> inside = new HashMap<>();
+        double first = pulses;
+        double last = 0;
+        for (Note note : line.notes()) {
+            double at = beatPosition(beatTimes, note.onsetSeconds());
+            if (at < 0 || at >= pulses) {
+                continue;
+            }
+            first = Math.min(first, at);
+            last = Math.max(last, Math.min(pulses, beatPosition(beatTimes, note.offsetSeconds())));
+            long beat = Math.round(at);
+            if (Math.abs(at - beat) <= ON_THE_BEAT) {
+                struck.add(beat);
+            } else {
+                inside.computeIfAbsent((long) Math.floor(at), pulse -> new ArrayList<>())
+                        .add(at - Math.floor(at));
+            }
+        }
+        double divided = (double) inside.size() / pulses;
+        if (inside.size() < DIVIDED_PULSES) {
+            return new Divisions(0, 0, divided);
+        }
+        double span = Math.ceil(last) - Math.floor(first);
+        boolean mostlyInThirds = inside.values().stream()
+                .filter(MeterEstimator::inThirds).count() > MOSTLY * span;
+        Map<Division, Integer> counts = new HashMap<>();
+        inside.forEach((pulse, fractions) -> counts.merge(division(fractions,
+                struck.contains(pulse), struck.contains(pulse + 1), mostlyInThirds),
+                1, Integer::sum));
+        int otherwise = 0;
+        for (Division other : Division.values()) {
+            if (other != Division.COMPOUND) {
+                otherwise = Math.max(otherwise, counts.getOrDefault(other, 0));
+            }
+        }
+        return new Divisions(
+                (double) counts.getOrDefault(Division.COMPOUND, 0) / inside.size(),
+                (double) otherwise / inside.size(), divided);
     }
 
     /**

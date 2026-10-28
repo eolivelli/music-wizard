@@ -1,0 +1,22 @@
+title: Solo piano in 6/8, level two - the beat divides in three, two dotted quarters to a bar in A
+genre: folk-pop
+style: pop-ballad
+tempo: 150
+meter: 6/8
+key: A major
+seed: 59
+melody: piano
+melody-level: 2
+accompaniment: none
+bars:
+# A line alone in six-eight (#871): nothing but the notes says the beat divides in three.
+# I-vi-IV-V, half cadence at each pass
+A F#m D E
+A F#m D E
+# IV-V-I, then the loop again
+D E A A
+A F#m D E
+# ii-V-I and a plagal close onto the tonic
+Bm E A F#m
+D E A A
+D D A A
